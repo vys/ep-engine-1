@@ -2964,11 +2964,17 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
 
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
                     add_stat, cookie);
+     add_casted_stat("ep_max_lru_entries", epstore->getMaxLruEntries(),
+                     add_stat, cookie);
+     add_casted_stat("ep_lru_build_start_time", epstore->getActiveLRU()->getBuildStartTime(),
+             add_stat, cookie);
+     add_casted_stat("ep_lru_build_end_time", epstore->getActiveLRU()->getBuildEndTime(),
+             add_stat, cookie);
 
-    add_casted_stat("ep_inconsistent_slave_chk", CheckpointManager::isInconsistentSlaveCheckpoint(),
-                    add_stat, cookie);
-    add_casted_stat("ep_keep_closed_checkpoints", CheckpointManager::isKeepingClosedCheckpoints(),
-                    add_stat, cookie);
+     add_casted_stat("ep_inconsistent_slave_chk", CheckpointManager::isInconsistentSlaveCheckpoint(),
+             add_stat, cookie);
+     add_casted_stat("ep_keep_closed_checkpoints", CheckpointManager::isKeepingClosedCheckpoints(),
+             add_stat, cookie);
 
     return ENGINE_SUCCESS;
 }
@@ -3453,6 +3459,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
                         kstats.data_age : 0, add_stat, cookie);
         add_casted_stat("key_last_modification_time", kstats.last_modification_time,
                         add_stat, cookie);
+        add_casted_stat("key_in_lru", kstats.in_lru, add_stat, cookie);
         if (validate) {
             add_casted_stat("key_valid", valid.c_str(), add_stat, cookie);
         }
@@ -3464,6 +3471,36 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
     return rv;
 }
 
+ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
+                                                            ADD_STAT add_stat) 
+{
+
+	std::vector<uint32_t> ints;
+	uint32_t rev_ints[MAX_INTERVALS];
+	
+	for (int i = MAX_INTERVALS - 1; i >= 0; --i) {
+		rev_ints[MAX_INTERVALS - i - 1]  = time_intervals[i];
+	}
+	//ints.assign(time_intervals, time_intervals + MAX_INTERVALS); 
+	ints.assign(rev_ints, rev_ints + MAX_INTERVALS); 
+	
+	FixedInputGenerator<uint32_t> fig(ints);
+	Histogram <uint32_t>histo(fig, MAX_INTERVALS - 1);
+	
+	lruList *lru = epstore->getActiveLRU();
+	lru->getLRUStats(histo, lru);
+	add_casted_stat("ep_lru_total", lru->getLRUCount(), add_stat, cookie);
+	add_casted_stat("ep_lru_histo", histo, add_stat, cookie);
+	add_casted_stat("ep_lru_total_evicts", lru->lstats.numTotalEvicts, add_stat, cookie);
+	add_casted_stat("ep_lru_keys_evicted", lru->lstats.numTotalKeysEvicted, add_stat, cookie);
+	add_casted_stat("ep_lru_failed_empty", lru->lstats.numEmptyLRU, add_stat, cookie);
+	add_casted_stat("ep_lru_failed_key_absent", lru->lstats.failedTotal.numKeyNotPresent, add_stat, cookie);
+	add_casted_stat("ep_lru_failed_dirty", lru->lstats.failedTotal.numDirties, add_stat, cookie);
+	add_casted_stat("ep_lru_failed_already_evicted", lru->lstats.failedTotal.numAlreadyEvicted, add_stat, cookie);
+	add_casted_stat("ep_lru_failed_deleted", lru->lstats.failedTotal.numDeleted, add_stat, cookie);
+	add_casted_stat("ep_lru_failed_key_too_recent", lru->lstats.failedTotal.numKeyTooRecent, add_stat, cookie);
+	return ENGINE_SUCCESS;
+}
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,
                                                             ADD_STAT add_stat) {
@@ -3589,6 +3626,10 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
         rv = doCheckpointStats(cookie, add_stat);
     } else if (nkey == 7 && strncmp(stat_key, "timings", 7) == 0) {
         rv = doTimingStats(cookie, add_stat);
+#if 1
+    } else if (nkey == 3 && strncmp(stat_key, "lru", 3) == 0) {
+        rv = doLRUStats(cookie, add_stat);
+#endif
     } else if (nkey == 10 && strncmp(stat_key, "dispatcher", 10) == 0) {
         rv = doDispatcherStats(cookie, add_stat);
     } else if (nkey == 6 && strncmp(stat_key, "memory", 6) == 0) {

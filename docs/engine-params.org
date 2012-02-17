@@ -66,6 +66,8 @@ memcached like this:
 |                        |        | that is expired (or will be soon)          |
 | exp_pager_stime        | int    | Sleep time for the pager that purges       |
 |                        |        | expired objects from memory and disk       |
+| max_lru_entries        | int    | Maximum entries supported by the LRU       |
+|                        |        | used in eviction                           |
 | failpartialwarmup      | bool   | If false, continue running after failing   |
 |                        |        | to load some records.                      |
 | max_vbuckets           | int    | Maximum number of vbuckets expected (1024) |

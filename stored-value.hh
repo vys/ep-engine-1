@@ -549,7 +549,7 @@ public:
      * Get the current amount of of data stored.
      */
     static size_t getCurrentSize(EPStats&);
-
+	static bool hasEnoughMemory(size_t needed, EPStats &stats); 
 private:
 
     StoredValue(const Item &itm, StoredValue *n, EPStats &stats, HashTable &ht,
@@ -589,14 +589,15 @@ private:
     friend class StoredValueFactory;
 
     value_t            value;          // 16 bytes
-    StoredValue        *next;          // 8 bytes
+    StoredValue	       *next;		   // 8 bytes
     int64_t            id;             // 8 bytes
     uint32_t           dirtiness : 30; // 30 bits -+
     bool               _isSmall  :  1; // 1 bit    | 4 bytes
     bool               _isDirty  :  1; // 1 bit  --+
     uint32_t           flags;          // 4 bytes
     Atomic<uint8_t>    replicas;       // 1 byte
-
+    uint32_t 		frequency;    // Frequency of access | 4 bytes
+    uint32_t 		generation;
 
     union stored_value_bodies extra;
 

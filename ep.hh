@@ -48,12 +48,15 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #include "dispatcher.hh"
 #include "vbucket.hh"
 #include "item_pager.hh"
+#include "evict.hh"
 
 #define DEFAULT_TXN_SIZE 10000
 #define MAX_TXN_SIZE 10000000
 
 #define MAX_DATA_AGE_PARAM 86400
 #define MAX_BG_FETCH_DELAY 900
+
+extern uint32_t time_intervals[]; // FIXME get rid of this global.
 
 /**
  * vbucket-aware hashtable visitor.
@@ -809,6 +812,15 @@ public:
      */
     void completeOnlineRestore();
 
+    lruList *getActiveLRU(void) { return active_lru; }
+    lruList *getStandbyLRU(void) { return standby_lru; }
+
+    void switchLRU(void) {
+        lruList *temp = standby_lru;
+        standby_lru = active_lru;
+        active_lru = temp;
+    }
+
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -889,6 +901,7 @@ private:
     friend class PersistenceCallback;
     friend class Deleter;
     friend class VBCBAdaptor;
+	friend class lruList;
 
     EventuallyPersistentEngine &engine;
     EPStats                    &stats;
@@ -924,6 +937,9 @@ private:
         std::set<std::string> itemsDeleted;
     } restore;
 
+	lruList *active_lru;
+	lruList *standby_lru;
+    size_t maxLruEntries;
     DISALLOW_COPY_AND_ASSIGN(EventuallyPersistentStore);
 };
 
