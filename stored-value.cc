@@ -274,6 +274,9 @@ void HashTable::visit(HashTableVisitor &visitor) {
         lh.unlock();
         aborted = !visitor.shouldContinue();
     }
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
+			"XXX: Hash table visitor exiting: visited: = %d, aborted= %d\n", 
+			visited, (aborted ? 1 : 0));
     assert(aborted || visited == size);
 }
 
@@ -407,4 +410,11 @@ bool StoredValue::hasAvailableSpace(EPStats &st, const Item &item) {
                                          sizeof(StoredValue) + item.getNKey());
     double maxSize=  static_cast<double>(getMaxDataSize(st)) * mutation_mem_threshold;
     return newSize <= maxSize;
+}
+
+bool StoredValue::hasEnoughMemory(size_t needed, EPStats &stats) 
+{
+	double current = static_cast<double>(getCurrentSize(stats));
+	double max =  static_cast<double>(getMaxDataSize(stats)) * mutation_mem_threshold;
+	return (max >= (current + needed));
 }
