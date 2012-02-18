@@ -773,8 +773,12 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority) {
         scheduleVBSnapshot(priority);
     }
 
-	active_lru = lruList::New(this, stats);
-	standby_lru = lruList::New(this, stats);
+}
+
+void EventuallyPersistentStore::initLRU()
+{
+    active_lru = lruList::New(this, stats);
+    standby_lru = lruList::New(this, stats);
 }
 
 void EventuallyPersistentStore::setVBucketState(uint16_t vbid,

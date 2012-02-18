@@ -1570,6 +1570,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
                                                Priority::VBucketDeletionPriority,
                                                INVALID_VBTABLE_DEL_FREQ);
         }
+        epstore->initLRU();
     }
 
     if (ret == ENGINE_SUCCESS) {
@@ -2964,8 +2965,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
 
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
                     add_stat, cookie);
-     add_casted_stat("ep_max_lru_entries", epstore->getMaxLruEntries(),
-                     add_stat, cookie);
+//     add_casted_stat("ep_max_lru_entries", epstore->getMaxLruEntries(),
+ //                    add_stat, cookie);
      add_casted_stat("ep_lru_build_start_time", epstore->getActiveLRU()->getBuildStartTime(),
              add_stat, cookie);
      add_casted_stat("ep_lru_build_end_time", epstore->getActiveLRU()->getBuildEndTime(),

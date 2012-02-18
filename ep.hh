@@ -812,6 +812,7 @@ public:
      */
     void completeOnlineRestore();
 
+    void initLRU(void);
     lruList *getActiveLRU(void) { return active_lru; }
     lruList *getStandbyLRU(void) { return standby_lru; }
 
