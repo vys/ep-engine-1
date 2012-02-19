@@ -31,6 +31,24 @@
 #include "ep_engine.h"
 #include "htresizer.hh"
 
+/* Keep track of keys with interesting age */
+uint32_t time_intervals[] = {
+	4294967294, // MAX_INT. Equals to seconds worth of 136 years
+	172800, // 2 days
+	86400,
+	36000,
+	18000,
+	7200,
+	3600,
+	1800,
+	600,
+	300,
+	120,
+	60,
+	30,
+	10
+};
+
 extern "C" {
     static rel_time_t uninitialized_current_time(void) {
         abort();
@@ -754,6 +772,13 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority) {
                          "Rescheduling a task to snapshot vbuckets\n");
         scheduleVBSnapshot(priority);
     }
+
+}
+
+void EventuallyPersistentStore::initLRU()
+{
+    active_lru = lruList::New(this, stats);
+    standby_lru = lruList::New(this, stats);
 }
 
 void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
@@ -1298,6 +1323,7 @@ bool EventuallyPersistentStore::getKeyStats(const std::string &key,
         kstats.dirtied = 0; // v->getDirtied();
         kstats.data_age = v->getDataAge();
         kstats.last_modification_time = ep_abs_time(v->getDataAge());
+        kstats.in_lru = active_lru->keyInLru(v->getKeyBytes(), v->getKeyLen());
     }
     return found;
 }

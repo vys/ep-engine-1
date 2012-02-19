@@ -304,6 +304,8 @@ public:
 
     Histogram<hrtime_t> checkpointRevertHisto;
 
+    Histogram<uint32_t> lruHisto;
+
     //! Reset all stats to reasonable values.
     void reset() {
         tooYoung.set(0);
@@ -396,6 +398,8 @@ struct key_stats {
     uint32_t flags;
     //! True if this item is dirty.
     bool dirty;
+    //! 1 if in LRU, 0 if not, -1 LRU is being built
+    int in_lru;
 };
 
 /**
