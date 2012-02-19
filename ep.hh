@@ -822,6 +822,14 @@ public:
         active_lru = temp;
     }
 
+    void setMaxLruEntries(size_t val) {
+        maxLruEntries = val;
+    }
+
+    size_t getMaxLruEntries() {
+        return maxLruEntries;
+    }
+
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);

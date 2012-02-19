@@ -20,14 +20,13 @@ uint32_t time_intervals[] = {
 };
 
 #endif
-#define MAX_LRU_ENTRIES 500000
 
 lruList *lruList::New (EventuallyPersistentStore *s, EPStats &st) 
 {
     lruList *l = (lruList *):: operator new (sizeof(lruList));
     memset(l, 0, sizeof(lruList));
     new (l) lruList(s, st);
-    l->maxLruEntries = MAX_LRU_ENTRIES;
+    l->maxLruEntries = s->getMaxLruEntries();
     return l;
 }
 

@@ -62,7 +62,8 @@ Available params for "set":
     max_size       - max memory used by the server
     mem_high_wat   - high water mark
     mem_low_wat    - low water mark
-    exp_pager_stime- Expiry Pager Sleeptime""")
+    exp_pager_stime- Expiry Pager Sleeptime
+    max_lru_entries - Maximum entries supported by LRU""")
 
     c.addCommand('stop', stop, 'stop')
     c.addCommand('start', start, 'start')
