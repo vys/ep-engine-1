@@ -35,14 +35,14 @@ public:
                   bool *sfin, bool pause = false, lruList *l = NULL)
         : store(s), stats(st), percent(pcnt), ejected(0),
           startTime(ep_real_time()), stateFinalizer(sfin), canPause(pause), lru(l)
-	{
+    {
             if (lru) {
-		stage = new lruStage(LRU_STAGE_SIZE);
-		getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Clearing old LRU at %d", ep_current_time());
+                stage = new lruStage(LRU_STAGE_SIZE);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Clearing old LRU at %d", ep_current_time());
                 lru->clearLRU(lru);
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Clearing LRU Done");
             }
-	}		
+    }
 
     void visit(StoredValue *v) {
         // Remember expired objects -- we're going to delete them.
@@ -50,8 +50,7 @@ public:
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
         } else if (!v->isDeleted() && v->isResident() && stage) {
-            stage->add(v, currentBucket->getId());
-//            lru->update(v, currentBucket->getId());	
+            stage->add(v, currentBucket->getId(), lru->getBuildStartTime());
         }
 
         double r = static_cast<double>(std::rand()) / static_cast<double>(RAND_MAX);
@@ -108,11 +107,12 @@ public:
             *stateFinalizer = true;
         }
         store->getStandbyLRU()->setBuildEndTime(ep_current_time());
-	store->switchLRU();
-	if (stage) {
-	        stage->clear();
-		delete stage;
-	}
+        store->switchLRU();
+
+        if (stage) {
+            stage->clear();
+            delete stage;
+        }
     }
     
     bool shouldContinue() {
@@ -129,7 +129,7 @@ public:
 
 private:
     std::list<std::pair<uint16_t, std::string> > expired;
-    lruStage			*stage;
+    lruStage            *stage;
 
     EventuallyPersistentStore *store;
     EPStats                   &stats;
@@ -138,15 +138,15 @@ private:
     time_t                     startTime;
     bool                      *stateFinalizer;
     bool                       canPause;
-	lruList					*lru;
+    lruList                    *lru;
 };
 
 bool ItemPager::callback(Dispatcher &d, TaskId t) {
     double current = static_cast<double>(StoredValue::getCurrentSize(stats));
-	double upper = static_cast<double>(stats.mem_high_wat);
-	double lower = static_cast<double>(stats.mem_low_wat);
+    double upper = static_cast<double>(stats.mem_high_wat);
+    double lower = static_cast<double>(stats.mem_low_wat);
 
-    	getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: item_pager: Got called!!!"); 
+        getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: item_pager: Got called!!!"); 
     if (available && current > upper && 0) {
 
         ++stats.pagerRuns;
@@ -163,7 +163,7 @@ bool ItemPager::callback(Dispatcher &d, TaskId t) {
         shared_ptr<PagingVisitor> pv(new PagingVisitor(store, stats,
                                                        toKill, &available, false, NULL));
         store->visit(pv, "Item pager", &d, Priority::ItemPagerPriority);
-    	getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: item_pager: Got called!!!"); 
+        getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: item_pager: Got called!!!"); 
     }
 
     d.snooze(t, 10);
@@ -178,13 +178,13 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
         available = false;
         shared_ptr<PagingVisitor> pv(new PagingVisitor(store, stats,
                                                        -1, &available, true, store->getStandbyLRU()));
-    	getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: Expiry pager: before calling strore->visit"); 
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: Expiry pager: before calling strore->visit"); 
         store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
                      true, 10);
     }
-	assert(sleepTime >= 0);
-	d.snooze(t, 20);	
-//    d.snooze(t, sleepTime);
+    assert(sleepTime >= 0);
+//    d.snooze(t, 20);    
+    d.snooze(t, sleepTime);
     return true;
 }
 

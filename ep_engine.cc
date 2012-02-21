@@ -3476,8 +3476,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
                                                             ADD_STAT add_stat) 
 {
 
-	std::vector<uint32_t> ints;
-	uint32_t rev_ints[MAX_INTERVALS];
+	std::vector<int> ints;
+	int rev_ints[MAX_INTERVALS];
 	
 	for (int i = MAX_INTERVALS - 1; i >= 0; --i) {
 		rev_ints[MAX_INTERVALS - i - 1]  = time_intervals[i];
@@ -3485,10 +3485,13 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
 	//ints.assign(time_intervals, time_intervals + MAX_INTERVALS); 
 	ints.assign(rev_ints, rev_ints + MAX_INTERVALS); 
 	
-	FixedInputGenerator<uint32_t> fig(ints);
-	Histogram <uint32_t>histo(fig, MAX_INTERVALS - 1);
+	FixedInputGenerator<int> fig(ints);
+	Histogram <int>histo(fig, MAX_INTERVALS - 1);
 	
 	lruList *lru = epstore->getActiveLRU();
+        if (lru->getBuildEndTime() == -1) {
+            return ENGINE_SUCCESS;
+        }
 	lru->getLRUStats(histo, lru);
 	add_casted_stat("ep_lru_total", lru->getLRUCount(), add_stat, cookie);
 	add_casted_stat("ep_lru_histo", histo, add_stat, cookie);

@@ -56,8 +56,6 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #define MAX_DATA_AGE_PARAM 86400
 #define MAX_BG_FETCH_DELAY 900
 
-extern uint32_t time_intervals[]; // FIXME get rid of this global.
-
 /**
  * vbucket-aware hashtable visitor.
  */
@@ -902,7 +900,6 @@ private:
     friend class PersistenceCallback;
     friend class Deleter;
     friend class VBCBAdaptor;
-	friend class lruList;
 
     EventuallyPersistentEngine &engine;
     EPStats                    &stats;

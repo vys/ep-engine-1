@@ -31,24 +31,6 @@
 #include "ep_engine.h"
 #include "htresizer.hh"
 
-/* Keep track of keys with interesting age */
-uint32_t time_intervals[] = {
-	4294967294, // MAX_INT. Equals to seconds worth of 136 years
-	172800, // 2 days
-	86400,
-	36000,
-	18000,
-	7200,
-	3600,
-	1800,
-	600,
-	300,
-	120,
-	60,
-	30,
-	10
-};
-
 extern "C" {
     static rel_time_t uninitialized_current_time(void) {
         abort();

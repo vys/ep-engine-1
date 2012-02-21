@@ -1,9 +1,9 @@
 #include "evict.hh"
 
-#if 0
+#define MAX_LRU_ENTRIES 500000
 /* Keep track of keys with interesting age */
-uint32_t time_intervals[] = {
-    4294967295, // MAX_INT. Equals to seconds worth of 136 years
+int time_intervals[] = {
+    2147483647, // MAX_INT. Equals to seconds worth of 136 years
     172800, // 2 days
     86400,
     36000,
@@ -16,11 +16,22 @@ uint32_t time_intervals[] = {
     120,
     60,
     30,
-    10
+    10,
+    0,
+    -10,
+    -30,
+    -60,
+    -120,
+    -300,
+    -600,
+    -1800,
+    -3600,
+    -7200,
+    -18000,
+    -36000,
+    -864000,
+    -172800
 };
-
-#endif
-#define MAX_LRU_ENTRIES 500000
 
 lruList *lruList::New (EventuallyPersistentStore *s, EPStats &st) 
 {
