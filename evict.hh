@@ -11,22 +11,21 @@
 #define assert 
 #endif
 
-#define MAX_INTERVALS 14
+#define MAX_INTERVALS 28
 
-extern uint32_t time_intervals[];
+extern int time_intervals[];
 
 class lruEntry {
 public:
 
-    lruEntry *newlruEntry(StoredValue *v, uint16_t vb)
+    lruEntry *newlruEntry(StoredValue *v, uint16_t vb, time_t start_time)
     {
         lruEntry *ent = new lruEntry;
         if (ent == NULL) {
             return NULL;
         }
         ent->key.assign(v->getKey());
-        assert(ep_current_time() >= v->getDataAge());
-        ent->age = ep_current_time() - v->getDataAge();
+        ent->age = start_time - v->getDataAge();
         ent->prev = ent->next = NULL;
         ent->vbid = vb;
         return ent;
@@ -34,18 +33,21 @@ public:
     
     std::string getKey() { return key; }
     uint16_t get_vbucket_id() { return vbid; }
-    uint32_t getAge(void) { return age; }
+    int getAge(void) { return age; }
+    int lruAge(lruList *lru);
 
     lruEntry     *prev;
     lruEntry    *next;
 private:
     std::string     key;
-    uint32_t    age;
+    /* Age can be negative !!*/
+    int            age;
     int        frequency;
     uint16_t    vbid;
 };
 
 struct lruCursor {
+    lruCursor () : ptr(NULL), count(0) {}
     lruEntry    *ptr;
     int         count;
 };
@@ -59,7 +61,7 @@ struct failedEvictions {
 };
 
 class lruStats {
-public:
+public: 
     uint32_t        numTotalEvicts;
     uint32_t        numEvicts;
     uint32_t         numTotalKeysEvicted; // Total evictions so far
@@ -70,13 +72,26 @@ public:
 //    Add histogram structure here
 };
 
+class lruPruneStats {
+public:
+    uint32_t        numPruneRuns;
+    uint64_t        numKeyPrunes;
+};
+
 class lruList : public lruEntry {
 public:
-    lruList(EventuallyPersistentStore *s, EPStats &st)
-    : store(s), stats(st) {}
-
+    lruList(EventuallyPersistentStore *s, EPStats &st);
+    
     //    void initLRU(lruList *);
     static lruList *New (EventuallyPersistentStore *s, EPStats &st) ;
+    bool isEmpty() 
+    {
+        bool rv = (count == 0);
+        if (rv) {
+            checkLRUisEmpty(this);
+        }
+        return rv;
+    }
 
     void clearLRU(lruList *l)
     {
@@ -90,19 +105,25 @@ public:
         checkLRUisEmpty(l);
     }
 
-    void getLRUStats(Histogram<uint32_t> &histo, lruList *l)
+    void getLRUStats(Histogram<int> &histo, lruList *l)
     {
         for (int i=0; i < MAX_INTERVALS; ++i) {
-            histo.add(time_intervals[i], l->cursor[i].count);
+            int t = time_intervals[i] + 
+                    l->getBuildEndTime() - l->getBuildStartTime();
+            histo.add(t, l->cursor[i].count);
         }
     }
 
     int getLRUCount(void) {return count; }
+    int getOldest(void) { return head->lruAge(this); }
+    int getNewest(void) { return tail->lruAge(this); }
     bool update(lruEntry *);
     bool update_locked(lruEntry *ent);
     void eject(size_t);
+    int prune(uint64_t);
         
     lruStats    lstats;
+    lruPruneStats lpstats;
 #if 0
 
     bool update(T *v);
@@ -142,7 +163,7 @@ private:
     }
     bool shouldInsertLRU(lruEntry *ent)
     {    
-        uint32_t val = ent->getAge() - ep_current_time();
+        int val = ent->getAge(); 
 
         if (val < newest && count == maxLruEntries) {
             return false;
@@ -273,7 +294,7 @@ private:
         }
         return NULL;
     } 
-    int find_cursor_index(uint32_t val)
+    int find_cursor_index(int val)
     {
         int i;
 
@@ -333,8 +354,8 @@ private:
     lruEntry    *tail;
     int        count;
     int maxLruEntries;
-    uint32_t    oldest;
-    uint32_t    newest;
+    int        oldest;
+    int        newest;
     time_t build_start_time;
     time_t build_end_time;
     lruCursor    cursor[MAX_INTERVALS];
@@ -349,13 +370,13 @@ public:
         index = 0;
     }
 
-    bool add(StoredValue *s, uint16_t vb)
+    bool add(StoredValue *s, uint16_t vb, time_t time) 
     {
         if (index >= size) {
             /* No room in the stage. Update stats for it */
             return false;
         }
-        lruEntry *ent = newlruEntry(s, vb);
+        lruEntry *ent = newlruEntry(s, vb, time);
         entries[index++] = ent;
         return true;
     }

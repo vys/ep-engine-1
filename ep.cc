@@ -31,24 +31,6 @@
 #include "ep_engine.h"
 #include "htresizer.hh"
 
-/* Keep track of keys with interesting age */
-uint32_t time_intervals[] = {
-	4294967294, // MAX_INT. Equals to seconds worth of 136 years
-	172800, // 2 days
-	86400,
-	36000,
-	18000,
-	7200,
-	3600,
-	1800,
-	600,
-	300,
-	120,
-	60,
-	30,
-	10
-};
-
 extern "C" {
     static rel_time_t uninitialized_current_time(void) {
         abort();
@@ -590,6 +572,20 @@ protocol_binary_response_status EventuallyPersistentStore::evictKey(const std::s
         rv = PROTOCOL_BINARY_RESPONSE_KEY_ENOENT;
     }
 
+    return rv;
+}
+
+protocol_binary_response_status EventuallyPersistentStore::pruneLRU(uint64_t age,
+                                                      const char** msg,
+                                                      size_t *msg_size)
+{
+    protocol_binary_response_status rv(PROTOCOL_BINARY_RESPONSE_SUCCESS);
+
+    *msg_size = 0;
+
+    active_lru->prune(age);
+	
+	*msg = "Pruned keys.";
     return rv;
 }
 

@@ -360,6 +360,28 @@ extern "C" {
         return e->evictKey(key, vbucket, msg, msg_size);
     }
 
+    static protocol_binary_response_status pruneLRU(EventuallyPersistentEngine *e,
+                                                    protocol_binary_request_header *request,
+                                                    const char **msg,
+                                                    size_t *msg_size) {
+    
+        protocol_binary_request_no_extras *req =
+            (protocol_binary_request_no_extras*)request;
+        char val[256];
+
+        int len = ntohs(req->message.header.request.keylen);
+        if (len >= (int)sizeof(val)) {
+            *msg = "Invalid time interval.";
+            return PROTOCOL_BINARY_RESPONSE_EINVAL;
+        }
+
+        memcpy(val, ((char*)request) + sizeof(req->message.header), len);
+        char *ptr = NULL;
+        uint64_t age = strtoull(val, &ptr, 10);
+        
+        return e->pruneLRU(age, msg, msg_size);
+    }
+
     ENGINE_ERROR_CODE getLocked(EventuallyPersistentEngine *e,
             protocol_binary_request_getl *grequest,
             const void *cookie,
@@ -805,6 +827,9 @@ extern "C" {
             break;
         case CMD_EVICT_KEY:
             res = evictKey(h, request, &msg, &msg_size);
+            break;
+        case CMD_PRUNE_LRU:
+            res = pruneLRU(h, request, &msg, &msg_size);
             break;
         case CMD_GET_LOCKED:
             rv = getLocked(h, (protocol_binary_request_getl*)request, cookie, &item, &msg, &msg_size, &res);
@@ -3490,31 +3515,40 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
                                                             ADD_STAT add_stat) 
 {
 
-	std::vector<uint32_t> ints;
-	uint32_t rev_ints[MAX_INTERVALS];
-	
-	for (int i = MAX_INTERVALS - 1; i >= 0; --i) {
-		rev_ints[MAX_INTERVALS - i - 1]  = time_intervals[i];
-	}
-	//ints.assign(time_intervals, time_intervals + MAX_INTERVALS); 
-	ints.assign(rev_ints, rev_ints + MAX_INTERVALS); 
-	
-	FixedInputGenerator<uint32_t> fig(ints);
-	Histogram <uint32_t>histo(fig, MAX_INTERVALS - 1);
-	
-	lruList *lru = epstore->getActiveLRU();
-	lru->getLRUStats(histo, lru);
-	add_casted_stat("ep_lru_total", lru->getLRUCount(), add_stat, cookie);
-	add_casted_stat("ep_lru_histo", histo, add_stat, cookie);
-	add_casted_stat("ep_lru_total_evicts", lru->lstats.numTotalEvicts, add_stat, cookie);
-	add_casted_stat("ep_lru_keys_evicted", lru->lstats.numTotalKeysEvicted, add_stat, cookie);
-	add_casted_stat("ep_lru_failed_empty", lru->lstats.numEmptyLRU, add_stat, cookie);
-	add_casted_stat("ep_lru_failed_key_absent", lru->lstats.failedTotal.numKeyNotPresent, add_stat, cookie);
-	add_casted_stat("ep_lru_failed_dirty", lru->lstats.failedTotal.numDirties, add_stat, cookie);
-	add_casted_stat("ep_lru_failed_already_evicted", lru->lstats.failedTotal.numAlreadyEvicted, add_stat, cookie);
-	add_casted_stat("ep_lru_failed_deleted", lru->lstats.failedTotal.numDeleted, add_stat, cookie);
-	add_casted_stat("ep_lru_failed_key_too_recent", lru->lstats.failedTotal.numKeyTooRecent, add_stat, cookie);
-	return ENGINE_SUCCESS;
+    std::vector<int> ints;
+    int rev_ints[MAX_INTERVALS];
+    
+    for (int i = MAX_INTERVALS - 1; i >= 0; --i) {
+        rev_ints[MAX_INTERVALS - i - 1]  = time_intervals[i];
+    }
+    //ints.assign(time_intervals, time_intervals + MAX_INTERVALS); 
+    ints.assign(rev_ints, rev_ints + MAX_INTERVALS); 
+    
+    FixedInputGenerator<int> fig(ints);
+    Histogram <int>histo(fig, MAX_INTERVALS - 1);
+    
+    lruList *lru = epstore->getActiveLRU();
+    if (lru->getBuildEndTime() == -1) {
+            return ENGINE_SUCCESS;
+    }
+    lru->getLRUStats(histo, lru);
+    add_casted_stat("ep_lru_total", lru->getLRUCount(), add_stat, cookie);
+    add_casted_stat("ep_lru_histo", histo, add_stat, cookie);
+    add_casted_stat("ep_lru_total_evicts", lru->lstats.numTotalEvicts, add_stat, cookie);
+    add_casted_stat("ep_lru_keys_evicted", lru->lstats.numTotalKeysEvicted, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_empty", lru->lstats.numEmptyLRU, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_key_absent", lru->lstats.failedTotal.numKeyNotPresent, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_dirty", lru->lstats.failedTotal.numDirties, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_already_evicted", lru->lstats.failedTotal.numAlreadyEvicted, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_deleted", lru->lstats.failedTotal.numDeleted, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_key_too_recent", lru->lstats.failedTotal.numKeyTooRecent, add_stat, cookie);
+    add_casted_stat("ep_lru_num_prune_runs", lru->lpstats.numPruneRuns, add_stat, cookie);
+    add_casted_stat("ep_lru_num_keys_pruned", lru->lpstats.numKeyPrunes, add_stat, cookie);
+    if (!lru->isEmpty()) {
+        add_casted_stat("ep_lru_oldest_age", lru->getOldest(), add_stat, cookie);
+        add_casted_stat("ep_lru_newest_age", lru->getNewest(), add_stat, cookie);
+    }
+    return ENGINE_SUCCESS;
 }
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,

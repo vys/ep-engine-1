@@ -56,8 +56,6 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #define MAX_DATA_AGE_PARAM 86400
 #define MAX_BG_FETCH_DELAY 900
 
-extern uint32_t time_intervals[]; // FIXME get rid of this global.
-
 /**
  * vbucket-aware hashtable visitor.
  */
@@ -816,6 +814,8 @@ public:
     lruList *getActiveLRU(void) { return active_lru; }
     lruList *getStandbyLRU(void) { return standby_lru; }
 
+    protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
+
     void switchLRU(void) {
         lruList *temp = standby_lru;
         standby_lru = active_lru;
@@ -910,7 +910,6 @@ private:
     friend class PersistenceCallback;
     friend class Deleter;
     friend class VBCBAdaptor;
-	friend class lruList;
 
     EventuallyPersistentEngine &engine;
     EPStats                    &stats;
@@ -946,8 +945,8 @@ private:
         std::set<std::string> itemsDeleted;
     } restore;
 
-	lruList *active_lru;
-	lruList *standby_lru;
+    lruList *active_lru;
+    lruList *standby_lru;
     size_t maxLruEntries;
     DISALLOW_COPY_AND_ASSIGN(EventuallyPersistentStore);
 };
