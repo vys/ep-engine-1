@@ -34,13 +34,14 @@ public:
     std::string getKey() { return key; }
     uint16_t get_vbucket_id() { return vbid; }
     int getAge(void) { return age; }
+    int lruAge(lruList *lru);
 
     lruEntry     *prev;
     lruEntry    *next;
 private:
     std::string     key;
     /* Age can be negative !!*/
-    int		    age;
+    int            age;
     int        frequency;
     uint16_t    vbid;
 };
@@ -70,6 +71,12 @@ public:
 //    Add histogram structure here
 };
 
+class lruPruneStats {
+public:
+    uint32_t        numPruneRuns;
+    uint64_t        numKeyPrunes;
+};
+
 class lruList : public lruEntry {
 public:
     lruList(EventuallyPersistentStore *s, EPStats &st)
@@ -77,6 +84,14 @@ public:
 
     //    void initLRU(lruList *);
     static lruList *New (EventuallyPersistentStore *s, EPStats &st) ;
+    bool isEmpty() 
+    {
+        bool rv = (count == 0);
+        if (rv) {
+            checkLRUisEmpty(this);
+        }
+        return rv;
+    }
 
     void clearLRU(lruList *l)
     {
@@ -100,11 +115,15 @@ public:
     }
 
     int getLRUCount(void) {return count; }
+    int getOldest(void) { return head->lruAge(this); }
+    int getNewest(void) { return tail->lruAge(this); }
     bool update(lruEntry *);
     bool update_locked(lruEntry *ent);
     void eject(size_t);
+    int prune(uint64_t);
         
     lruStats    lstats;
+    lruPruneStats lpstats;
 #if 0
 
     bool update(T *v);

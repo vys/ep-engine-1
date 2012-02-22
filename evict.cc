@@ -39,6 +39,8 @@ lruList *lruList::New (EventuallyPersistentStore *s, EPStats &st)
     memset(l, 0, sizeof(lruList));
     new (l) lruList(s, st);
     l->maxLruEntries = MAX_LRU_ENTRIES;
+    l->build_end_time = l->build_start_time = -1;
+
     return l;
 }
 
@@ -88,40 +90,41 @@ void lruList::eject(size_t size)
     uint16_t b;
 
     while(cur < size) {
-    SpinLockHolder slh(&lru_lock);
+        SpinLockHolder slh(&lru_lock);
 
-    if (!peek(&k, &b)) {
-        lstats.numEmptyLRU++;
-        return;
-    }
-    remove();
-    slh.unlock();
-
-    RCPtr<VBucket> vb = store->getVBucket(b);
-    int bucket_num(0);
-    LockHolder lh = vb->ht.getLockedBucket(k, &bucket_num);
-    StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
-
-    if (!v) {
-        lstats.failedTotal.numKeyNotPresent++;
-        lstats.failed.numKeyNotPresent++;
-    } else if (!v->ejectValue(stats, vb->ht)) {
-        if (v->isResident() == false) {
-        lstats.failedTotal.numAlreadyEvicted++;
-        lstats.failed.numAlreadyEvicted++;
-        } else if (v->isClean() == false) {
-        lstats.failedTotal.numDirties++;
-        lstats.failed.numDirties++;
-        } else if (v->isDeleted() == false) {
-        lstats.failedTotal.numDeleted++;
-        lstats.failed.numDeleted++;
+        if (!peek(&k, &b)) {
+            lstats.numEmptyLRU++;
+            return;
         }
-    } else {
-        cur += v->valLength(); 
-        /* update stats for eviction that just happened */
-        lstats.numTotalKeysEvicted++;
-        lstats.numKeysEvicted++;
+        remove();
+        slh.unlock();
+
+        RCPtr<VBucket> vb = store->getVBucket(b);
+        int bucket_num(0);
+        LockHolder lh = vb->ht.getLockedBucket(k, &bucket_num);
+        StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
+
+        if (!v) {
+            lstats.failedTotal.numKeyNotPresent++;
+            lstats.failed.numKeyNotPresent++;
+        } else if (!v->ejectValue(stats, vb->ht)) {
+            if (v->isResident() == false) {
+                lstats.failedTotal.numAlreadyEvicted++;
+                lstats.failed.numAlreadyEvicted++;
+            } else if (v->isClean() == false) {
+                lstats.failedTotal.numDirties++;
+                lstats.failed.numDirties++;
+            } else if (v->isDeleted() == false) {
+                lstats.failedTotal.numDeleted++;
+                lstats.failed.numDeleted++;
+            }
+        } else {
+            cur += v->valLength(); 
+            /* update stats for eviction that just happened */
+            lstats.numTotalKeysEvicted++;
+            lstats.numKeysEvicted++;
         }
+        lh.unlock();
     }
 }
 
@@ -193,6 +196,46 @@ int lruList::keyInLru(const char *keybytes, int keylen)
         if (p->getKey().compare(0, keylen, keybytes) == 0)
             return 1;
         p = p->next;
+    }
+    return 0;
+}
+
+int lruEntry::lruAge(lruList *lru) {
+        return (getAge() + lru->getBuildEndTime() - lru->getBuildStartTime());
+    }
+
+int lruList::prune(uint64_t prune_age)
+{
+    SpinLockHolder slh(&lru_lock);
+    std::string k;
+    uint16_t b;
+
+    lpstats.numPruneRuns++;
+    while (head) {
+        lruEntry *ent = head;
+        int key_age = ent->lruAge(this);
+        assert(key_age >= 0);
+
+        k.assign(ent->getKey());
+        b = ent->get_vbucket_id();
+
+        if ((uint64_t)key_age < prune_age) {
+            /* we are done */
+            break;
+        }
+        remove();
+        slh.unlock();
+
+        RCPtr<VBucket> vb = store->getVBucket(b);
+        int bucket_num(0);
+
+        LockHolder lh = vb->ht.getLockedBucket(k, &bucket_num);
+        StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
+        if (v->ejectValue(stats, vb->ht) == false) {
+            // Update some stats 
+        } else {
+             lpstats.numKeyPrunes++;
+        }
     }
     return 0;
 }

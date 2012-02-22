@@ -814,6 +814,8 @@ public:
     lruList *getActiveLRU(void) { return active_lru; }
     lruList *getStandbyLRU(void) { return standby_lru; }
 
+    protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
+
     void switchLRU(void) {
         lruList *temp = standby_lru;
         standby_lru = active_lru;
@@ -935,8 +937,8 @@ private:
         std::set<std::string> itemsDeleted;
     } restore;
 
-	lruList *active_lru;
-	lruList *standby_lru;
+    lruList *active_lru;
+    lruList *standby_lru;
     size_t maxLruEntries;
     DISALLOW_COPY_AND_ASSIGN(EventuallyPersistentStore);
 };

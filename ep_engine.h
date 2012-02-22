@@ -485,6 +485,12 @@ public:
         return epstore->evictKey(key, vbucket, msg, msg_size);
     }
 
+    protocol_binary_response_status pruneLRU(uint64_t age,
+                                             const char **msg,
+                                             size_t *msg_size) {
+        return epstore->pruneLRU(age, msg, msg_size);
+    }
+
     bool getLocked(const std::string &key,
                    uint16_t vbucket,
                    Callback<GetValue> &cb,
@@ -719,7 +725,7 @@ private:
     ENGINE_ERROR_CODE doDispatcherStats(const void *cookie, ADD_STAT add_stat);
     ENGINE_ERROR_CODE doKeyStats(const void *cookie, ADD_STAT add_stat,
                                  uint16_t vbid, std::string &key, bool validate=false);
-	ENGINE_ERROR_CODE doLRUStats(const void *cookie, ADD_STAT add_stat);
+    ENGINE_ERROR_CODE doLRUStats(const void *cookie, ADD_STAT add_stat);
 
     void addLookupResult(const void *cookie, Item *result) {
         LockHolder lh(lookupMutex);

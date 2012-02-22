@@ -575,6 +575,20 @@ protocol_binary_response_status EventuallyPersistentStore::evictKey(const std::s
     return rv;
 }
 
+protocol_binary_response_status EventuallyPersistentStore::pruneLRU(uint64_t age,
+                                                      const char** msg,
+                                                      size_t *msg_size)
+{
+    protocol_binary_response_status rv(PROTOCOL_BINARY_RESPONSE_SUCCESS);
+
+    *msg_size = 0;
+
+    active_lru->prune(age);
+	
+	*msg = "Pruned keys.";
+    return rv;
+}
+
 ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
                                                  const void *cookie,
                                                  bool force) {
