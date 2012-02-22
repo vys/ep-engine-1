@@ -47,6 +47,7 @@ private:
 };
 
 struct lruCursor {
+    lruCursor () : ptr(NULL), count(0) {}
     lruEntry    *ptr;
     int         count;
 };
@@ -60,7 +61,7 @@ struct failedEvictions {
 };
 
 class lruStats {
-public:
+public: 
     uint32_t        numTotalEvicts;
     uint32_t        numEvicts;
     uint32_t         numTotalKeysEvicted; // Total evictions so far
@@ -79,9 +80,8 @@ public:
 
 class lruList : public lruEntry {
 public:
-    lruList(EventuallyPersistentStore *s, EPStats &st)
-    : store(s), stats(st) {}
-
+    lruList(EventuallyPersistentStore *s, EPStats &st);
+    
     //    void initLRU(lruList *);
     static lruList *New (EventuallyPersistentStore *s, EPStats &st) ;
     bool isEmpty() 

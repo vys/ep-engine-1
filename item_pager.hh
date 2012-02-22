@@ -10,10 +10,10 @@
 #include "dispatcher.hh"
 #include "stats.hh"
 
-typedef std::pair<int64_t, int64_t> row_range;
 
-// Forward declaration.
 class EventuallyPersistentStore;
+
+typedef std::pair<int64_t, int64_t> row_range;
 
 /**
  * Dispatcher job responsible for periodically pushing data out of

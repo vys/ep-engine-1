@@ -300,6 +300,13 @@ extern "C" {
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
                 e->setExpiryPagerSleeptime((size_t)vsize);
+            } else if (strcmp(keyz, "max_lru_entries") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         std::numeric_limits<uint64_t>::max());
+                e->setMaxLruEntries((size_t)vsize);
             } else if (strcmp(keyz, "inconsistent_slave_chk") == 0) {
                 bool inconsistentSlaveCheckpoint = false;
                 if (strcmp(valz, "true") == 0) {
@@ -1076,6 +1083,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t txnSize = 0;
     size_t tapIdleTimeout = (size_t)-1;
     size_t expiryPagerSleeptime = 3600;
+    size_t maxLruEntries = 500000;
     float tapThrottleThreshold(-1);
 
     resetStats();
@@ -1232,6 +1240,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         items[ii].key = "exp_pager_stime";
         items[ii].datatype = DT_SIZE;
         items[ii].value.dt_size = &expiryPagerSleeptime;
+
+        ++ii;
+        items[ii].key = "max_lru_entries";
+        items[ii].datatype = DT_SIZE;
+        items[ii].value.dt_size = &maxLruEntries;
 
         ++ii;
         items[ii].key = "db_shards";
@@ -1569,6 +1582,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
             shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
             epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::ItemPagerPriority, 10);
             setExpiryPagerSleeptime(expiryPagerSleeptime);
+            epstore->setMaxLruEntries(maxLruEntries);
         }
 
         shared_ptr<DispatcherCallback> htr(new HashtableResizer(epstore));
@@ -2990,17 +3004,17 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
 
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
                     add_stat, cookie);
-//     add_casted_stat("ep_max_lru_entries", epstore->getMaxLruEntries(),
- //                    add_stat, cookie);
-     add_casted_stat("ep_lru_build_start_time", epstore->getActiveLRU()->getBuildStartTime(),
-             add_stat, cookie);
-     add_casted_stat("ep_lru_build_end_time", epstore->getActiveLRU()->getBuildEndTime(),
-             add_stat, cookie);
+    add_casted_stat("ep_max_lru_entries", epstore->getMaxLruEntries(),
+                    add_stat, cookie);
+    add_casted_stat("ep_lru_build_start_time", epstore->getActiveLRU()->getBuildStartTime(),
+                    add_stat, cookie);
+    add_casted_stat("ep_lru_build_end_time", epstore->getActiveLRU()->getBuildEndTime(),
+                    add_stat, cookie);
 
-     add_casted_stat("ep_inconsistent_slave_chk", CheckpointManager::isInconsistentSlaveCheckpoint(),
-             add_stat, cookie);
-     add_casted_stat("ep_keep_closed_checkpoints", CheckpointManager::isKeepingClosedCheckpoints(),
-             add_stat, cookie);
+    add_casted_stat("ep_inconsistent_slave_chk", CheckpointManager::isInconsistentSlaveCheckpoint(),
+                    add_stat, cookie);
+    add_casted_stat("ep_keep_closed_checkpoints", CheckpointManager::isKeepingClosedCheckpoints(),
+                    add_stat, cookie);
 
     return ENGINE_SUCCESS;
 }

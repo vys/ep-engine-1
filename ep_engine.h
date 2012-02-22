@@ -594,6 +594,14 @@ public:
         return syncTimeout;
     }
 
+    size_t getMaxLruEntries(void) {
+        return epstore->getMaxLruEntries();
+    }
+
+    void setMaxLruEntries(size_t val) {
+        epstore->setMaxLruEntries(val);
+    }
+
     size_t getExpiryPagerSleeptime(void) {
         LockHolder lh(expiryPager.mutex);
         return expiryPager.sleeptime;

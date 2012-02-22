@@ -49,7 +49,7 @@ public:
         if (v->isExpired(startTime) && !v->isDeleted()) {
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
-        } else if (!v->isDeleted() && v->isResident() && stage) {
+        } else if (!v->isDeleted() && v->isResident() && !v->isDirty() && stage) {
             stage->add(v, currentBucket->getId(), lru->getBuildStartTime());
         }
 
@@ -182,8 +182,6 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
         store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
                      true, 10);
     }
-    assert(sleepTime >= 0);
-//    d.snooze(t, 20);    
     d.snooze(t, sleepTime);
     return true;
 }
