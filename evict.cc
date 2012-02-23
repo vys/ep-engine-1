@@ -35,8 +35,8 @@ int time_intervals[] = {
 lruList::lruList(EventuallyPersistentStore *s, EPStats &st)
     : store(s), stats(st), head(NULL), tail(NULL), count(0), oldest(0), newest(0)
 {
-	build_end_time = build_start_time = -1;
-	maxLruEntries = s->getMaxLruEntries();
+    build_end_time = build_start_time = -1;
+    maxEntries = s->getMaxLruEntries();
 }
 
 lruList *lruList::New (EventuallyPersistentStore *s, EPStats &st) 
@@ -50,7 +50,7 @@ bool lruList::update_locked(lruEntry *ent)
     if (!shouldInsertLRU(ent)) {
         return false;
     }
-    if (count == maxLruEntries) {
+    if (count == maxEntries) {
         remove_head();
     }
     addKey(ent);
@@ -61,7 +61,6 @@ bool lruList::update(lruEntry *ent)
 {
     SpinLockHolder slh(&lru_lock);
     return update_locked(ent);
-
 }
 
 /* Get a key from lruList to be evicted 
