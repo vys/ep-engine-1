@@ -251,6 +251,9 @@ class MemcachedClient(object):
     def evict_key(self, key):
         return self._doCmd(memcacheConstants.CMD_EVICT_KEY, key, '')
 
+    def prune_lru(self, age):
+        return self._doCmd(memcacheConstants.CMD_PRUNE_LRU, age, '')
+
     def getMulti(self, keys):
         """Get values for any available keys in the given iterable.
 

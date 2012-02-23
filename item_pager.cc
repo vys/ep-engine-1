@@ -40,6 +40,7 @@ public:
                 stage = new lruStage(LRU_STAGE_SIZE);
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Clearing old LRU at %d", ep_current_time());
                 lru->clearLRU(lru);
+                lru->setMaxEntries(store->getMaxLruEntries());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Clearing LRU Done");
             }
     }
@@ -146,7 +147,6 @@ bool ItemPager::callback(Dispatcher &d, TaskId t) {
     double upper = static_cast<double>(stats.mem_high_wat);
     double lower = static_cast<double>(stats.mem_low_wat);
 
-        getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: item_pager: Got called!!!"); 
     if (available && current > upper && 0) {
 
         ++stats.pagerRuns;

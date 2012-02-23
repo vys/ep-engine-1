@@ -84,6 +84,8 @@ public:
     
     //    void initLRU(lruList *);
     static lruList *New (EventuallyPersistentStore *s, EPStats &st) ;
+    void setMaxEntries(int s) { maxEntries = s; }
+    int getMaxEntries(void) { return maxEntries; }
     bool isEmpty() 
     {
         bool rv = (count == 0);
@@ -165,7 +167,7 @@ private:
     {    
         int val = ent->getAge(); 
 
-        if (val < newest && count == maxLruEntries) {
+        if (val < newest && count == maxEntries) {
             return false;
         }
         return true;
@@ -353,7 +355,7 @@ private:
     lruEntry    *head;
     lruEntry    *tail;
     int        count;
-    int maxLruEntries;
+    int maxEntries;
     int        oldest;
     int        newest;
     time_t build_start_time;

@@ -44,6 +44,10 @@ def evict(mc, key, username=None, password=""):
     auth(mc, username, password)
     mc.evict_key(key)
 
+def prune_lru(mc, age, username=None, password=""):
+    auth(mc, username, password)
+    mc.prune_lru(age)
+
 if __name__ == '__main__':
 
     c = clitool.CliTool("""
@@ -69,5 +73,6 @@ Available params for "set":
     c.addCommand('start', start, 'start')
     c.addCommand('set', set_param, 'set param value')
     c.addCommand('evict', evict, "evict key")
+    c.addCommand('prune_lru', prune_lru, "age")
 
     c.execute()
