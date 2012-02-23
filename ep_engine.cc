@@ -3563,6 +3563,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,
     add_casted_stat("storage_age", stats.dirtyAgeHisto, add_stat, cookie);
     add_casted_stat("data_age", stats.dataAgeHisto, add_stat, cookie);
 
+    add_casted_stat("item_memory_age", stats.itemMemoryAgeHisto, add_stat, cookie);
+    add_casted_stat("item_disk_age", stats.itemDiskAgeHisto, add_stat, cookie);
+
     // Regular commands
     add_casted_stat("get_cmd", stats.getCmdHisto, add_stat, cookie);
     add_casted_stat("store_cmd", stats.storeCmdHisto, add_stat, cookie);

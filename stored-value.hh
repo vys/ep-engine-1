@@ -254,7 +254,7 @@ public:
         reduceCacheSize(ht, currSize);
         reduceCurrentSize(stats, isDeleted() ? currSize : currSize - value->length());
         value = v;
-        setResident();
+        setResident(true, &stats);
         flags = newFlags;
         if (!_isSmall) {
             extra.feature.cas = theCas;
@@ -567,6 +567,7 @@ private:
             extra.feature.resident = true;
             extra.feature.lock_expiry = 0;
             extra.feature.keylen = itm.getKey().length();
+            switch_time = ep_current_time();
         }
 
         if (setDirty) {
@@ -579,9 +580,18 @@ private:
         increaseCurrentSize(stats, size() - value->length());
     }
 
-    void setResident() {
+    void setResident(bool val=true, EPStats *stats=NULL) {
         if (!_isSmall) {
-            extra.feature.resident = 1;
+            extra.feature.resident = val;
+            hrtime_t current_time = ep_current_time();
+            if (stats) {
+                if (val) {
+                    stats->itemDiskAgeHisto.add(static_cast<uint32_t>(current_time - switch_time));
+                } else {
+                    stats->itemMemoryAgeHisto.add(static_cast<uint32_t>(current_time - switch_time));
+                }
+            }
+            switch_time = current_time;
         }
     }
 
@@ -596,8 +606,7 @@ private:
     bool               _isDirty  :  1; // 1 bit  --+
     uint32_t           flags;          // 4 bytes
     Atomic<uint8_t>    replicas;       // 1 byte
-    uint32_t 		frequency;    // Frequency of access | 4 bytes
-    uint32_t 		generation;
+    uint32_t           switch_time;  // 4 bytes
 
     union stored_value_bodies extra;
 

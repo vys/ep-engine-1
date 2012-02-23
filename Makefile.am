@@ -235,7 +235,7 @@ hash_table_test_LDADD = libobjectregistry.la
 lrulist_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
 lrulist_test_SOURCES = t/lrulist_test.cc item.cc stored-value.cc \
                        stored-value.hh testlogger.cc item.hh stats.hh \
-                       mutex.cc tools/cJSON.c atomic.cc evict.cc evict.hh ep.cc
+                       evict.cc evict.hh ep.cc
 lrulist_test_DEPENDENCIES = stats.hh stored-value.hh item.hh \
                             libobjectregistry.la evict.hh
 lrulist_test_LDADD = libobjectregistry.la
