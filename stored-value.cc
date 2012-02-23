@@ -28,7 +28,7 @@ bool StoredValue::ejectValue(EPStats &stats, HashTable &ht) {
         blobval uval;
         uval.len = valLength();
         RCPtr<Blob> sp(Blob::New(uval.chlen, sizeof(uval)));
-        extra.feature.resident = false;
+        setResident(false, &stats);
         value = sp;
         size_t newsize = size();
         size_t new_valsize = value->length();
@@ -68,7 +68,7 @@ bool StoredValue::restoreValue(const value_t &v, EPStats &stats, HashTable &ht) 
                              "Object unexpectedly changed size by %d bytes\n",
                              diff);
         }
-        extra.feature.resident = true;
+        setResident(true, &stats);
         value = v;
 
         size_t newsize = size();

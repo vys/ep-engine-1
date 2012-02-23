@@ -163,6 +163,11 @@ public:
     //! Histogram of pending operation wait times.
     Histogram<hrtime_t> pendingOpsHisto;
 
+    //! Histogram of memory ages for items
+    Histogram<uint32_t> itemMemoryAgeHisto;
+    //! Histogram of disk ages for items
+    Histogram<uint32_t> itemDiskAgeHisto;
+
     //! The number of samples the bgWaitDelta and bgLoadDelta contains of
     Atomic<size_t> bgNumOperations;
     /** The sum of the deltas (in usec) from an item was put in queue until
@@ -373,6 +378,10 @@ public:
 
         dataAgeHisto.reset();
         dirtyAgeHisto.reset();
+
+        lruHisto.reset();
+        itemMemoryAgeHisto.reset();
+        itemDiskAgeHisto.reset();
     }
 
 private:
