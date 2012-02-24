@@ -15,6 +15,33 @@
 
 extern int time_intervals[];
 
+struct failedEvictions {
+    uint32_t    numKeyNotPresent;
+    uint32_t    numDirties;
+    uint32_t    numAlreadyEvicted;
+    uint32_t    numDeleted;
+    uint32_t    numKeyTooRecent;
+};
+
+class lruStats {
+public: 
+    uint32_t                  numTotalEvicts;
+    uint32_t                  numEvicts;
+    uint32_t                  numTotalKeysEvicted; // Total evictions so far
+    uint32_t                  numEmptyLRU;
+    uint32_t                  numKeysEvicted; // Evictions in this run
+    static Atomic<size_t>     memSize;
+    struct failedEvictions    failedTotal; // All failures so far
+    struct failedEvictions    failed;         // Failures in this run
+//    Add histogram structure here
+};
+
+class lruPruneStats {
+public:
+    uint32_t        numPruneRuns;
+    uint64_t        numKeyPrunes;
+};
+
 class lruEntry {
 public:
 
@@ -28,22 +55,28 @@ public:
         ent->age = start_time - v->getDataAge();
         ent->prev = ent->next = NULL;
         ent->vbid = vb;
+        lruStats::memSize += sizeof(lruEntry) + ent->key.size();
         return ent;
     }
     
+    ~lruEntry()
+    {
+        lruStats::memSize -= sizeof(lruEntry) + key.size();
+    }
+
     std::string getKey() { return key; }
     uint16_t get_vbucket_id() { return vbid; }
     int getAge(void) { return age; }
     int lruAge(lruList *lru);
 
-    lruEntry     *prev;
-    lruEntry    *next;
+    lruEntry        *prev;
+    lruEntry        *next;
 private:
     std::string     key;
     /* Age can be negative !!*/
-    int            age;
-    int        frequency;
-    uint16_t    vbid;
+    int             age;
+    int             frequency;
+    uint16_t        vbid;
 };
 
 struct lruCursor {
@@ -52,35 +85,14 @@ struct lruCursor {
     int         count;
 };
 
-struct failedEvictions {
-    uint32_t    numKeyNotPresent;
-    uint32_t    numDirties;
-    uint32_t    numAlreadyEvicted;
-    uint32_t    numDeleted;
-    uint32_t    numKeyTooRecent;
-};
-
-class lruStats {
-public: 
-    uint32_t        numTotalEvicts;
-    uint32_t        numEvicts;
-    uint32_t         numTotalKeysEvicted; // Total evictions so far
-    uint32_t        numEmptyLRU;
-    uint32_t         numKeysEvicted; // Evictions in this run
-    struct failedEvictions    failedTotal; // All failures so far
-    struct failedEvictions    failed;         // Failures in this run
-//    Add histogram structure here
-};
-
-class lruPruneStats {
-public:
-    uint32_t        numPruneRuns;
-    uint64_t        numKeyPrunes;
-};
-
 class lruList : public lruEntry {
 public:
     lruList(EventuallyPersistentStore *s, EPStats &st);
+
+    ~lruList()
+    {
+        lruStats::memSize -= sizeof(lruList);
+    }
     
     //    void initLRU(lruList *);
     static lruList *New (EventuallyPersistentStore *s, EPStats &st) ;
@@ -100,6 +112,7 @@ public:
         SpinLockHolder slh(&lru_lock);
         checkLRUSanity(l);
 
+        getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: LRU: Clearing LRU.");
         while (l->count) {
             remove();
         }
@@ -152,7 +165,7 @@ public:
     {
         return build_end_time;
     }
-    
+
     int keyInLru(const char *, int);
     SpinLock    lru_lock;
 private:
@@ -198,6 +211,7 @@ private:
         assert(!tail || tail->next == NULL);
         assert(i == count);
 
+        // TODO this check should be removed if cursor counts are untouched during eject
         int mycount = 0;
         for (i = 0; i < MAX_INTERVALS ;++i) {
                         mycount += cursor[i].count;
@@ -367,15 +381,24 @@ class lruStage : lruEntry {
 public:
     lruStage(size_t s) : size(s)
     {
-        entries = (lruEntry **)calloc(size, sizeof(lruEntry *));        
+        size_t tsize = size * sizeof(lruEntry *);
+        entries = (lruEntry **)malloc(tsize);        
         assert(entries);
+        lruStats::memSize += sizeof(lruStage) + tsize;
         index = 0;
+    }
+
+    ~lruStage()
+    {
+        clear();
+        lruStats::memSize -= sizeof(lruStage);
     }
 
     bool add(StoredValue *s, uint16_t vb, time_t time) 
     {
-        if (index >= size) {
+        if (entries == NULL || index >= size) {
             /* No room in the stage. Update stats for it */
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: LRU: Stage cleared, cannot add.");
             return false;
         }
         lruEntry *ent = newlruEntry(s, vb, time);
@@ -385,6 +408,9 @@ public:
 
     void commit(lruList *lru) 
     {
+        if (entries == NULL)
+            return;
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Stage commiting.");
         SpinLockHolder slh(&lru->lru_lock);
         while (index) {
             lru->update_locked(entries[index - 1]);
@@ -395,8 +421,10 @@ public:
     void clear(void)
     {
         if (entries) {
+            lruStats::memSize -= size * sizeof(lruEntry *);
             free(entries);
-           }
+            entries = NULL;
+        }
         index = 0;
     }
 private:

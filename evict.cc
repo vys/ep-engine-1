@@ -32,6 +32,8 @@ int time_intervals[] = {
     -172800
 };
 
+Atomic<size_t> lruStats::memSize;
+
 lruList::lruList(EventuallyPersistentStore *s, EPStats &st)
     : store(s), stats(st), head(NULL), tail(NULL), count(0), oldest(0), newest(0)
 {
@@ -41,16 +43,20 @@ lruList::lruList(EventuallyPersistentStore *s, EPStats &st)
 
 lruList *lruList::New (EventuallyPersistentStore *s, EPStats &st) 
 {
+    getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: New list.");
     lruList *l = new lruList(s, st);
+    lruStats::memSize += sizeof(lruList);
     return l;
 }
 
 bool lruList::update_locked(lruEntry *ent)
 {
     if (!shouldInsertLRU(ent)) {
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Item too new to insert.");
         return false;
     }
     if (count == maxEntries) {
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: List full. Replacing newest element.");
         remove_head();
     }
     addKey(ent);
@@ -76,6 +82,7 @@ bool lruList::peek(std::string *k, uint16_t *vb)
 {
     lruEntry *ent = head;
     if (head == NULL) {
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Empty list, peek failed.");
         return false;
     }
     k->assign(ent->getKey());
@@ -89,10 +96,12 @@ void lruList::eject(size_t size)
     std::string k;
     uint16_t b;
 
+    getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Commencing ejection to evict %udB of keys.", size);
     while(cur < size) {
         SpinLockHolder slh(&lru_lock);
 
         if (!peek(&k, &b)) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL, "XXX: LRU: Empty list, ejection failed. Evicted only %udB out of a total %udB required.", cur, size);
             lstats.numEmptyLRU++;
             return;
         }
@@ -105,9 +114,11 @@ void lruList::eject(size_t size)
         StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
 
         if (!v) {
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: LRU: Key not present.");
             lstats.failedTotal.numKeyNotPresent++;
             lstats.failed.numKeyNotPresent++;
         } else if (!v->ejectValue(stats, vb->ht)) {
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: LRU: Key not eligible for eviction.");
             if (v->isResident() == false) {
                 lstats.failedTotal.numAlreadyEvicted++;
                 lstats.failed.numAlreadyEvicted++;
@@ -139,7 +150,7 @@ Find the closest cursor to the right of this key and set it as next of this key.
     Set tail if needed.
 */
 void lruList::addKey(lruEntry *ent)
-    {
+{
     assert(ent != NULL);
     uint32_t val = ent->getAge();
     int index;
@@ -148,38 +159,40 @@ void lruList::addKey(lruEntry *ent)
 
     /* special case the first element */
     if (head == NULL) {
-    assert(tail == NULL);
-    head = tail = ent;
-    oldest = newest = val;
-    count++;
+        getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: First element in.");
+        assert(tail == NULL);
+        head = tail = ent;
+        oldest = newest = val;
+        count++;
 
-    cursor[index].ptr = ent;
-    cursor[index].count++;
+        cursor[index].ptr = ent;
+        cursor[index].count++;
         return;
     }
 
     if (cursor[index].ptr != NULL) {
-    int set_cursor = 0;
-    /* Just insert at the right place */
-    insert(cursor[index].ptr, ent, &set_cursor);
-    if (set_cursor) {
-        cursor[index].ptr = ent;
-    }
+        int set_cursor = 0;
+        /* Just insert at the right place */
+        insert(cursor[index].ptr, ent, &set_cursor);
+        if (set_cursor) {
+            cursor[index].ptr = ent;
+        }
     } else {
-    lruEntry *left = find_closest_left_elem(index);
-    lruEntry *right = find_closest_right_elem(index);
+        lruEntry *left = find_closest_left_elem(index);
+        lruEntry *right = find_closest_right_elem(index);
 
-    assert(left || right);
+        assert(left || right);
 
-    if (!left) {
-        insert_at_head(right, ent);
+        if (!left) {
+            insert_at_head(right, ent);
         } else if (!right) {
-        insert(left, ent, NULL);
+            insert(left, ent, NULL);
         } else {
             insert(left, ent, NULL);
         }
-    /* we are the first in this window */
-    cursor[index].ptr = ent;
+        /* we are the first in this window */
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Created new cursor.");
+        cursor[index].ptr = ent;
 
     }
     cursor[index].count++;
@@ -189,7 +202,10 @@ void lruList::addKey(lruEntry *ent)
 int lruList::keyInLru(const char *keybytes, int keylen)
 {
     if (build_end_time == -1)
+    {
+        getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: LRU: Querying key existence in unbuilt LRU.");
         return -1;
+    }
     lruEntry *p = head;
     while (p)
     {
@@ -211,6 +227,7 @@ int lruList::prune(uint64_t prune_age)
     uint16_t b;
 
     lpstats.numPruneRuns++;
+    getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Commencing prune upto age %ulld.", prune_age);
     while (head) {
         lruEntry *ent = head;
         int key_age = ent->lruAge(this);
@@ -233,6 +250,7 @@ int lruList::prune(uint64_t prune_age)
         StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
         if (v->ejectValue(stats, vb->ht) == false) {
             // Update some stats 
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: LRU: Key ejection failed during LRU prune.");
         } else {
              lpstats.numKeyPrunes++;
         }
