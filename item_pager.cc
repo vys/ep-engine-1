@@ -34,7 +34,8 @@ public:
     PagingVisitor(EventuallyPersistentStore *s, EPStats &st, double pcnt,
                   bool *sfin, bool pause = false, lruList *l = NULL)
         : store(s), stats(st), percent(pcnt), ejected(0),
-          startTime(ep_real_time()), stateFinalizer(sfin), canPause(pause), lru(l)
+          startTime(ep_real_time()), stateFinalizer(sfin),
+          canPause(pause), lru(l), stage(NULL)
     {
             if (lru) {
                 stage = new lruStage(LRU_STAGE_SIZE);
@@ -105,18 +106,23 @@ public:
         if (stateFinalizer) {
             *stateFinalizer = true;
         }
-        store->getStandbyLRU()->setBuildEndTime(ep_current_time());
-        store->getStandbyLRU()->checkLRUSanity();
-        store->switchLRU();
+        if (lru) {
+            store->lruBuildComplete(lru);
+        }
 
         if (stage) {
-            stage->clear();
             delete stage;
         }
     }
     
     bool shouldContinue() {
-        if (lru) {
+        // We have been told to stop
+        if (store->lruBuildEnabled() == false && stage) {
+            delete stage;
+            stage = NULL;
+        }
+            
+        if (lru && stage) {
             stage->commit(lru);
         } 
         return true;
@@ -129,7 +135,6 @@ public:
 
 private:
     std::list<std::pair<uint16_t, std::string> > expired;
-    lruStage            *stage;
 
     EventuallyPersistentStore *store;
     EPStats                   &stats;
@@ -139,6 +144,7 @@ private:
     bool                      *stateFinalizer;
     bool                       canPause;
     lruList                    *lru;
+    lruStage                   *stage;
 };
 
 bool ItemPager::callback(Dispatcher &d, TaskId t) {
@@ -175,8 +181,9 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
 
         store->getStandbyLRU()->setBuildStartTime(ep_current_time());
         available = false;
+        lruList *l = store->lruBuildEnabled() ? store->getStandbyLRU() : NULL;
         shared_ptr<PagingVisitor> pv(new PagingVisitor(store, stats,
-                                                       -1, &available, true, store->getStandbyLRU()));
+                                                       -1, &available, true, l));
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: Expiry pager: before calling strore->visit"); 
         store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
                      true, 10);

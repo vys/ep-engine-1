@@ -301,6 +301,13 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "LRU: Setting maxLruEntries value to %ulld via flush params.", vsize);
                 e->setExpiryPagerSleeptime((size_t)vsize);
+            } else if (strcmp(keyz, "enable_lru_build") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                int val = strtoull(valz, &ptr, 10);
+                validate(val, static_cast<int>(0), 1);
+                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: Setting enable_lru_build to %d via flush params.", val);
+                e->setEnableLruBuild(val);
             } else if (strcmp(keyz, "max_lru_entries") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -1086,6 +1093,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t expiryPagerSleeptime = 3600;
     size_t maxLruEntries = 500000;
     float tapThrottleThreshold(-1);
+    bool enable_lru = 1;
 
     resetStats();
 
@@ -1099,7 +1107,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         size_t maxSize = 0;
         float mutation_mem_threshold = 0;
 
-        const int max_items = 54;
+        const int max_items = 55;
         struct config_item items[max_items];
         int ii = 0;
         memset(items, 0, sizeof(items));
@@ -1241,6 +1249,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         items[ii].key = "exp_pager_stime";
         items[ii].datatype = DT_SIZE;
         items[ii].value.dt_size = &expiryPagerSleeptime;
+
+        ++ii;
+        items[ii].key = "enable_lru_build";
+        items[ii].datatype = DT_BOOL;
+        items[ii].value.dt_bool = &enable_lru;
 
         ++ii;
         items[ii].key = "max_lru_entries";

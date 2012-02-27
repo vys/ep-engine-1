@@ -2379,3 +2379,12 @@ void EventuallyPersistentStore::switchLRU(void)
 
     standby_lru->head = oldhead;
 }
+
+void EventuallyPersistentStore::lruBuildComplete(lruList *l)
+{
+    assert(l == standby_lru); 
+    l->setBuildEndTime(ep_current_time());
+    if (enableLruBuild) {
+        switchLRU();
+    }
+}
