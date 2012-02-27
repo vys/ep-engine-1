@@ -2378,6 +2378,7 @@ void EventuallyPersistentStore::switchLRU(void)
     active_lru = temp; // back in business
 
     standby_lru->head = oldhead;
+    standby_lru->failedstats.reset();
 }
 
 void EventuallyPersistentStore::lruBuildComplete(lruList *l)

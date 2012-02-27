@@ -15,40 +15,6 @@
 
 extern int time_intervals[];
 
-class failedEvictions {
-public:
-    failedEvictions() : numKeyNotPresent(0), numDirties(0), numAlreadyEvicted(0), numDeleted(0), numKeyTooRecent(0) {}
-
-    Atomic<uint32_t>    numKeyNotPresent;
-    Atomic<uint32_t>    numDirties;
-    Atomic<uint32_t>    numAlreadyEvicted;
-    Atomic<uint32_t>    numDeleted;
-    Atomic<uint32_t>    numKeyTooRecent;
-};
-
-class lruStats {
-public:
-    lruStats () : numTotalEvicts(0), numEvicts(0), numTotalKeysEvicted(0),
-                  numEmptyLRU(0), numKeysEvicted(0) {}
-
-    Atomic<uint32_t>        numTotalEvicts;
-    Atomic<uint32_t>        numEvicts;
-    Atomic<uint32_t>        numTotalKeysEvicted; // Total evictions so far
-    Atomic<uint32_t>        numEmptyLRU;
-    Atomic<uint32_t>        numKeysEvicted; // Evictions in this run
-    static Atomic<size_t>     lruMemSize;
-    class failedEvictions    failedTotal; // All failures so far
-    class failedEvictions    failed;         // Failures in this run
-//    Add histogram structure here
-};
-
-class lruPruneStats {
-public:
-    lruPruneStats() : numPruneRuns(0), numKeyPrunes(0) {}
-    Atomic<uint32_t>        numPruneRuns;
-    Atomic<uint64_t>        numKeyPrunes;
-};
-
 class lruEntry {
 public:
 
@@ -76,13 +42,14 @@ public:
     int getAge(void) { return age; }
     int lruAge(lruList *lru);
 
+private:
     lruEntry        *prev;
     lruEntry        *next;
-private:
     std::string     key;
     /* Age can be negative !!*/
     int             age;
     uint16_t        vbid;
+    friend class    lruList;
 };
 
 struct lruCursor {
@@ -145,8 +112,7 @@ public:
     lruEntry *pop(void);
     int lruAge(int my_age);
         
-    lruStats    lstats;
-    lruPruneStats lpstats;
+    class lruFailedEvictions    failedstats;         // Failures in this run
 #if 0
 
     bool update(T *v);
