@@ -3533,7 +3533,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Unbuilt, stats empty.");
         return ENGINE_SUCCESS;
     }
-    lru->getLRUStats(histo, lru);
+    lru->getLRUStats(histo);
     add_casted_stat("ep_lru_max_entries", lru->getMaxEntries(), add_stat, cookie);
     add_casted_stat("ep_lru_total", lru->getLRUCount(), add_stat, cookie);
     add_casted_stat("ep_lru_histo", histo, add_stat, cookie);

@@ -186,7 +186,13 @@ public:
                                    const int flags,
                                    const rel_time_t exptime)
     {
-#define METADATA_OVERHEAD 2500000
+/* Account for all threads that could be doing the memory check right now
+ * PARALLEL_OVERHEAD: Max allocation possible by one thread * no. of threads
+ * METADATA_OVERHEAD: Size of StoredValue strucure
+ */
+#define PARALLELISM 4
+#define PARALLEL_OVERHEAD (2000000 * (PARALLELISM - 1))
+#define METADATA_OVERHEAD 72
         (void)cookie;
         if (nbytes > maxItemSize) {
             return ENGINE_E2BIG;
@@ -194,10 +200,11 @@ public:
 
         time_t expiretime = (exptime == 0) ? 0 : ep_abs_time(ep_reltime(exptime));
 
-        if (StoredValue::hasEnoughMemory(nkey + nbytes + METADATA_OVERHEAD, stats) == false) {
+        int needed = nkey + nbytes + METADATA_OVERHEAD;
+        if (StoredValue::hasEnoughMemory(needed + PARALLEL_OVERHEAD, stats) == false) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: No memory, attempting ejection.");
             lruList *l = epstore->getActiveLRU();
-            l->eject(nkey + nbytes);
+            l->eject(needed);
         }
 
         *item = new Item(key, nkey, nbytes, flags, expiretime);

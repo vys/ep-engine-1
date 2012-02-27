@@ -2356,3 +2356,26 @@ bool VBCBAdaptor::callback(Dispatcher & d, TaskId t) {
     }
     return !isdone;
 }
+
+/* To switch between lists witout locks:
+--Make the active list empty. This ensures that all the consumers 
+  are paused.
+--Do the switch.
+--Stamp oldhead back on standby.
+*/
+void EventuallyPersistentStore::switchLRU(void) 
+{
+    lruEntry *oldhead;
+    lruEntry *oldtail;
+
+    do {
+        oldhead = active_lru->head;
+        oldtail = active_lru->tail;
+    } while (!ep_sync_bool_compare_and_swap(&active_lru->head, oldhead, oldtail));
+
+    lruList *temp = standby_lru;
+    standby_lru = active_lru;
+    active_lru = temp; // back in business
+
+    standby_lru->head = oldhead;
+}
