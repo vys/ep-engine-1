@@ -773,7 +773,7 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority) {
 
 void EventuallyPersistentStore::initLRU()
 {
-    getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Creating LRU lists.");
+    getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "LRU: Creating LRU lists.");
     active_lru = lruList::New(this, stats);
     standby_lru = lruList::New(this, stats);
 }

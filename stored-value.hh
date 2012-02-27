@@ -581,16 +581,16 @@ private:
     }
 
     void setResident(bool val=true, EPStats *stats=NULL) {
-        if (!_isSmall) {
+        if (!_isSmall && extra.feature.resident != val) {
             extra.feature.resident = val;
             hrtime_t current_time = ep_current_time();
             if (stats) {
                 uint32_t duration = static_cast<uint32_t>(current_time - switch_time);
                 if (val) {
-                    getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: Item retrieved from disk after %ud seconds.", duration);
+                    getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "LRU: Item retrieved from disk after %ud seconds.", duration);
                     stats->itemDiskAgeHisto.add(duration);
                 } else {
-                    getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: Item evicted after %ud seconds in memory.", duration);
+                    getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "LRU: Item evicted after %ud seconds in memory.", duration);
                     stats->itemMemoryAgeHisto.add(duration);
                 }
             }

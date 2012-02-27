@@ -38,10 +38,8 @@ public:
     {
             if (lru) {
                 stage = new lruStage(LRU_STAGE_SIZE);
-                getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: LRU: Clearing old LRU at %d", ep_current_time());
                 lru->clearLRU();
                 lru->setMaxEntries(store->getMaxLruEntries());
-                getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: LRU: Clearing LRU Done");
             }
     }
 

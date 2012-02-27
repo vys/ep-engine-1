@@ -299,7 +299,7 @@ extern "C" {
                 uint64_t vsize = strtoull(valz, &ptr, 10);
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
-                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: Setting maxLruEntries value to %ulld via flush params.", vsize);
+                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "LRU: Setting maxLruEntries value to %ulld via flush params.", vsize);
                 e->setExpiryPagerSleeptime((size_t)vsize);
             } else if (strcmp(keyz, "max_lru_entries") == 0) {
                 char *ptr = NULL;
@@ -3530,7 +3530,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
     
     lruList *lru = epstore->getActiveLRU();
     if (lru->getBuildEndTime() == -1) {
-        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Unbuilt, stats empty.");
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "LRU: Unbuilt, stats empty.");
         return ENGINE_SUCCESS;
     }
     lru->getLRUStats(histo);
@@ -3547,7 +3547,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
     add_casted_stat("ep_lru_failed_key_too_recent", lru->lstats.failedTotal.numKeyTooRecent, add_stat, cookie);
     add_casted_stat("ep_lru_num_prune_runs", lru->lpstats.numPruneRuns, add_stat, cookie);
     add_casted_stat("ep_lru_num_keys_pruned", lru->lpstats.numKeyPrunes, add_stat, cookie);
-    add_casted_stat("ep_lru_mem_size", lruStats::memSize, add_stat, cookie);
+    add_casted_stat("ep_lru_mem_size", lruStats::lruMemSize, add_stat, cookie);
     if (!lru->isEmpty()) {
         add_casted_stat("ep_lru_oldest_age", lru->getOldest(), add_stat, cookie);
         add_casted_stat("ep_lru_newest_age", lru->getNewest(), add_stat, cookie);
