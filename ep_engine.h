@@ -202,7 +202,7 @@ public:
 
         int needed = nkey + nbytes + METADATA_OVERHEAD;
         if (StoredValue::hasEnoughMemory(needed + PARALLEL_OVERHEAD, stats) == false) {
-            getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: no memory.\n");
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: No memory, attempting ejection.");
             lruList *l = epstore->getActiveLRU();
             l->eject(needed);
         }
