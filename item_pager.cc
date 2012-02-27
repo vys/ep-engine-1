@@ -39,7 +39,7 @@ public:
             if (lru) {
                 stage = new lruStage(LRU_STAGE_SIZE);
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Clearing old LRU at %d", ep_current_time());
-                lru->clearLRU(lru);
+                lru->clearLRU();
                 lru->setMaxEntries(store->getMaxLruEntries());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Clearing LRU Done");
             }
@@ -108,6 +108,7 @@ public:
             *stateFinalizer = true;
         }
         store->getStandbyLRU()->setBuildEndTime(ep_current_time());
+        store->getStandbyLRU()->checkLRUSanity();
         store->switchLRU();
 
         if (stage) {

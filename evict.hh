@@ -11,7 +11,7 @@
 #define assert 
 #endif
 
-#define MAX_INTERVALS 28
+#define MAX_INTERVALS 31
 
 extern int time_intervals[];
 
@@ -29,6 +29,12 @@ public:
         ent->prev = ent->next = NULL;
         ent->vbid = vb;
         return ent;
+    }
+                        
+    void freeLruEntry()
+    {
+        key.clear();
+        delete this;
     }
     
     std::string getKey() { return key; }
@@ -48,34 +54,41 @@ private:
 
 struct lruCursor {
     lruCursor () : ptr(NULL), count(0) {}
-    lruEntry    *ptr;
-    int         count;
+    lruEntry            *ptr;
+    Atomic<int>         count;
 };
 
-struct failedEvictions {
-    uint32_t    numKeyNotPresent;
-    uint32_t    numDirties;
-    uint32_t    numAlreadyEvicted;
-    uint32_t    numDeleted;
-    uint32_t    numKeyTooRecent;
+class failedEvictions {
+public:
+    failedEvictions() : numKeyNotPresent(0), numDirties(0), numAlreadyEvicted(0), numDeleted(0), numKeyTooRecent(0) {}
+
+    Atomic<uint32_t>    numKeyNotPresent;
+    Atomic<uint32_t>    numDirties;
+    Atomic<uint32_t>    numAlreadyEvicted;
+    Atomic<uint32_t>    numDeleted;
+    Atomic<uint32_t>    numKeyTooRecent;
 };
 
 class lruStats {
-public: 
-    uint32_t        numTotalEvicts;
-    uint32_t        numEvicts;
-    uint32_t         numTotalKeysEvicted; // Total evictions so far
-    uint32_t        numEmptyLRU;
-    uint32_t         numKeysEvicted; // Evictions in this run
-    struct failedEvictions    failedTotal; // All failures so far
-    struct failedEvictions    failed;         // Failures in this run
+public:
+    lruStats () : numTotalEvicts(0), numEvicts(0), numTotalKeysEvicted(0),
+                  numEmptyLRU(0), numKeysEvicted(0) {}
+
+    Atomic<uint32_t>        numTotalEvicts;
+    Atomic<uint32_t>        numEvicts;
+    Atomic<uint32_t>        numTotalKeysEvicted; // Total evictions so far
+    Atomic<uint32_t>        numEmptyLRU;
+    Atomic<uint32_t>        numKeysEvicted; // Evictions in this run
+    class failedEvictions    failedTotal; // All failures so far
+    class failedEvictions    failed;         // Failures in this run
 //    Add histogram structure here
 };
 
 class lruPruneStats {
 public:
-    uint32_t        numPruneRuns;
-    uint64_t        numKeyPrunes;
+    lruPruneStats() : numPruneRuns(0), numKeyPrunes(0) {}
+    Atomic<uint32_t>        numPruneRuns;
+    Atomic<uint64_t>        numKeyPrunes;
 };
 
 class lruList : public lruEntry {
@@ -90,39 +103,41 @@ public:
     {
         bool rv = (count == 0);
         if (rv) {
-            checkLRUisEmpty(this);
+            checkLRUisEmpty();
         }
         return rv;
     }
 
-    void clearLRU(lruList *l)
+    void clearLRU()
     {
-        SpinLockHolder slh(&lru_lock);
-        checkLRUSanity(l);
-
-        while (l->count) {
-            remove();
+        lruEntry *ent;
+        while ((ent = pop()) != NULL) {
+            ent->freeLruEntry();
         }
-
-        checkLRUisEmpty(l);
+        for (int i = 1; i < MAX_INTERVALS; ++i) {
+            cursor[i].ptr = NULL;
+        }
+        checkLRUisEmpty();
     }
 
-    void getLRUStats(Histogram<int> &histo, lruList *l)
+    void getLRUStats(Histogram<int> &histo)
     {
+        int adj = getBuildEndTime() - getBuildStartTime();
         for (int i=0; i < MAX_INTERVALS; ++i) {
-            int t = time_intervals[i] + 
-                    l->getBuildEndTime() - l->getBuildStartTime();
-            histo.add(t, l->cursor[i].count);
+            int t = time_intervals[i] + adj;
+            histo.add(t, cursor[i].count);
         }
     }
 
     int getLRUCount(void) {return count; }
     int getOldest(void) { return head->lruAge(this); }
-    int getNewest(void) { return tail->lruAge(this); }
+    int getNewest(void) { return tail->prev->lruAge(this); }
     bool update(lruEntry *);
     bool update_locked(lruEntry *ent);
     void eject(size_t);
     int prune(uint64_t);
+    lruEntry *pop(void);
+    int lruAge(int my_age);
         
     lruStats    lstats;
     lruPruneStats lpstats;
@@ -154,7 +169,6 @@ public:
     }
     
     int keyInLru(const char *, int);
-    SpinLock    lru_lock;
 private:
     bool peek(std::string *key, uint16_t *vb);
     //    void addKey(StoredValue *v, uint16_t vb);
@@ -173,29 +187,27 @@ private:
         return true;
     }
 
-    void checkLRUisEmpty(lruList *l)
+    void checkLRUisEmpty()
     {
-        checkLRUSanity(l);
+        checkLRUSanity();
 
         for (int i = 0; i < MAX_INTERVALS ;++i) {
-            assert(l->cursor[i].ptr == NULL);
-            assert(l->cursor[i].count == 0);
+            assert(cursor[i].count == 0);
         }
-         assert(!head && !tail && !count);
+        assert((head == tail) && !count);
     }
-    void checkLRUSanity(lruList *l)
+    void checkLRUSanity(void)
     {
-        assert(l->count >= 0);
-        lruEntry *ent = l->head;
+        assert(count >= 0);
+        lruEntry *ent = head;
         int i = 0;
-        while (ent) {
+        while (ent != tail) {
             lruEntry *n = ent->next;
-            assert (!n || n->getAge() <= ent->getAge());        
+            assert ((n == tail) || n->getAge() <= ent->getAge());        
             ent = ent->next;
             i++;
         }
-        assert(!head || head->prev == NULL);
-        assert(!tail || tail->next == NULL);
+        assert(head->prev == NULL && tail->next == NULL);
         assert(i == count);
 
         int mycount = 0;
@@ -204,7 +216,7 @@ private:
         }
         assert(mycount == count);
     }
-
+#if 0
     void insert_at_head(lruEntry *list, lruEntry *elem)
     {    
         assert(list);
@@ -213,6 +225,7 @@ private:
         set_head(elem);
     }
 
+    // Not used. Fix if plan to use
     void insert_at_tail(lruEntry *list, lruEntry *elem)
     {
         assert(list);
@@ -225,6 +238,7 @@ private:
         tail = elem;
         newest = elem->getAge();
     }
+#endif
     void set_head(lruEntry *elem)
     {
         head = elem;
@@ -233,8 +247,10 @@ private:
 
     void insert_after(lruEntry *list, lruEntry *elem)
     {
-        if (list->next) {
-            list->next->prev = elem;
+        assert(list->next);
+        list->next->prev = elem;
+        if (list->next == tail) {
+            newest = elem->getAge();
         }
         elem->next = list->next;
         list->next = elem;
@@ -246,6 +262,9 @@ private:
         if (list->prev) {
             list->prev->next = elem;
         }
+        if (list == head) {
+            set_head(elem);
+        }
         elem->prev = list->prev;
         list->prev = elem;
         elem->next = list;
@@ -256,25 +275,19 @@ private:
         lruEntry *tmp;
 
         assert(list);
+        if (list->getAge() <= elem->getAge()) {
+            insert_before(list, elem);
+            if (set_cursor) {
+                *set_cursor = 1;
+            }
+            return;
+        }
         tmp = list;
-        while (list && list->getAge() > elem->getAge()) {
+        while ((list != tail) && list->getAge() > elem->getAge()) {
             tmp = list;
             list = list->next;
         }
-        if (tmp == list) {
-            insert_before(tmp, elem);
-            if (tmp == head) {
-                set_head(elem);
-                }
-            if (set_cursor) {
-                *set_cursor = 1;
-                }
-        } else {
-            insert_after(tmp, elem);
-            if (tmp == tail) {
-                set_tail(elem);
-            }
-        }
+        insert_after(tmp, elem);
     }
 
     lruEntry *find_closest_left_elem(int index)
@@ -339,8 +352,6 @@ private:
             tail = newhead;
         }
 
-        head->getKey().clear();
-        delete head;
         head = newhead;
         if (newhead) {
             newhead->prev = NULL;
@@ -350,17 +361,18 @@ private:
 
     friend class lruEntry;
     friend class PagingVisitor;
+    friend class EventuallyPersistentStore;
     EventuallyPersistentStore *store;
-    EPStats        &stats;
-    lruEntry    *head;
-    lruEntry    *tail;
-    int        count;
-    int maxEntries;
-    int        oldest;
-    int        newest;
-    time_t build_start_time;
-    time_t build_end_time;
-    lruCursor    cursor[MAX_INTERVALS];
+    EPStats                   &stats;
+    lruEntry                  *head;
+    lruEntry                  *tail;
+    Atomic<int>               count;
+    int                       maxEntries;
+    int                       oldest;
+    int                       newest;
+    time_t                    build_start_time;
+    time_t                    build_end_time;
+    lruCursor                 cursor[MAX_INTERVALS];
 };
 
 class lruStage : lruEntry {
@@ -385,7 +397,6 @@ public:
 
     void commit(lruList *lru) 
     {
-        SpinLockHolder slh(&lru->lru_lock);
         while (index) {
             lru->update_locked(entries[index - 1]);
             index --;

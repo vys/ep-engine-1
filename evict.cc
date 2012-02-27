@@ -2,10 +2,13 @@
 
 /* Keep track of keys with interesting age */
 int time_intervals[] = {
-    2147483647, // MAX_INT. Equals to seconds worth of 136 years
-    172800, // 2 days
-    86400,
-    36000,
+    5184000,    // 2 months
+    2592000,    // 1 month
+    1209600,    // 2 weeks
+    604800,     // 1 week
+    172800,     // 2 days
+    86400,      // 1 day
+    36000,      // 10 hours
     18000,
     7200,
     3600,
@@ -28,7 +31,7 @@ int time_intervals[] = {
     -7200,
     -18000,
     -36000,
-    -864000,
+    -86400,
     -172800
 };
 
@@ -42,6 +45,10 @@ lruList::lruList(EventuallyPersistentStore *s, EPStats &st)
 lruList *lruList::New (EventuallyPersistentStore *s, EPStats &st) 
 {
     lruList *l = new lruList(s, st);
+    lruEntry *stub = new lruEntry;
+    stub->prev = stub->next = NULL;
+    stub->getKey().clear();
+    l->head = l->tail = stub;
     return l;
 }
 
@@ -59,29 +66,28 @@ bool lruList::update_locked(lruEntry *ent)
 
 bool lruList::update(lruEntry *ent)
 {
-    SpinLockHolder slh(&lru_lock);
     return update_locked(ent);
 }
 
-/* Get a key from lruList to be evicted 
-Start from the LRU end.
-Lookup the key in the hashtable. It is up for eviction if
-notDirty, isResident and !isDeleted.
-If selected for eviction, 
-return the corresponding StoredValue. This will be used by the caller
-to call ejectValue.
-*/
 
-bool lruList::peek(std::string *k, uint16_t *vb)
+lruEntry *lruList::pop(void)
 {
-    lruEntry *ent = head;
-    if (head == NULL) {
-        return false;
-    }
-    k->assign(ent->getKey());
-    *vb = ent->get_vbucket_id();
-    return true;
-}
+    lruEntry *ent, *headnext;
+    do {
+        ent = head;
+        if (head == tail) {
+            return NULL;
+        }
+        headnext = head->next;
+    } while (!ep_sync_bool_compare_and_swap(&head, ent, headnext));
+    --count;
+    int index = find_cursor_index(ent->getAge());
+    --cursor[index].count;
+    // Should always be safe to do
+    head->prev = NULL;
+    oldest = head->getAge();
+    return ent;
+}  
 
 void lruList::eject(size_t size)
 {
@@ -90,14 +96,16 @@ void lruList::eject(size_t size)
     uint16_t b;
 
     while(cur < size) {
-        SpinLockHolder slh(&lru_lock);
+        lruEntry *ent = pop();
 
-        if (!peek(&k, &b)) {
+        if (ent == NULL) {
             lstats.numEmptyLRU++;
             return;
         }
-        remove();
-        slh.unlock();
+        k.assign(ent->getKey());
+        b = ent->get_vbucket_id();
+        
+        ent->freeLruEntry();
 
         RCPtr<VBucket> vb = store->getVBucket(b);
         int bucket_num(0);
@@ -139,7 +147,7 @@ Find the closest cursor to the right of this key and set it as next of this key.
     Set tail if needed.
 */
 void lruList::addKey(lruEntry *ent)
-    {
+{
     assert(ent != NULL);
     uint32_t val = ent->getAge();
     int index;
@@ -147,40 +155,41 @@ void lruList::addKey(lruEntry *ent)
     index = find_cursor_index(val);
 
     /* special case the first element */
-    if (head == NULL) {
-    assert(tail == NULL);
-    head = tail = ent;
-    oldest = newest = val;
-    count++;
-
-    cursor[index].ptr = ent;
-    cursor[index].count++;
+    if (head == tail) {
+        assert(count == 0);
+        ent->next = tail;
+        tail->prev = ent;
+        ent->prev = NULL;
+        head = ent;
+        oldest = newest = val;
+        count++;
+        cursor[index].ptr = ent;
+        cursor[index].count++;
         return;
     }
 
     if (cursor[index].ptr != NULL) {
-    int set_cursor = 0;
-    /* Just insert at the right place */
-    insert(cursor[index].ptr, ent, &set_cursor);
-    if (set_cursor) {
-        cursor[index].ptr = ent;
-    }
+        int set_cursor = 0;
+        /* Just insert at the right place */
+        insert(cursor[index].ptr, ent, &set_cursor);
+        if (set_cursor) {
+            cursor[index].ptr = ent;
+        }
     } else {
-    lruEntry *left = find_closest_left_elem(index);
-    lruEntry *right = find_closest_right_elem(index);
+        lruEntry *left = find_closest_left_elem(index);
+        lruEntry *right = find_closest_right_elem(index);
 
-    assert(left || right);
+        assert(left || right);
 
-    if (!left) {
-        insert_at_head(right, ent);
+        if (!left) {
+            insert_before(right, ent);
         } else if (!right) {
-        insert(left, ent, NULL);
+            insert_before(tail, ent);
         } else {
             insert(left, ent, NULL);
         }
-    /* we are the first in this window */
-    cursor[index].ptr = ent;
-
+        /* we are the first in this window */
+        cursor[index].ptr = ent;
     }
     cursor[index].count++;
     count++;
@@ -200,31 +209,38 @@ int lruList::keyInLru(const char *keybytes, int keylen)
     return 0;
 }
 
-int lruEntry::lruAge(lruList *lru) {
-        return (getAge() + lru->getBuildEndTime() - lru->getBuildStartTime());
-    }
+int lruEntry::lruAge(lruList *lru) 
+{
+    return (getAge() + lru->getBuildEndTime() - lru->getBuildStartTime());
+}
+
+int lruList::lruAge(int my_age)
+{
+    return (my_age + getBuildEndTime() - getBuildStartTime());
+}
 
 int lruList::prune(uint64_t prune_age)
 {
-    SpinLockHolder slh(&lru_lock);
     std::string k;
     uint16_t b;
 
     lpstats.numPruneRuns++;
-    while (head) {
-        lruEntry *ent = head;
+    while ((uint64_t)lruAge(oldest) > prune_age) {
+        lruEntry *ent = pop();
+        if (!ent) {
+            break;
+        }
         int key_age = ent->lruAge(this);
         assert(key_age >= 0);
 
-        k.assign(ent->getKey());
-        b = ent->get_vbucket_id();
-
+        // Popped entry might be different from the one in the first check
         if ((uint64_t)key_age < prune_age) {
             /* we are done */
             break;
         }
-        remove();
-        slh.unlock();
+        k.assign(ent->getKey());
+        b = ent->get_vbucket_id();
+        ent->freeLruEntry();
 
         RCPtr<VBucket> vb = store->getVBucket(b);
         int bucket_num(0);
@@ -232,7 +248,7 @@ int lruList::prune(uint64_t prune_age)
         LockHolder lh = vb->ht.getLockedBucket(k, &bucket_num);
         StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
         if (v->ejectValue(stats, vb->ht) == false) {
-            // Update some stats 
+            // Update some stats
         } else {
              lpstats.numKeyPrunes++;
         }

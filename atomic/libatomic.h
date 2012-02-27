@@ -165,6 +165,7 @@ class VBucket;
 class VBucketHolder;
 class Doodad;
 class Blob;
+class lruEntry;
 
 inline bool ep_sync_bool_compare_and_swap(ItemQueue * volatile *dest, ItemQueue *prev, ItemQueue *next) {
     return ep_sync_bool_compare_and_swap((size_t*)dest, (size_t)prev, (size_t)next);
@@ -194,5 +195,8 @@ inline bool ep_sync_bool_compare_and_swap(IntQueue * volatile *dest, IntQueue *p
     return ep_sync_bool_compare_and_swap((size_t*)dest, (size_t)prev, (size_t)next);
 }
 
+inline bool ep_sync_bool_compare_and_swap(lruEntry *volatile *dest, lruEntry *oldVal, lruEntry *newVal) {
+    return ep_sync_bool_compare_and_swap((size_t*)dest, (size_t)oldVal, (size_t)newVal);
+}
 
 #endif

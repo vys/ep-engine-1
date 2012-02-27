@@ -3531,7 +3531,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
     if (lru->getBuildEndTime() == -1) {
             return ENGINE_SUCCESS;
     }
-    lru->getLRUStats(histo, lru);
+    lru->getLRUStats(histo);
     add_casted_stat("ep_lru_max_entries", lru->getMaxEntries(), add_stat, cookie);
     add_casted_stat("ep_lru_total", lru->getLRUCount(), add_stat, cookie);
     add_casted_stat("ep_lru_histo", histo, add_stat, cookie);
