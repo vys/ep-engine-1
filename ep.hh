@@ -811,12 +811,13 @@ public:
     void completeOnlineRestore();
 
     void initLRU(void);
+    void switchLRU(void);
+    protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
+
     lruList *getActiveLRU(void) { return active_lru; }
     lruList *getStandbyLRU(void) { return standby_lru; }
 
-    protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
-
-    void switchLRU(void);
+    void lruBuildComplete(lruList *l);
 
     void setMaxLruEntries(size_t val) {
         maxLruEntries = val;
@@ -824,6 +825,13 @@ public:
 
     size_t getMaxLruEntries() {
         return maxLruEntries;
+    }
+    void setEnableLruBuild(bool val) {
+        enableLruBuild = val;
+    }
+    
+    bool lruBuildEnabled(void) {
+         return enableLruBuild;
     }
 
 private:
@@ -944,6 +952,7 @@ private:
     lruList *active_lru;
     lruList *standby_lru;
     size_t maxLruEntries;
+    bool enableLruBuild; 
     DISALLOW_COPY_AND_ASSIGN(EventuallyPersistentStore);
 };
 

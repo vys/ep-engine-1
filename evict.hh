@@ -162,6 +162,8 @@ public:
     void setBuildEndTime(time_t t)
     {
         build_end_time = t;
+        // Sneak in a sanity check
+        checkLRUSanity();
     }
 
     time_t getBuildStartTime()
