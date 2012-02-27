@@ -195,7 +195,7 @@ public:
         time_t expiretime = (exptime == 0) ? 0 : ep_abs_time(ep_reltime(exptime));
 
         if (StoredValue::hasEnoughMemory(nkey + nbytes + METADATA_OVERHEAD, stats) == false) {
-            getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: no memory.\n");
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: No memory, attempting ejection.");
             lruList *l = epstore->getActiveLRU();
             l->eject(nkey + nbytes);
         }

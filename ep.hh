@@ -817,6 +817,7 @@ public:
     protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
 
     void switchLRU(void) {
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: LRU: Switching LRU lists Active and Standby.");
         lruList *temp = standby_lru;
         standby_lru = active_lru;
         active_lru = temp;

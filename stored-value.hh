@@ -585,10 +585,13 @@ private:
             extra.feature.resident = val;
             hrtime_t current_time = ep_current_time();
             if (stats) {
+                uint32_t duration = static_cast<uint32_t>(current_time - switch_time);
                 if (val) {
-                    stats->itemDiskAgeHisto.add(static_cast<uint32_t>(current_time - switch_time));
+                    getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: Item retrieved from disk after %ud seconds.", duration);
+                    stats->itemDiskAgeHisto.add(duration);
                 } else {
-                    stats->itemMemoryAgeHisto.add(static_cast<uint32_t>(current_time - switch_time));
+                    getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: Item evicted after %ud seconds in memory.", duration);
+                    stats->itemMemoryAgeHisto.add(duration);
                 }
             }
             switch_time = current_time;
