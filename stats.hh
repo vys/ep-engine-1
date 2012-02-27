@@ -309,8 +309,6 @@ public:
 
     Histogram<hrtime_t> checkpointRevertHisto;
 
-    Histogram<uint32_t> lruHisto;
-
     //! Reset all stats to reasonable values.
     void reset() {
         tooYoung.set(0);
@@ -379,7 +377,6 @@ public:
         dataAgeHisto.reset();
         dirtyAgeHisto.reset();
 
-        lruHisto.reset();
         itemMemoryAgeHisto.reset();
         itemDiskAgeHisto.reset();
     }
