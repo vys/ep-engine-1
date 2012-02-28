@@ -129,6 +129,7 @@ public:
     {
         build_end_time = t;
         // Sneak in a sanity check
+        generation++;
         checkLRUSanity();
     }
 
@@ -146,10 +147,6 @@ public:
 private:
     bool peek(std::string *key, uint16_t *vb);
     void addKey(lruEntry *ent);
-    void remove()
-    {
-        remove_head();
-    }
     bool shouldInsertLRU(lruEntry *ent)
     {    
         int val = ent->getAge(); 
@@ -189,29 +186,7 @@ private:
         }
         assert(mycount == count);
     }
-#if 0
-    void insert_at_head(lruEntry *list, lruEntry *elem)
-    {    
-        assert(list);
-        elem->next = list;
-        list->prev = elem;
-        set_head(elem);
-    }
 
-    // Not used. Fix if plan to use
-    void insert_at_tail(lruEntry *list, lruEntry *elem)
-    {
-        assert(list);
-        list->next = elem;
-        elem->prev = list;
-        set_tail(elem);
-    }
-    void set_tail(lruEntry *elem)
-    {
-        tail = elem;
-        newest = elem->getAge();
-    }
-#endif
     void set_head(lruEntry *elem)
     {
         head = elem;
@@ -345,6 +320,7 @@ private:
     time_t                    build_start_time;
     time_t                    build_end_time;
     lruCursor                 cursor[MAX_INTERVALS];
+    volatile int              generation;
 };
 
 class lruStage {

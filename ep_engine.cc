@@ -1093,7 +1093,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t expiryPagerSleeptime = 3600;
     size_t maxLruEntries = 500000;
     float tapThrottleThreshold(-1);
-    bool enable_lru = 1;
+    bool enableLru = 1;
 
     resetStats();
 
@@ -1253,7 +1253,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         ++ii;
         items[ii].key = "enable_lru_build";
         items[ii].datatype = DT_BOOL;
-        items[ii].value.dt_bool = &enable_lru;
+        items[ii].value.dt_bool = &enableLru;
 
         ++ii;
         items[ii].key = "max_lru_entries";
@@ -1597,6 +1597,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
             epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::ItemPagerPriority, 10);
             setExpiryPagerSleeptime(expiryPagerSleeptime);
             epstore->setMaxLruEntries(maxLruEntries);
+            epstore->setEnableLruBuild(enableLru);
         }
 
         shared_ptr<DispatcherCallback> htr(new HashtableResizer(epstore));

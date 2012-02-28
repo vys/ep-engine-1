@@ -776,6 +776,8 @@ void EventuallyPersistentStore::initLRU()
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "LRU: Creating LRU lists.");
     active_lru = lruList::New(this, stats);
     standby_lru = lruList::New(this, stats);
+    active_lru->generation = 0;
+    standby_lru->generation = 1;
 }
 
 void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
