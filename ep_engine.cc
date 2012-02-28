@@ -3550,16 +3550,16 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
     add_casted_stat("ep_lru_max_entries", lru->getMaxEntries(), add_stat, cookie);
     add_casted_stat("ep_lru_total", lru->getLRUCount(), add_stat, cookie);
     add_casted_stat("ep_lru_histo", histo, add_stat, cookie);
-    add_casted_stat("ep_lru_total_evicts", lru->lstats.numTotalEvicts, add_stat, cookie);
-    add_casted_stat("ep_lru_keys_evicted", lru->lstats.numTotalKeysEvicted, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_empty", lru->lstats.numEmptyLRU, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_key_absent", lru->lstats.failedTotal.numKeyNotPresent, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_dirty", lru->lstats.failedTotal.numDirties, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_already_evicted", lru->lstats.failedTotal.numAlreadyEvicted, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_deleted", lru->lstats.failedTotal.numDeleted, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_key_too_recent", lru->lstats.failedTotal.numKeyTooRecent, add_stat, cookie);
-    add_casted_stat("ep_lru_num_prune_runs", lru->lpstats.numPruneRuns, add_stat, cookie);
-    add_casted_stat("ep_lru_num_keys_pruned", lru->lpstats.numKeyPrunes, add_stat, cookie);
+    add_casted_stat("ep_lru_total_evicts", stats.lru_stats.numTotalEvicts, add_stat, cookie);
+    add_casted_stat("ep_lru_keys_evicted", stats.lru_stats.numTotalKeysEvicted, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_empty", stats.lru_stats.numEmptyLRU, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_key_absent", stats.lru_stats.failedTotal.numKeyNotPresent, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_dirty", stats.lru_stats.failedTotal.numDirties, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_already_evicted", stats.lru_stats.failedTotal.numAlreadyEvicted, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_deleted", stats.lru_stats.failedTotal.numDeleted, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_key_too_recent", stats.lru_stats.failedTotal.numKeyTooRecent, add_stat, cookie);
+    add_casted_stat("ep_lru_num_prune_runs", stats.lru_prune_stats.numPruneRuns, add_stat, cookie);
+    add_casted_stat("ep_lru_num_keys_pruned", stats.lru_prune_stats.numKeyPrunes, add_stat, cookie);
     add_casted_stat("ep_lru_mem_size", lruStats::lruMemSize, add_stat, cookie);
     if (!lru->isEmpty()) {
         add_casted_stat("ep_lru_oldest_age", lru->getOldest(), add_stat, cookie);

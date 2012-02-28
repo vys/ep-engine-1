@@ -107,7 +107,7 @@ void lruList::eject(size_t size)
 
         if (ent == NULL) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL, "LRU: Empty list, ejection failed. Evicted only %udB out of a total %udB required.", cur, size);
-            lstats.numEmptyLRU++;
+            stats.lru_stats.numEmptyLRU++;
             return;
         }
         k.assign(ent->getKey());
@@ -122,25 +122,25 @@ void lruList::eject(size_t size)
 
         if (!v) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "LRU: Key not present.");
-            lstats.failedTotal.numKeyNotPresent++;
-            lstats.failed.numKeyNotPresent++;
+            stats.lru_stats.failedTotal.numKeyNotPresent++;
+            failedstats.numKeyNotPresent++;
         } else if (!v->ejectValue(stats, vb->ht)) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "LRU: Key not eligible for eviction.");
             if (v->isResident() == false) {
-                lstats.failedTotal.numAlreadyEvicted++;
-                lstats.failed.numAlreadyEvicted++;
+                stats.lru_stats.failedTotal.numAlreadyEvicted++;
+                failedstats.numAlreadyEvicted++;
             } else if (v->isClean() == false) {
-                lstats.failedTotal.numDirties++;
-                lstats.failed.numDirties++;
+                stats.lru_stats.failedTotal.numDirties++;
+                failedstats.numDirties++;
             } else if (v->isDeleted() == false) {
-                lstats.failedTotal.numDeleted++;
-                lstats.failed.numDeleted++;
+                stats.lru_stats.failedTotal.numDeleted++;
+                failedstats.numDeleted++;
             }
         } else {
             cur += v->valLength(); 
             /* update stats for eviction that just happened */
-            lstats.numTotalKeysEvicted++;
-            lstats.numKeysEvicted++;
+            stats.lru_stats.numTotalKeysEvicted++;
+            stats.lru_stats.numKeysEvicted++;
         }
         lh.unlock();
     }
@@ -239,7 +239,7 @@ int lruList::prune(uint64_t prune_age)
     std::string k;
     uint16_t b;
 
-    lpstats.numPruneRuns++;
+    stats.lru_prune_stats.numPruneRuns++;
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "LRU: Commencing prune upto age %ulld.", prune_age);
     while ((uint64_t)lruAge(oldest) > prune_age) {
         lruEntry *ent = pop();
@@ -267,7 +267,7 @@ int lruList::prune(uint64_t prune_age)
             // Update some stats 
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "LRU: Key ejection failed during LRU prune.");
         } else {
-             lpstats.numKeyPrunes++;
+             stats.lru_prune_stats.numKeyPrunes++;
         }
     }
     return 0;
