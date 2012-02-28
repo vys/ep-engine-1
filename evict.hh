@@ -129,6 +129,7 @@ public:
     {
         build_end_time = t;
         // Sneak in a sanity check
+        generation++;
         checkLRUSanity();
     }
 
@@ -319,6 +320,7 @@ private:
     time_t                    build_start_time;
     time_t                    build_end_time;
     lruCursor                 cursor[MAX_INTERVALS];
+    volatile int              generation;
 };
 
 class lruStage {

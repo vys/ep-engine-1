@@ -102,7 +102,11 @@ void lruList::eject(size_t size)
     uint16_t b;
 
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "LRU: Commencing ejection to evict %udB of keys.", size);
+    int gen = this->generation;
     while(cur < size) {
+        if (gen != this->generation) {
+            break;
+        }
         lruEntry *ent = pop();
 
         if (ent == NULL) {
@@ -241,7 +245,11 @@ int lruList::prune(uint64_t prune_age)
 
     stats.lru_prune_stats.numPruneRuns++;
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "LRU: Commencing prune upto age %ulld.", prune_age);
+    int gen = this->generation;
     while ((uint64_t)lruAge(oldest) > prune_age) {
+        if (gen != this->generation) {
+            break;
+        }
         lruEntry *ent = pop();
         if (!ent) {
             break;
