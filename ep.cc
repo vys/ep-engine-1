@@ -30,6 +30,7 @@
 #include "kvstore.hh"
 #include "ep_engine.h"
 #include "htresizer.hh"
+#include "ev.hh"
 
 extern "C" {
     static rel_time_t uninitialized_current_time(void) {
@@ -771,6 +772,19 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority) {
 
 }
 
+
+void EventuallyPersistentStore::initEvictionManager(void)
+{
+    evictionManager = new EvictionManager(this, stats);
+}
+
+void EventuallyPersistentStore::setMaxEvictEntries(int val) {
+    evictionManager->setMaxSize(val);
+}
+
+EvictionPolicy *EventuallyPersistentStore::evictionBGJob(void) { 
+    return evictionManager->evictionBGJob(); 
+}
 void EventuallyPersistentStore::initLRU()
 {
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "LRU: Creating LRU lists.");

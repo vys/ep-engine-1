@@ -49,6 +49,7 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #include "vbucket.hh"
 #include "item_pager.hh"
 #include "evict.hh"
+#include "ev.hh"
 
 #define DEFAULT_TXN_SIZE 10000
 #define MAX_TXN_SIZE 10000000
@@ -442,6 +443,8 @@ private:
 };
 
 class EventuallyPersistentEngine;
+class EvictionPolicy;
+class EvictionManager;
 
 /**
  * Manager of all interaction with the persistence.
@@ -810,6 +813,9 @@ public:
      */
     void completeOnlineRestore();
 
+    void initEvictionManager(void);
+
+    EvictionPolicy *evictionBGJob(void);
     void initLRU(void);
     void switchLRU(void);
     protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
@@ -822,6 +828,8 @@ public:
     void setMaxLruEntries(size_t val) {
         maxLruEntries = val;
     }
+
+    void setMaxEvictEntries(int val);
 
     size_t getMaxLruEntries() {
         return maxLruEntries;
@@ -949,6 +957,7 @@ private:
         std::set<std::string> itemsDeleted;
     } restore;
 
+    EvictionManager *evictionManager;
     lruList *active_lru;
     lruList *standby_lru;
     size_t maxLruEntries;

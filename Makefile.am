@@ -45,6 +45,7 @@ ep_la_SOURCES = \
                  atomic/gcc_atomics.h \
                  atomic/libatomic.h \
                  atomic.hh \
+                 atomic_consumer_queue.hh \
                  backfill.hh \
                  backfill.cc \
                  callbacks.hh \
@@ -67,6 +68,7 @@ ep_la_SOURCES = \
                  item.cc item.hh \
                  item_pager.cc item_pager.hh \
                  evict.cc evict.hh \
+                 ev.cc ev.hh \
                  kvstore.hh \
                  locks.hh \
                  mutex.hh \
