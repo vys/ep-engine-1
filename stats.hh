@@ -39,6 +39,42 @@ public:
     }
 };
 
+class EvictionStats {
+public:
+    EvictionStats ()
+    {
+        // We don't want to reset static variables during construction
+        reset_();
+    }
+
+    Atomic<uint32_t>        numTotalEvicts;
+    Atomic<uint32_t>        numEvicts;
+    Atomic<uint32_t>        numTotalKeysEvicted; // Total evictions so far
+    Atomic<uint32_t>        numEmptyLRU;
+    Atomic<uint32_t>        numKeysEvicted;      // Evictions in this run
+    time_t                  queueBuildTime;
+    static Atomic<size_t>   evictMemSize;
+    class lruFailedEvictions   failedTotal;         // All failures so far
+    // Add histogram structure here
+
+    void reset()
+    {
+        reset_();
+        EvictionStats::evictMemSize = 0;
+    }
+
+private:
+    void reset_()
+    {
+        numTotalEvicts = 0;
+        numEvicts = 0;
+        numTotalKeysEvicted = 0;
+        numEmptyLRU = 0;
+        numKeysEvicted = 0;
+        failedTotal.reset();
+    }
+};
+
 class lruStats {
 public:
     lruStats ()
@@ -385,6 +421,7 @@ public:
     Histogram<hrtime_t> checkpointRevertHisto;
 
     lruStats lru_stats;
+    EvictionStats evictStats;
     lruPruneStats lru_prune_stats;
 
     //! Reset all stats to reasonable values.

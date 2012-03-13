@@ -1624,7 +1624,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
                                                Priority::VBucketDeletionPriority,
                                                INVALID_VBTABLE_DEL_FREQ);
         }
-        epstore->initLRU();
+//        epstore->initLRU();
+        epstore->initEvictionManager();
+//        epstore->evictionManager = new EvictionManager(epstore, stats);
     }
 
     if (ret == ENGINE_SUCCESS) {
@@ -3526,6 +3528,20 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
     return rv;
 }
 
+ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie,
+                                                              ADD_STAT add_stat) 
+{
+    add_casted_stat("ep_lru_total_evicts", stats.evictStats.numTotalEvicts, add_stat, cookie);
+    add_casted_stat("ep_lru_keys_evicted", stats.evictStats.numTotalKeysEvicted, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_empty", stats.evictStats.numEmptyLRU, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_key_absent", stats.evictStats.failedTotal.numKeyNotPresent, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_dirty", stats.evictStats.failedTotal.numDirties, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_already_evicted", stats.evictStats.failedTotal.numAlreadyEvicted, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_deleted", stats.evictStats.failedTotal.numDeleted, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_key_too_recent", stats.evictStats.failedTotal.numKeyTooRecent, add_stat, cookie);
+    return ENGINE_SUCCESS;
+}
+
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
                                                             ADD_STAT add_stat) 
 {
@@ -3700,6 +3716,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
     } else if (nkey == 3 && strncmp(stat_key, "lru", 3) == 0) {
         rv = doLRUStats(cookie, add_stat);
 #endif
+    } else if (nkey == 3 && strncmp(stat_key, "eviction", 3) == 0) {
+        rv = doEvictionStats(cookie, add_stat);
     } else if (nkey == 10 && strncmp(stat_key, "dispatcher", 10) == 0) {
         rv = doDispatcherStats(cookie, add_stat);
     } else if (nkey == 6 && strncmp(stat_key, "memory", 6) == 0) {

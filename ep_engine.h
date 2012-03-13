@@ -744,6 +744,7 @@ private:
     ENGINE_ERROR_CODE doKeyStats(const void *cookie, ADD_STAT add_stat,
                                  uint16_t vbid, std::string &key, bool validate=false);
     ENGINE_ERROR_CODE doLRUStats(const void *cookie, ADD_STAT add_stat);
+    ENGINE_ERROR_CODE doEvictionStats(const void *cookie, ADD_STAT add_stat);
 
     void addLookupResult(const void *cookie, Item *result) {
         LockHolder lh(lookupMutex);

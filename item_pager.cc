@@ -12,13 +12,8 @@
 
 static const double threshold = 75.0;
 static const size_t MAX_PERSISTENCE_QUEUE_SIZE = 1000000;
-#define LRU_STAGE_SIZE 300000
 
-/**
- * As part of the ItemPager, visit all of the objects in memory and
- * eject some within a constrained probability
- */
-class PagingVisitor : public VBucketVisitor {
+class ItemPagingVisitor : public VBucketVisitor {
 public:
 
     /**
@@ -31,26 +26,17 @@ public:
      * @param sfin pointer to a bool to be set to true after run completes
      * @param pause flag indicating if PagingVisitor can pause between vbucket visits
      */
-    PagingVisitor(EventuallyPersistentStore *s, EPStats &st, double pcnt,
-                  bool *sfin, bool pause = false, lruList *l = NULL)
+    ItemPagingVisitor(EventuallyPersistentStore *s, EPStats &st, double pcnt,
+                  bool *sfin, bool pause = false)
         : store(s), stats(st), percent(pcnt), ejected(0),
           startTime(ep_real_time()), stateFinalizer(sfin),
-          canPause(pause), lru(l), stage(NULL)
-    {
-            if (lru) {
-                stage = new lruStage(LRU_STAGE_SIZE);
-                lru->clearLRU();
-                lru->setMaxEntries(store->getMaxLruEntries());
-            }
-    }
+          canPause(pause) {}
 
     void visit(StoredValue *v) {
         // Remember expired objects -- we're going to delete them.
         if (v->isExpired(startTime) && !v->isDeleted()) {
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
-        } else if (!v->isDeleted() && v->isResident() && !v->isDirty() && stage) {
-            stage->add(v, currentBucket->getId(), lru->getBuildStartTime());
         }
 
         double r = static_cast<double>(std::rand()) / static_cast<double>(RAND_MAX);
@@ -106,26 +92,6 @@ public:
         if (stateFinalizer) {
             *stateFinalizer = true;
         }
-        if (lru) {
-            store->lruBuildComplete(lru);
-        }
-
-        if (stage) {
-            delete stage;
-        }
-    }
-    
-    bool shouldContinue() {
-        // We have been told to stop
-        if (store->lruBuildEnabled() == false && stage) {
-            delete stage;
-            stage = NULL;
-        }
-            
-        if (lru && stage) {
-            stage->commit(lru);
-        } 
-        return true;
     }
 
     /**
@@ -143,8 +109,99 @@ private:
     time_t                     startTime;
     bool                      *stateFinalizer;
     bool                       canPause;
-    lruList                    *lru;
-    lruStage                   *stage;
+};
+
+/**
+ * Handle expired items and eviction based on the policies.
+ */
+class ExpiryPagingVisitor : public VBucketVisitor {
+public:
+
+    /**
+     * @param s the store that will handle the bulk removal
+     * @param st the stats where we'll track what we've done
+     * @param sfin pointer to a bool to be set to true after run completes
+     * @param pause flag indicating if PagingVisitor can pause between vbucket visits
+     */
+    ExpiryPagingVisitor(EventuallyPersistentStore *s, EPStats &st,
+                  bool *sfin, bool pause = false, EvictionPolicy *ev = NULL)
+        : store(s), stats(st), ejected(0), startTime(ep_real_time()), stateFinalizer(sfin),
+          canPause(pause), evjob(ev) {
+        if (evjob) {
+            evjob->initRebuild();
+        }
+    }
+
+    void visit(StoredValue *v) {
+        // Remember expired objects -- we're going to delete them.
+        if (v->isExpired(startTime) && !v->isDeleted()) {
+            expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
+            return;
+        } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty()) {
+            evjob->addEvictItem(v, currentBucket->getId()); 
+        }
+    }
+
+    bool visitBucket(RCPtr<VBucket> vb) {
+         update();
+         return VBucketVisitor::visitBucket(vb);
+    }
+
+    void update() {
+        stats.expired.incr(expired.size());
+
+        store->deleteExpiredItems(expired);
+
+        if (numEjected() > 0) {
+            getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                             "Paged out %d values\n", numEjected());
+        }
+
+        if (!expired.empty()) {
+            getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                             "Purged %d expired items\n", expired.size());
+        }
+        ejected = 0;
+        expired.clear();
+    }
+
+    bool pauseVisitor() {
+        size_t queueSize = stats.queue_size.get() + stats.flusher_todo.get();
+        return canPause && queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
+    }
+
+    bool shouldContinue() {
+        if (evjob) {
+            evjob->storeEvictItem();
+        }
+        return true;
+    }
+
+    void complete() {
+        update();
+        if (stateFinalizer) {
+            *stateFinalizer = true;
+        }
+        if (evjob) {
+            evjob->completeRebuild();
+        }
+    }
+    
+    /**
+     * Get the number of items ejected during the visit.
+     */
+    size_t numEjected() { return ejected; }
+
+private:
+    std::list<std::pair<uint16_t, std::string> > expired;
+
+    EventuallyPersistentStore *store;
+    EPStats                   &stats;
+    size_t                     ejected;
+    time_t                     startTime;
+    bool                      *stateFinalizer;
+    bool                       canPause;
+    EvictionPolicy *evjob;
 };
 
 bool ItemPager::callback(Dispatcher &d, TaskId t) {
@@ -165,8 +222,8 @@ bool ItemPager::callback(Dispatcher &d, TaskId t) {
                          (toKill*100.0));
 
         available = false;
-        shared_ptr<PagingVisitor> pv(new PagingVisitor(store, stats,
-                                                       toKill, &available, false, NULL));
+        shared_ptr<ItemPagingVisitor> pv(new ItemPagingVisitor(store, stats,
+                                                       toKill, &available, false));
         store->visit(pv, "Item pager", &d, Priority::ItemPagerPriority);
         getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: item_pager: Got called!!!"); 
     }
@@ -175,15 +232,29 @@ bool ItemPager::callback(Dispatcher &d, TaskId t) {
     return true;
 }
 
+/*
+    Need expiry pager to do the following at least:
+    -Initialize the stage/queue when the pager begins
+    -visit: should add elements to the expired queue as well as the stage.
+    -shouldContinue: commit/merge the stage with the actual queue
+    -complete: switch lists
+    -Implement pauseQueue: disable rebuild if told to do so
+
+
+    ..
+    get policy from epstore->evictionManager
+    if the policy needs a background job, initialize it.
+        else leave it as null.
+    add policy to the ExpiredItemPager.
+*/
 bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
     if (available) {
         ++stats.expiryPagerRuns;
 
-        store->getStandbyLRU()->setBuildStartTime(ep_current_time());
         available = false;
-        lruList *l = store->lruBuildEnabled() ? store->getStandbyLRU() : NULL;
-        shared_ptr<PagingVisitor> pv(new PagingVisitor(store, stats,
-                                                       -1, &available, true, l));
+        shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
+                                                       &available, true,
+                                                       store->evictionBGJob()));
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: Expiry pager: before calling strore->visit"); 
         store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
                      true, 10);
