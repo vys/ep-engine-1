@@ -48,8 +48,7 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #include "dispatcher.hh"
 #include "vbucket.hh"
 #include "item_pager.hh"
-#include "evict.hh"
-#include "ev.hh"
+#include "eviction.hh"
 
 #define DEFAULT_TXN_SIZE 10000
 #define MAX_TXN_SIZE 10000000
@@ -816,31 +815,18 @@ public:
     void initEvictionManager(void);
 
     EvictionPolicy *evictionBGJob(void);
-    void initLRU(void);
-    void switchLRU(void);
     protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
-
-    lruList *getActiveLRU(void) { return active_lru; }
-    lruList *getStandbyLRU(void) { return standby_lru; }
-
-    void lruBuildComplete(lruList *l);
-
-    void setMaxLruEntries(size_t val) {
-        maxLruEntries = val;
-    }
 
     void setMaxEvictEntries(int val);
 
-    size_t getMaxLruEntries() {
-        return maxLruEntries;
-    }
-    void setEnableLruBuild(bool val) {
-        enableLruBuild = val;
+    int getMaxEvictEntries();
+
+    EvictionManager *getEvictionManager(void) {
+        return evictionManager;
     }
     
-    bool lruBuildEnabled(void) {
-         return enableLruBuild;
-    }
+    void evictionJobEnabled(bool doit);
+    bool evictionJobEnabled(void);
 
 private:
 
@@ -958,10 +944,6 @@ private:
     } restore;
 
     EvictionManager *evictionManager;
-    lruList *active_lru;
-    lruList *standby_lru;
-    size_t maxLruEntries;
-    bool enableLruBuild; 
     DISALLOW_COPY_AND_ASSIGN(EventuallyPersistentStore);
 };
 

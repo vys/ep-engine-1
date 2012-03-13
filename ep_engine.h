@@ -200,11 +200,10 @@ public:
 
         time_t expiretime = (exptime == 0) ? 0 : ep_abs_time(ep_reltime(exptime));
 
-        int needed = nkey + nbytes + METADATA_OVERHEAD;
+        size_t needed = nkey + nbytes + METADATA_OVERHEAD;
         if (StoredValue::hasEnoughMemory(needed + PARALLEL_OVERHEAD, stats) == false) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: No memory, attempting ejection.");
-            lruList *l = epstore->getActiveLRU();
-            l->eject(needed);
+            epstore->getEvictionManager()->evictSize(needed);
         }
 
         *item = new Item(key, nkey, nbytes, flags, expiretime);
@@ -601,12 +600,12 @@ public:
         return syncTimeout;
     }
 
-    size_t getMaxLruEntries(void) {
-        return epstore->getMaxLruEntries();
+    int getMaxEvictEntries(void) {
+        return epstore->getMaxEvictEntries();
     }
 
-    void setMaxLruEntries(size_t val) {
-        epstore->setMaxLruEntries(val);
+    void setMaxEvictEntries(int val) {
+        epstore->setMaxEvictEntries(val);
     }
 
     size_t getExpiryPagerSleeptime(void) {
@@ -633,8 +632,8 @@ public:
         }
     }
 
-    void setEnableLruBuild(bool val) {
-        epstore->setEnableLruBuild(val);
+    void evictionJobEnabled(bool val) {
+        epstore->evictionJobEnabled(val);
     }
 private:
     EventuallyPersistentEngine(GET_SERVER_API get_server_api);

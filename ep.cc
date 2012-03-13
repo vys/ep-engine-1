@@ -30,7 +30,7 @@
 #include "kvstore.hh"
 #include "ep_engine.h"
 #include "htresizer.hh"
-#include "ev.hh"
+#include "eviction.hh"
 
 extern "C" {
     static rel_time_t uninitialized_current_time(void) {
@@ -583,8 +583,7 @@ protocol_binary_response_status EventuallyPersistentStore::pruneLRU(uint64_t age
     protocol_binary_response_status rv(PROTOCOL_BINARY_RESPONSE_SUCCESS);
 
     *msg_size = 0;
-
-    active_lru->prune(age);
+    evictionManager->prune(age);
 	
 	*msg = "Pruned keys.";
     return rv;
@@ -782,16 +781,20 @@ void EventuallyPersistentStore::setMaxEvictEntries(int val) {
     evictionManager->setMaxSize(val);
 }
 
+int EventuallyPersistentStore::getMaxEvictEntries(void) {
+    return evictionManager->getMaxSize();
+}
+
 EvictionPolicy *EventuallyPersistentStore::evictionBGJob(void) { 
     return evictionManager->evictionBGJob(); 
 }
-void EventuallyPersistentStore::initLRU()
-{
-    getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "LRU: Creating LRU lists.");
-    active_lru = lruList::New(this, stats);
-    standby_lru = lruList::New(this, stats);
-    active_lru->generation = 0;
-    standby_lru->generation = 1;
+
+void EventuallyPersistentStore::evictionJobEnabled(bool doit) {
+    evictionManager->enableJob(doit);
+}
+
+bool EventuallyPersistentStore::evictionJobEnabled(void) {
+    return evictionManager->enableJob();
 }
 
 void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
@@ -1336,7 +1339,7 @@ bool EventuallyPersistentStore::getKeyStats(const std::string &key,
         kstats.dirtied = 0; // v->getDirtied();
         kstats.data_age = v->getDataAge();
         kstats.last_modification_time = ep_abs_time(v->getDataAge());
-        kstats.in_lru = active_lru->keyInLru(v->getKeyBytes(), v->getKeyLen());
+//        kstats.in_lru = active_lru->keyInLru(v->getKeyBytes(), v->getKeyLen());
     }
     return found;
 }
@@ -2373,35 +2376,3 @@ bool VBCBAdaptor::callback(Dispatcher & d, TaskId t) {
     return !isdone;
 }
 
-/* To switch between lists witout locks:
---Make the active list empty. This ensures that all the consumers 
-  are paused.
---Do the switch.
---Stamp oldhead back on standby.
-*/
-void EventuallyPersistentStore::switchLRU(void) 
-{
-    lruEntry *oldhead;
-    lruEntry *oldtail;
-
-    do {
-        oldhead = active_lru->head;
-        oldtail = active_lru->tail;
-    } while (!ep_sync_bool_compare_and_swap(&active_lru->head, oldhead, oldtail));
-
-    lruList *temp = standby_lru;
-    standby_lru = active_lru;
-    active_lru = temp; // back in business
-
-    standby_lru->head = oldhead;
-    standby_lru->failedstats.reset();
-}
-
-void EventuallyPersistentStore::lruBuildComplete(lruList *l)
-{
-    assert(l == standby_lru); 
-    l->setBuildEndTime(ep_current_time());
-    if (enableLruBuild) {
-        switchLRU();
-    }
-}

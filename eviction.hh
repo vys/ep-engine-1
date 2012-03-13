@@ -6,12 +6,32 @@
 
 #define MAX_EVICTION_ENTRIES 500000
 
+//Generic class for identifying evictable items.
+class EvictItem {
+public:
+    EvictItem(StoredValue *v, uint16_t vb) : key(v->getKey()), vbid(vb) {}
+    
+    virtual ~EvictItem() {}
+    
+    const std::string &getKey() { 
+        return key; 
+     }
+    
+    uint16_t get_vbucket_id() const { 
+        return vbid; 
+    }
+
+private:
+    std::string key;
+    uint16_t vbid;
+};
+
 class EvictionPolicy {
 public:
     EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) : 
                     backgroundJob(job), store(s), stats(st) {}
     virtual ~EvictionPolicy() {}
-    virtual bool evictSize(size_t size) = 0;
+    virtual EvictItem* evict(void) = 0;
     virtual std::string description () const = 0;
 
     /* Following set of functions are needed only by policies that need a 
@@ -29,29 +49,11 @@ protected:
     EPStats &stats;
 };
 
-//Generic class for identifying evictable items.
-class EvictItem {
-public:
-    EvictItem(StoredValue *v, uint16_t vb) : key(v->getKey()), vbid(vb) {}
-    
-    ~EvictItem() {}
-    
-    const std::string &getKey() { 
-        return key; 
-     }
-    
-    uint16_t get_vbucket_id() const { 
-        return vbid; 
-    }
-
-private:
-    std::string key;
-    uint16_t vbid;
-};
 
 class LRUItem : public EvictItem {
 public:
     LRUItem(EvictItem e, time_t t) : EvictItem(e), timestamp(t) {}
+    ~LRUItem() {}
 
     int getAttr() const {
         return timestamp;
@@ -118,7 +120,7 @@ public:
         list = templist;
     }
 
-    bool evictSize(size_t s);
+    EvictItem *evict(void);
 
     std::string description() const { return std::string("lru"); }
 
@@ -161,6 +163,9 @@ public:
     ~EvictionManager() {}
    
     EvictionPolicy *evictionBGJob() {
+        if (pauseJob) {
+            return NULL;
+        }
         if (policyName != evpolicy->description()) {
             EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats);
             if (p) {
@@ -177,11 +182,28 @@ public:
         }
     }
 
+    bool evictSize(size_t size);
+
+    void prune(uint64_t age) {
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Pruning keys with age %ull", age); 
+    }
+    int getMaxSize(void) {
+        return maxSize;
+    }
+
+    bool enableJob(void) {
+        return pauseJob;
+    }
+
+    void enableJob(bool doit) {
+        pauseJob = doit;
+    }
+
     void setMaxSize(int val) {
         maxSize = val;
     }
     std::string policyName;
-    uint32_t getCount(void) { return count;}
+    uint32_t getCount(void) { return count; }
 
 private:
     EvictionPolicy* evpolicy;

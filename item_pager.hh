@@ -41,7 +41,6 @@ private:
     bool                       available;
 };
 
-class lruList;
 /**
  * Dispatcher job responsible for purging expired items from
  * memory and disk.

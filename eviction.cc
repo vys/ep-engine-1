@@ -1,13 +1,19 @@
-#include <ev.hh>
+#include <eviction.hh>
 
-bool LRUPolicy::evictSize(size_t size)
+EvictItem *LRUPolicy::evict()
+{
+        LRUItem *ent = ++it;
+        return static_cast<EvictItem *>(ent);
+}
+
+bool EvictionManager::evictSize(size_t size)
 {
     size_t cur = 0;
 
 //    if (pauseEviction) { return false; }
 
     while(cur < size) {
-        LRUItem *ent = ++it;
+        EvictItem *ent = evpolicy->evict();
         if (ent == NULL) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: Empty list, ejection failed.  Evicted only %udB out of a total %udB required.", cur, size);
             stats.evictStats.numEmptyLRU++;
