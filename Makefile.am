@@ -67,8 +67,7 @@ ep_la_SOURCES = \
                  invalid_vbtable_remover.cc \
                  item.cc item.hh \
                  item_pager.cc item_pager.hh \
-                 evict.cc evict.hh \
-                 ev.cc ev.hh \
+                 eviction.cc eviction.hh \
                  kvstore.hh \
                  locks.hh \
                  mutex.hh \

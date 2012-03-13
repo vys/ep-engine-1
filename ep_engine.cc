@@ -301,20 +301,20 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "LRU: Setting maxLruEntries value to %ulld via flush params.", vsize);
                 e->setExpiryPagerSleeptime((size_t)vsize);
-            } else if (strcmp(keyz, "enable_lru_build") == 0) {
+            } else if (strcmp(keyz, "enable_eviction_job") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
                 int val = strtoull(valz, &ptr, 10);
                 validate(val, static_cast<int>(0), 1);
-                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: Setting enable_lru_build to %d via flush params.", val);
-                e->setEnableLruBuild(val);
-            } else if (strcmp(keyz, "max_lru_entries") == 0) {
+                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: LRU: Setting enable_eviction_job to %d via flush params.", val);
+                e->evictionJobEnabled(val);
+            } else if (strcmp(keyz, "max_evict_entries") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
                 uint64_t vsize = strtoull(valz, &ptr, 10);
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
-                e->setMaxLruEntries((size_t)vsize);
+                e->setMaxEvictEntries((size_t)vsize);
             } else if (strcmp(keyz, "inconsistent_slave_chk") == 0) {
                 bool inconsistentSlaveCheckpoint = false;
                 if (strcmp(valz, "true") == 0) {
@@ -1592,12 +1592,15 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         // Run the vbucket state snapshot job once after the warmup
         epstore->scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
 
+        // Initialize the eviction manager
+        epstore->initEvictionManager();
+
         if (HashTable::getDefaultStorageValueType() != small) {
             shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
             epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::ItemPagerPriority, 10);
             setExpiryPagerSleeptime(expiryPagerSleeptime);
-            epstore->setMaxLruEntries(maxLruEntries);
-            epstore->setEnableLruBuild(enableLru);
+            epstore->setMaxEvictEntries(maxLruEntries);
+            epstore->evictionJobEnabled(enableLru);
         }
 
         shared_ptr<DispatcherCallback> htr(new HashtableResizer(epstore));
@@ -1624,9 +1627,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
                                                Priority::VBucketDeletionPriority,
                                                INVALID_VBTABLE_DEL_FREQ);
         }
-//        epstore->initLRU();
-        epstore->initEvictionManager();
-//        epstore->evictionManager = new EvictionManager(epstore, stats);
     }
 
     if (ret == ENGINE_SUCCESS) {
@@ -3021,12 +3021,15 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
 
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
                     add_stat, cookie);
-    add_casted_stat("ep_max_lru_entries", epstore->getMaxLruEntries(),
+    add_casted_stat("ep_max_evict_entries", epstore->getMaxEvictEntries(),
                     add_stat, cookie);
+    //FIXME
+#if 0
     add_casted_stat("ep_lru_build_start_time", epstore->getActiveLRU()->getBuildStartTime(),
                     add_stat, cookie);
     add_casted_stat("ep_lru_build_end_time", epstore->getActiveLRU()->getBuildEndTime(),
                     add_stat, cookie);
+#endif
 
     add_casted_stat("ep_inconsistent_slave_chk", CheckpointManager::isInconsistentSlaveCheckpoint(),
                     add_stat, cookie);
@@ -3546,6 +3549,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
                                                             ADD_STAT add_stat) 
 {
 
+    add_casted_stat("ep_eviction_state_comin", 12345, add_stat, cookie);
+#if 0
     std::vector<int> ints;
     int rev_ints[MAX_INTERVALS];
     
@@ -3582,6 +3587,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
         add_casted_stat("ep_lru_oldest_age", lru->getOldest(), add_stat, cookie);
         add_casted_stat("ep_lru_newest_age", lru->getNewest(), add_stat, cookie);
     }
+#endif
     return ENGINE_SUCCESS;
 }
 
