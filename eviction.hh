@@ -49,7 +49,6 @@ protected:
     EPStats &stats;
 };
 
-
 class LRUItem : public EvictItem {
 public:
     LRUItem(EvictItem e, time_t t) : EvictItem(e), timestamp(t) {}
@@ -75,10 +74,6 @@ public:
     }
 };
 
-class LRUStats {
-public:
-    time_t    queueBuildTime;
-};
 
 //Implementation of LRU based eviction policy
 class LRUPolicy : public EvictionPolicy {
@@ -114,7 +109,7 @@ public:
         endTime = ep_real_time();
         FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
         it.swap(tempit);
-        lstats.queueBuildTime = endTime - startTime;
+//        lstats.queueBuildTime = endTime - startTime;
         stage.clear();
         delete list;
         list = templist;
@@ -133,7 +128,126 @@ private:
     Atomic<uint32_t> count;
     time_t startTime;
     time_t endTime;
-    LRUStats lstats;
+};
+
+class RandomPolicy : public EvictionPolicy {
+    class RandomNode {
+    public:
+        RandomNode(EvictItem* _data = NULL) : data(_data), next(NULL) {}
+        ~RandomNode() {}
+
+        EvictItem *data;
+        RandomNode *next;
+    };
+
+    class RandomList {
+    public:
+        RandomList() : head(new RandomNode) {} 
+        
+        ~RandomList() {
+            while (head != NULL) {
+                RandomNode *next = head->next;
+                delete head;
+                head = next;
+            }
+        }
+    
+        class RandomListIteraror {
+        public:
+            RandomListIteraror(RandomNode *node = NULL) : _node(node) {}
+
+            EvictItem* operator *() {
+                assert(_node && _node->data);
+                return _node->data;
+            }
+
+            EvictItem* operator ++() {
+                RandomNode *old;
+                do {
+                    old = _node;
+                    if (old->next == NULL) {
+                        return NULL;
+                    }
+                } while (!ep_sync_bool_compare_and_swap(&_node, old, old->next));
+                return old->data;
+            }
+
+            RandomNode *swap(RandomListIteraror &it) {
+                RandomNode *old;
+                do {
+                    old = _node;
+                } while (!ep_sync_bool_compare_and_swap(&_node, old, it._node));
+                return old;
+            }
+        private:
+            RandomNode *_node;
+        };
+
+        typedef RandomListIteraror iterator;
+
+        iterator begin() {
+            return iterator(head);
+        }
+        void add(EvictItem *item) {
+            RandomNode *n = new RandomNode(item);
+            n->next = head;
+            head = n;
+        }
+
+        private:
+            RandomNode *head;
+    };
+
+public:
+    RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job)
+        : EvictionPolicy(s, st, job), list(new RandomList()), it(list->begin()) {}
+
+    ~RandomPolicy() {}
+
+    EvictItem *evict();
+
+    void setSize(int val) {
+        maxSize = val;
+    }
+    void initRebuild() {
+        templist = new RandomList();
+        size = 0;
+        startTime = ep_real_time(); 
+    }
+
+    bool addEvictItem(StoredValue *v, uint16_t vb) {
+        if (size == maxSize) {
+            return false;
+        }
+        EvictItem *item = new EvictItem(v, vb);
+        templist->add(item);
+        size++;
+        return true;
+    }
+
+    bool storeEvictItem() {return false;} // Nothing to do
+
+    void completeRebuild() {
+        endTime = ep_real_time();
+        RandomList::iterator tempit = templist->begin();
+        tempit = it.swap(tempit);
+        EvictItem *node;
+        while ((node = ++tempit) != NULL) {
+            delete node;
+        }
+        delete list;
+        list = templist;
+    }
+
+    std::string description() const { return std::string("random"); }
+private:
+    RandomList *list;
+    RandomList *templist;
+    RandomList::iterator it;
+    size_t maxSize;
+    size_t size;
+    time_t startTime;
+    time_t endTime;
 };
 
 class EvictionPolicyFactory {
@@ -142,10 +256,8 @@ public:
         EvictionPolicy *p = NULL;
         if (desc == "lru") {
             p = new LRUPolicy(s, st, true);
-#if 0
         } else if (desc == "random") {
-            p = new RandomPolicy(s, st, false);
-#endif
+            p = new RandomPolicy(s, st, true);
         } else {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Invalid policy name"); 
         }
@@ -156,31 +268,13 @@ public:
 class EvictionManager {
 public:
     EvictionManager(EventuallyPersistentStore *s, EPStats &st) : 
-        policyName("lru"), maxSize(MAX_EVICTION_ENTRIES), store(s), stats(st) {
+        policyName("random"), maxSize(MAX_EVICTION_ENTRIES), store(s), stats(st) {
         evpolicy = EvictionPolicyFactory::getInstance(policyName, s, st);
     }
 
     ~EvictionManager() {}
    
-    EvictionPolicy *evictionBGJob() {
-        if (pauseJob) {
-            return NULL;
-        }
-        if (policyName != evpolicy->description()) {
-            EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats);
-            if (p) {
-                delete evpolicy;
-                evpolicy = p;
-            }
-        }
-        evpolicy->setSize(maxSize);
-        if (evpolicy->backgroundJob) { 
-            return evpolicy; 
-        }
-        else { 
-            return NULL; 
-        }
-    }
+   EvictionPolicy *evictionBGJob();
 
     bool evictSize(size_t size);
 
@@ -192,11 +286,11 @@ public:
     }
 
     bool enableJob(void) {
-        return pauseJob;
+        return !pauseJob;
     }
 
     void enableJob(bool doit) {
-        pauseJob = doit;
+        pauseJob = !doit;
     }
 
     void setMaxSize(int val) {

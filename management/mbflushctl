@@ -59,16 +59,16 @@ Persistence:
     start          - start persistence
 
 Available params for "set":
-    min_data_age   - minimum data age before flushing data
-    queue_age_cap  - maximum queue age before flushing data
-    max_txn_size   - maximum number of items in a flusher transaction
-    bg_fetch_delay - delay before executing a bg fetch (test feature)
-    max_size       - max memory used by the server
-    mem_high_wat   - high water mark
-    mem_low_wat    - low water mark
-    exp_pager_stime- Expiry Pager Sleeptime
-    max_lru_entries - Maximum entries supported by LRU
-    enable_lru_build - Enable or Disable lru build""")
+    min_data_age        - minimum data age before flushing data
+    queue_age_cap       - maximum queue age before flushing data
+    max_txn_size        - maximum number of items in a flusher transaction
+    bg_fetch_delay      - delay before executing a bg fetch (test feature)
+    max_size            - max memory used by the server
+    mem_high_wat        - high water mark
+    mem_low_wat         - low water mark
+    exp_pager_stime     - Expiry Pager Sleeptime
+    max_evict_entries   - Maximum entries used by eviction job
+    enable_eviction_job - Enable or Disable eviction job""")
 
     c.addCommand('stop', stop, 'stop')
     c.addCommand('start', start, 'start')

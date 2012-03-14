@@ -299,7 +299,7 @@ extern "C" {
                 uint64_t vsize = strtoull(valz, &ptr, 10);
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
-                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "LRU: Setting maxLruEntries value to %ulld via flush params.", vsize);
+                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Setting exp_pager_stime value to %ulld via flush params.", vsize);
                 e->setExpiryPagerSleeptime((size_t)vsize);
             } else if (strcmp(keyz, "enable_eviction_job") == 0) {
                 char *ptr = NULL;
@@ -314,6 +314,7 @@ extern "C" {
                 uint64_t vsize = strtoull(valz, &ptr, 10);
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
+                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Setting max_evict_entries to %d via flush params.", vsize);
                 e->setMaxEvictEntries((size_t)vsize);
             } else if (strcmp(keyz, "inconsistent_slave_chk") == 0) {
                 bool inconsistentSlaveCheckpoint = false;
@@ -1091,9 +1092,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t txnSize = 0;
     size_t tapIdleTimeout = (size_t)-1;
     size_t expiryPagerSleeptime = 3600;
-    size_t maxLruEntries = 500000;
+    size_t maxEvictEntries = 500000;
     float tapThrottleThreshold(-1);
-    bool enableLru = 1;
+    bool enableEvictionJob = 1;
 
     resetStats();
 
@@ -1251,14 +1252,14 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         items[ii].value.dt_size = &expiryPagerSleeptime;
 
         ++ii;
-        items[ii].key = "enable_lru_build";
+        items[ii].key = "enable_eviction_job";
         items[ii].datatype = DT_BOOL;
-        items[ii].value.dt_bool = &enableLru;
+        items[ii].value.dt_bool = &enableEvictionJob;
 
         ++ii;
-        items[ii].key = "max_lru_entries";
+        items[ii].key = "max_evict_entries";
         items[ii].datatype = DT_SIZE;
-        items[ii].value.dt_size = &maxLruEntries;
+        items[ii].value.dt_size = &maxEvictEntries;
 
         ++ii;
         items[ii].key = "db_shards";
@@ -1599,8 +1600,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
             shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
             epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::ItemPagerPriority, 10);
             setExpiryPagerSleeptime(expiryPagerSleeptime);
-            epstore->setMaxEvictEntries(maxLruEntries);
-            epstore->evictionJobEnabled(enableLru);
+            epstore->setMaxEvictEntries(maxEvictEntries);
+            epstore->evictionJobEnabled(enableEvictionJob);
         }
 
         shared_ptr<DispatcherCallback> htr(new HashtableResizer(epstore));
@@ -3534,9 +3535,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie,
                                                               ADD_STAT add_stat) 
 {
-    add_casted_stat("ep_lru_total_evicts", stats.evictStats.numTotalEvicts, add_stat, cookie);
+    add_casted_stat("ep_lru_total_evicts", stats.evictStats.numTotalEvictions, add_stat, cookie);
     add_casted_stat("ep_lru_keys_evicted", stats.evictStats.numTotalKeysEvicted, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_empty", stats.evictStats.numEmptyLRU, add_stat, cookie);
+    add_casted_stat("ep_lru_failed_empty", stats.evictStats.numEmptyQueue, add_stat, cookie);
     add_casted_stat("ep_lru_failed_key_absent", stats.evictStats.failedTotal.numKeyNotPresent, add_stat, cookie);
     add_casted_stat("ep_lru_failed_dirty", stats.evictStats.failedTotal.numDirties, add_stat, cookie);
     add_casted_stat("ep_lru_failed_already_evicted", stats.evictStats.failedTotal.numAlreadyEvicted, add_stat, cookie);
@@ -3722,7 +3723,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
     } else if (nkey == 3 && strncmp(stat_key, "lru", 3) == 0) {
         rv = doLRUStats(cookie, add_stat);
 #endif
-    } else if (nkey == 3 && strncmp(stat_key, "eviction", 3) == 0) {
+    } else if (nkey == 8 && strncmp(stat_key, "eviction", 8) == 0) {
         rv = doEvictionStats(cookie, add_stat);
     } else if (nkey == 10 && strncmp(stat_key, "dispatcher", 10) == 0) {
         rv = doDispatcherStats(cookie, add_stat);

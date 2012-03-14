@@ -2,21 +2,27 @@
 
 EvictItem *LRUPolicy::evict()
 {
-        LRUItem *ent = ++it;
-        return static_cast<EvictItem *>(ent);
+    LRUItem *ent = ++it;
+    return static_cast<EvictItem *>(ent);
+}
+
+EvictItem *RandomPolicy::evict()
+{
+    EvictItem *ent = ++it;
+    return ent;
 }
 
 bool EvictionManager::evictSize(size_t size)
 {
     size_t cur = 0;
 
-//    if (pauseEviction) { return false; }
+    if (pauseEviction) { return false; }
 
     while(cur < size) {
         EvictItem *ent = evpolicy->evict();
         if (ent == NULL) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: Empty list, ejection failed.  Evicted only %udB out of a total %udB required.", cur, size);
-            stats.evictStats.numEmptyLRU++;
+            stats.evictStats.numEmptyQueue++;
             return false;
         }
         std::string k;
@@ -32,11 +38,11 @@ bool EvictionManager::evictSize(size_t size)
         StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
 
         if (!v) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL, "LRU: Key not present.");
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not present.");
             stats.evictStats.failedTotal.numKeyNotPresent++;
     //        failedstats.numKeyNotPresent++;
         } else if (!v->ejectValue(stats, vb->ht)) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL, "LRU: Key not eligible for eviction.");
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
             if (v->isResident() == false) {
                 stats.evictStats.failedTotal.numAlreadyEvicted++;
       //          failedstats.numAlreadyEvicted++;
@@ -56,4 +62,26 @@ bool EvictionManager::evictSize(size_t size)
     }
 
     return true;
+}
+
+// Return policy if it requires a background job.
+EvictionPolicy *EvictionManager::evictionBGJob(void) 
+{
+    if (pauseJob) {
+        return NULL;
+    }
+    if (policyName != evpolicy->description()) {
+        EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats);
+        if (p) {
+            delete evpolicy;
+            evpolicy = p;
+        }
+    }
+    evpolicy->setSize(maxSize);
+    if (evpolicy->backgroundJob) { 
+        return evpolicy; 
+    }
+    else { 
+        return NULL; 
+    }
 }
