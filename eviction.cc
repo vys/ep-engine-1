@@ -18,6 +18,7 @@ bool EvictionManager::evictSize(size_t size)
         uint16_t b;
         k = ent->getKey();
         b = ent->get_vbucket_id();
+        ent->reduceCurrentSize(stats);
         delete ent;
         count--;
 
