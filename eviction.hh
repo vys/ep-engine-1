@@ -15,9 +15,22 @@ public:
     
     virtual ~EvictItem() {}
     
+    void increaseCurrentSize(EPStats &st) {
+        size_t by = sizeof(EvictItem) + key.size();
+        st.currentEvictionMemSize.incr(by);
+    }
+
+    void reduceCurrentSize(EPStats &st) {
+        size_t by = sizeof(EvictItem) + key.size(), val;
+        do {
+            val = st.currentEvictionMemSize.get();
+            assert(val >= by);
+        } while (!st.currentEvictionMemSize.cas(val, val - by));
+    }
+
     const std::string &getKey() { 
         return key; 
-     }
+    }
     
     uint16_t get_vbucket_id() const { 
         return vbid; 
@@ -30,9 +43,15 @@ private:
 
 class EvictionPolicy {
 public:
-    EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) :
-                   backgroundJob(job), store(s), stats(st) {}
-    virtual ~EvictionPolicy() {}
+    EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) : 
+                   backgroundJob(job), store(s), stats(st) {
+        stats.currentEvictionMemSize.incr(sizeof(EvictionPolicy));
+    }
+
+    virtual ~EvictionPolicy() {
+        stats.currentEvictionMemSize.decr(sizeof(EvictionPolicy));
+    }
+
     virtual EvictItem* evict(void) = 0;
     virtual std::string description () const = 0;
     virtual void getStats(const void *cookie, ADD_STAT add_stat) = 0;
@@ -40,7 +59,7 @@ public:
     /* Following set of functions are needed only by policies that need a 
        background job to build their data structures.
      */
-    virtual void setSize(int val) = 0;
+    virtual void setSize(size_t val) = 0;
     virtual void initRebuild() = 0;
     virtual bool addEvictItem(StoredValue *v, RCPtr<VBucket>) = 0;
     virtual bool storeEvictItem(void) = 0;
@@ -54,7 +73,7 @@ protected:
 
 class LRUItem : public EvictItem {
 public:
-    LRUItem(EvictItem e, time_t t) : EvictItem(e), timestamp(t) {}
+    LRUItem(StoredValue *v, uint16_t vb, time_t t) : EvictItem(v, vb), timestamp(t) {}
     ~LRUItem() {}
 
     int getAttr() const {
@@ -101,50 +120,96 @@ public:
 class LRUPolicy : public EvictionPolicy {
 public:
     LRUPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) 
-        : EvictionPolicy(s, st, job), list(NULL) {}
+        : EvictionPolicy(s, st, job), list(NULL), templist(NULL) {
+        // this assumes that three pointers are used per node of list
+        stats.currentEvictionMemSize.incr(sizeof(LRUPolicy) + 3 * sizeof(int*));
+    }
 
-    ~LRUPolicy() {}
+    ~LRUPolicy() {
+        // this assumes that three pointers are used per node of list
+        stats.currentEvictionMemSize.decr(sizeof(LRUPolicy) + 3 * sizeof(int*));
+        if (list) {
+            while (it != list->end()) {
+                LRUItem *item = it++;
+                item->reduceCurrentSize(stats);
+                delete item;
+            }
+            stats.currentEvictionMemSize.decr(list->memSize());
+            delete list;
+        }
+        if (templist) {
+            it = templist->begin();
+            while (it != templist->end()) {
+                LRUItem *item = it++;
+                item->reduceCurrentSize(stats);
+                delete item;
+            }
+            stats.currentEvictionMemSize.decr(templist->memSize());
+            delete templist;
+        }
+    }
+
     LRUItemCompare lruItemCompare;
 
-    void setSize(int val) { maxSize = val; }
+    void setSize(size_t val) { maxSize = val; }
     
     void initRebuild() {
         templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
+        stats.currentEvictionMemSize.incr(templist->memSize());
         timestats.reset();
         timestats.startTime = ep_real_time(); 
     }
 
     bool addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
+        assert(templist);
         time_t start = ep_real_time();
-        LRUItem item(EvictItem(v, currentBucket->getId()), v->getDataAge());
-        if ((templist->size() == maxSize) && (lruItemCompare(**(templist->last()), item) < 0)) {
+        LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
+        item->increaseCurrentSize(stats);
+        if ((templist->size() == maxSize) && (lruItemCompare(*templist->last(), *item) < 0)) {
             return false;
         }
         stage.push_front(item);
+        // this assumes that three pointers are used per node of list
+        stats.currentEvictionMemSize.incr(3 * sizeof(int*));
         timestats.visitTime += ep_real_time() - start;
         return true;
     }
 
     bool storeEvictItem() {
+        assert(templist);
         time_t start = ep_real_time();
-        templist->insert(stage);
+        templist->insert(stage, true);
         timestats.storeTime += ep_real_time() - start;
+        // this assumes that three pointers are used per node of list
+        stats.currentEvictionMemSize.decr(stage.size() * 3 * sizeof(int*));
+        stage.clear();
         return true;
     }
 
     void completeRebuild() {
+        assert(templist);
         time_t start = ep_real_time();
+        templist->build();
         FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
-        it.swap(tempit);
-        stage.clear();
+        tempit = it.swap(tempit);
+        while (tempit != list->end()) {
+            LRUItem *item = tempit++;
+            item->reduceCurrentSize(stats);
+            delete item;
+        }
+        stats.currentEvictionMemSize.decr(templist->memSize());
         delete list;
         list = templist;
+        templist = NULL;
+        // this assumes that three pointers are used per node of list
+        stats.currentEvictionMemSize.decr(stage.size() * 3 * sizeof(int*));
+        stage.clear();
         timestats.endTime = ep_real_time();
         timestats.completeTime = timestats.endTime - start;
     }
 
     EvictItem *evict(void) {
-        LRUItem *ent = ++it;
+        LRUItem *ent = it++;
         return static_cast<EvictItem *>(ent);
     }
 
@@ -153,11 +218,11 @@ public:
     void getStats(const void *cookie, ADD_STAT add_stat);
 
 private:
-    std::list<LRUItem> stage;
+    std::list<LRUItem*> stage;
     FixedList<LRUItem, LRUItemCompare> *list;
     FixedList<LRUItem, LRUItemCompare> *templist;
     FixedList<LRUItem, LRUItemCompare>::iterator it;
-    int maxSize;
+    size_t maxSize;
     Atomic<uint32_t> count;
     BGTimeStats timestats;
 };
@@ -236,7 +301,7 @@ public:
 
     ~RandomPolicy() {}
 
-    void setSize(int val) {
+    void setSize(size_t val) {
         maxSize = val;
     }
     void initRebuild() {
@@ -310,7 +375,7 @@ public:
 
     ~BGEvictionPolicy() {}
 
-    void setSize(int val) {
+    void setSize(size_t val) {
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "No use of size %d", val);
     }
 

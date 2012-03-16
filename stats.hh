@@ -207,6 +207,8 @@ public:
     Atomic<size_t> totalValueSize;
     //! Amount of memory used to track items and what-not.
     Atomic<size_t> memOverhead;
+    //! Total size of objects used by eviction.
+    Atomic<size_t> currentEvictionMemSize;
 
     //! Pager low water mark.
     Atomic<size_t> mem_low_wat;

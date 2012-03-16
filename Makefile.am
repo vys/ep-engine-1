@@ -132,6 +132,7 @@ libsqlite3_la_SOURCES = embedded/sqlite3.h embedded/sqlite3.c
 libsqlite3_la_CFLAGS = $(AM_CFLAGS) ${NO_WERROR} -DSQLITE_THREADSAFE=2
 
 check_PROGRAMS=atomic_ptr_test \
+               fixedlist_test \
                atomic_queue_test \
                atomic_test \
                checkpoint_test \
@@ -140,7 +141,6 @@ check_PROGRAMS=atomic_ptr_test \
                hash_table_test \
                histo_test \
                hrtime_test \
-               lrulist_test \
                misc_test \
                mutex_test \
                pathexpand_test \
@@ -233,13 +233,10 @@ hash_table_test_DEPENDENCIES = stored-value.cc stored-value.hh ep.hh item.hh \
                                libobjectregistry.la
 hash_table_test_LDADD = libobjectregistry.la
 
-lrulist_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
-lrulist_test_SOURCES = t/lrulist_test.cc item.cc stored-value.cc \
-                       stored-value.hh testlogger.cc item.hh stats.hh \
-                       evict.cc evict.hh ep.cc
-lrulist_test_DEPENDENCIES = stats.hh stored-value.hh item.hh \
-                            libobjectregistry.la evict.hh
-lrulist_test_LDADD = libobjectregistry.la
+fixedlist_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
+fixedlist_test_SOURCES = t/fixedlist_test.cc
+fixedlist_test_DEPENDENCIES = fixed_list.hh
+fixedlist_test_LDADD = libobjectregistry.la
 
 misc_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
 misc_test_SOURCES = t/misc_test.cc common.hh
@@ -301,7 +298,7 @@ vbucket_test_SOURCES += gethrtime.c
 checkpoint_test_SOURCES += gethrtime.c
 management_mbdbconvert_SOURCES += gethrtime.c
 ep_testsuite_la_SOURCES += gethrtime.c
-lrulist_test_SOURCES += gethrtime.c
+fixedlist_test_SOURCES += gethrtime.c
 endif
 
 if BUILD_TCMALLOC_STATS
