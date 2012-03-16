@@ -1,17 +1,6 @@
 #include <eviction.hh>
 
-EvictItem *LRUPolicy::evict()
-{
-    LRUItem *ent = ++it;
-    return static_cast<EvictItem *>(ent);
-}
-
-EvictItem *RandomPolicy::evict()
-{
-    EvictItem *ent = ++it;
-    return ent;
-}
-
+// Evict keys from memory to make room for 'size' bytes
 bool EvictionManager::evictSize(size_t size)
 {
     size_t cur = 0;
@@ -64,12 +53,14 @@ bool EvictionManager::evictSize(size_t size)
     return true;
 }
 
-// Return policy if it requires a background job.
-EvictionPolicy *EvictionManager::evictionBGJob(void) 
+// Periodic check to set policy and queue size due to config change
+// Return policy if it needs to run as a background job.
+EvictionPolicy *EvictionManager::evictionBGJob(void)
 {
     if (pauseJob) {
         return NULL;
     }
+
     if (policyName != evpolicy->description()) {
         EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats);
         if (p) {
@@ -80,8 +71,7 @@ EvictionPolicy *EvictionManager::evictionBGJob(void)
     evpolicy->setSize(maxSize);
     if (evpolicy->backgroundJob) { 
         return evpolicy; 
-    }
-    else { 
+    } else { 
         return NULL; 
     }
 }

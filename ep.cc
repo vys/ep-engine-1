@@ -771,32 +771,6 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority) {
 
 }
 
-
-void EventuallyPersistentStore::initEvictionManager(void)
-{
-    evictionManager = new EvictionManager(this, stats);
-}
-
-void EventuallyPersistentStore::setMaxEvictEntries(int val) {
-    evictionManager->setMaxSize(val);
-}
-
-int EventuallyPersistentStore::getMaxEvictEntries(void) {
-    return evictionManager->getMaxSize();
-}
-
-EvictionPolicy *EventuallyPersistentStore::evictionBGJob(void) { 
-    return evictionManager->evictionBGJob(); 
-}
-
-void EventuallyPersistentStore::evictionJobEnabled(bool doit) {
-    evictionManager->enableJob(doit);
-}
-
-bool EventuallyPersistentStore::evictionJobEnabled(void) {
-    return evictionManager->enableJob();
-}
-
 void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
                                                 vbucket_state_t to) {
     // Lock to prevent a race condition between a failed update and add.
@@ -2376,3 +2350,36 @@ bool VBCBAdaptor::callback(Dispatcher & d, TaskId t) {
     return !isdone;
 }
 
+void EventuallyPersistentStore::initEvictionManager(const char *p)
+{
+    evictionManager = new EvictionManager(this, stats, p);
+}
+
+void EventuallyPersistentStore::setMaxEvictEntries(int val) {
+    evictionManager->setMaxSize(val);
+}
+
+int EventuallyPersistentStore::getMaxEvictEntries(void) {
+    return evictionManager->getMaxSize();
+}
+
+EvictionPolicy *EventuallyPersistentStore::evictionBGJob(void) { 
+    return evictionManager->evictionBGJob(); 
+}
+
+void EventuallyPersistentStore::evictionJobEnabled(bool doit) {
+    evictionManager->enableJob(doit);
+}
+
+bool EventuallyPersistentStore::evictionJobEnabled(void) {
+    return evictionManager->enableJob();
+}
+
+bool EventuallyPersistentStore::setEvictionPolicy(const char *name) {
+    return evictionManager->setPolicy(name);
+}
+
+void EventuallyPersistentStore::evictionPolicyStats(const void *cookie, ADD_STAT add_stat) {
+    EvictionPolicy *p = evictionManager->getCurrentPolicy(); 
+    p->getStats(cookie, add_stat);
+}

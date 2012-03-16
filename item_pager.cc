@@ -138,7 +138,7 @@ public:
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
         } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty()) {
-            evjob->addEvictItem(v, currentBucket->getId()); 
+            evjob->addEvictItem(v, currentBucket);
         }
     }
 
@@ -172,7 +172,7 @@ public:
 
     bool shouldContinue() {
         if (evjob) {
-            evjob->storeEvictItem();
+            return evjob->storeEvictItem();
         }
         return true;
     }
@@ -255,7 +255,6 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
         shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
                                                        &available, true,
                                                        store->evictionBGJob()));
-        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "XXX: Expiry pager: before calling strore->visit"); 
         store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
                      true, 10);
     }
