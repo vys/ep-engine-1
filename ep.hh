@@ -812,21 +812,22 @@ public:
      */
     void completeOnlineRestore();
 
-    void initEvictionManager(void);
-
+    void initEvictionManager(const char *p);
+    void setMaxEvictEntries(int val);
+    int getMaxEvictEntries();
     EvictionPolicy *evictionBGJob(void);
+    void evictionJobEnabled(bool doit);
+    bool evictionJobEnabled(void);
+    bool setEvictionPolicy(const char *name);
+    void evictionPolicyStats(const void *cookie, ADD_STAT add_stat);
+
     protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
 
-    void setMaxEvictEntries(int val);
-
-    int getMaxEvictEntries();
 
     EvictionManager *getEvictionManager(void) {
         return evictionManager;
     }
     
-    void evictionJobEnabled(bool doit);
-    bool evictionJobEnabled(void);
 
 private:
 
