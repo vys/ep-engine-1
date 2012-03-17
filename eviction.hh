@@ -21,11 +21,8 @@ public:
     }
 
     void reduceCurrentSize(EPStats &st) {
-        size_t by = sizeof(EvictItem) + key.size(), val;
-        do {
-            val = st.currentEvictionMemSize.get();
-            assert(val >= by);
-        } while (!st.currentEvictionMemSize.cas(val, val - by));
+        size_t by = sizeof(EvictItem) + key.size();
+        st.currentEvictionMemSize.decr(by);
     }
 
     const std::string &getKey() { 
@@ -239,7 +236,7 @@ class RandomPolicy : public EvictionPolicy {
 
     class RandomList {
     public:
-        RandomList() : head(new RandomNode) {} 
+        RandomList() : head(new RandomNode) {}
         
         ~RandomList() {
             while (head != NULL) {
@@ -285,10 +282,15 @@ class RandomPolicy : public EvictionPolicy {
         iterator begin() {
             return iterator(head);
         }
+
         void add(EvictItem *item) {
             RandomNode *n = new RandomNode(item);
             n->next = head;
             head = n;
+        }
+
+        static size_t nodeSize() {
+            return sizeof(RandomNode);
         }
 
         private:
@@ -297,15 +299,38 @@ class RandomPolicy : public EvictionPolicy {
 
 public:
     RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job)
-        : EvictionPolicy(s, st, job), list(new RandomList()), it(list->begin()) {}
+        : EvictionPolicy(s, st, job), list(new RandomList()), it(list->begin()) {
+        stats.currentEvictionMemSize.incr(sizeof(RandomPolicy) + sizeof(RandomList) + RandomList::nodeSize());
+    }
 
-    ~RandomPolicy() {}
+    ~RandomPolicy() {
+        stats.currentEvictionMemSize.decr(sizeof(RandomPolicy));
+        EvictItem *node;
+        if (list) {
+            while ((node = ++it) != NULL) {
+                node->reduceCurrentSize(stats);
+                delete node;
+            }
+            stats.currentEvictionMemSize.decr(size * RandomList::nodeSize());
+            delete list;
+        }
+        if (templist) {
+            it = templist->begin();
+            while ((node = ++it) != NULL) {
+                node->reduceCurrentSize(stats);
+                delete node;
+                stats.currentEvictionMemSize.decr(RandomList::nodeSize());
+            }
+        }
+    }
 
     void setSize(size_t val) {
         maxSize = val;
     }
+
     void initRebuild() {
         templist = new RandomList();
+        stats.currentEvictionMemSize.incr(sizeof(RandomList) + RandomList::nodeSize());
         timestats.reset();
         timestats.startTime = ep_real_time();
     }
@@ -316,7 +341,9 @@ public:
             return false;
         }
         EvictItem *item = new EvictItem(v, currentBucket->getId());
+        item->increaseCurrentSize(stats);
         templist->add(item);
+        stats.currentEvictionMemSize.incr(RandomList::nodeSize());
         size++;
         timestats.visitTime += ep_real_time() - start;
         return true;
@@ -336,10 +363,14 @@ public:
         tempit = it.swap(tempit);
         EvictItem *node;
         while ((node = ++tempit) != NULL) {
+            node->reduceCurrentSize(stats);
+            stats.currentEvictionMemSize.decr(RandomList::nodeSize());
             delete node;
         }
+        stats.currentEvictionMemSize.decr(sizeof(RandomList) + RandomList::nodeSize());
         delete list;
         list = templist;
+        templist = NULL;
         size = 0;
         timestats.endTime = ep_real_time();
         timestats.completeTime = timestats.endTime - start;
@@ -348,6 +379,7 @@ public:
 
     EvictItem *evict() {
         EvictItem *ent = ++it;
+        stats.currentEvictionMemSize.decr(RandomList::nodeSize());
         queueSize--;
         return ent;
     }
@@ -371,9 +403,13 @@ private:
 class BGEvictionPolicy : public EvictionPolicy {
 public:
     BGEvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) :
-                     EvictionPolicy(s, st, job), shouldRun(true), ejected(0) {}
+                     EvictionPolicy(s, st, job), shouldRun(true), ejected(0) {
+        stats.currentEvictionMemSize.incr(sizeof(BGEvictionPolicy));
+    }
 
-    ~BGEvictionPolicy() {}
+    ~BGEvictionPolicy() {
+        stats.currentEvictionMemSize.decr(sizeof(BGEvictionPolicy));
+    }
 
     void setSize(size_t val) {
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "No use of size %d", val);
