@@ -76,3 +76,67 @@ EvictionPolicy *EvictionManager::evictionBGJob(void)
         return NULL; 
     }
 }
+
+void LRUPolicy::initRebuild() {
+    if (store->getEvictionManager()->enableJob()) {
+        templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
+        stats.currentEvictionMemSize.incr(templist->memSize());
+        timestats.reset();
+        timestats.startTime = ep_real_time(); 
+    }
+}
+
+bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
+    if (templist && store->getEvictionManager()->enableJob()) {
+        time_t start = ep_real_time();
+        LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
+        item->increaseCurrentSize(stats);
+        if ((templist->size() == maxSize) && (lruItemCompare(*templist->last(), *item) < 0)) {
+            return false;
+        }
+        stage.push_front(item);
+        // this assumes that three pointers are used per node of list
+        stats.currentEvictionMemSize.incr(3 * sizeof(int*));
+        timestats.visitTime += ep_real_time() - start;
+        return true;
+    }
+    clearTemplist();
+    clearStage();
+    return false;
+}
+
+bool LRUPolicy::storeEvictItem() {
+    if (templist && store->getEvictionManager()->enableJob()) {
+        time_t start = ep_real_time();
+        templist->insert(stage, true);
+        timestats.storeTime += ep_real_time() - start;
+        clearStage();
+        return true;
+    }
+    clearTemplist();
+    clearStage();
+    return false;
+}
+
+void LRUPolicy::completeRebuild() {
+    if (templist && store->getEvictionManager()->enableJob()) {
+        time_t start = ep_real_time();
+        templist->build();
+        FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
+        tempit = it.swap(tempit);
+        while (tempit != list->end()) {
+            LRUItem *item = tempit++;
+            item->reduceCurrentSize(stats);
+            delete item;
+        }
+        stats.currentEvictionMemSize.decr(templist->memSize());
+        delete list;
+        list = templist;
+        templist = NULL;
+        timestats.endTime = ep_real_time();
+        timestats.completeTime = timestats.endTime - start;
+    } else {
+        clearTemplist();
+    }
+    clearStage();
+}

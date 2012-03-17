@@ -123,8 +123,8 @@ public:
     }
 
     ~LRUPolicy() {
-        // this assumes that three pointers are used per node of list
-        stats.currentEvictionMemSize.decr(sizeof(LRUPolicy) + 3 * sizeof(int*));
+        clearStage();
+        clearTemplist();
         if (list) {
             while (it != list->end()) {
                 LRUItem *item = it++;
@@ -134,76 +134,19 @@ public:
             stats.currentEvictionMemSize.decr(list->memSize());
             delete list;
         }
-        if (templist) {
-            it = templist->begin();
-            while (it != templist->end()) {
-                LRUItem *item = it++;
-                item->reduceCurrentSize(stats);
-                delete item;
-            }
-            stats.currentEvictionMemSize.decr(templist->memSize());
-            delete templist;
-        }
     }
 
     LRUItemCompare lruItemCompare;
 
     void setSize(size_t val) { maxSize = val; }
     
-    void initRebuild() {
-        templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
-        stats.currentEvictionMemSize.incr(templist->memSize());
-        timestats.reset();
-        timestats.startTime = ep_real_time(); 
-    }
+    void initRebuild();
 
-    bool addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
-        assert(templist);
-        time_t start = ep_real_time();
-        LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
-        item->increaseCurrentSize(stats);
-        if ((templist->size() == maxSize) && (lruItemCompare(*templist->last(), *item) < 0)) {
-            return false;
-        }
-        stage.push_front(item);
-        // this assumes that three pointers are used per node of list
-        stats.currentEvictionMemSize.incr(3 * sizeof(int*));
-        timestats.visitTime += ep_real_time() - start;
-        return true;
-    }
+    bool addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket);
 
-    bool storeEvictItem() {
-        assert(templist);
-        time_t start = ep_real_time();
-        templist->insert(stage, true);
-        timestats.storeTime += ep_real_time() - start;
-        // this assumes that three pointers are used per node of list
-        stats.currentEvictionMemSize.decr(stage.size() * 3 * sizeof(int*));
-        stage.clear();
-        return true;
-    }
+    bool storeEvictItem();
 
-    void completeRebuild() {
-        assert(templist);
-        time_t start = ep_real_time();
-        templist->build();
-        FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
-        tempit = it.swap(tempit);
-        while (tempit != list->end()) {
-            LRUItem *item = tempit++;
-            item->reduceCurrentSize(stats);
-            delete item;
-        }
-        stats.currentEvictionMemSize.decr(templist->memSize());
-        delete list;
-        list = templist;
-        templist = NULL;
-        // this assumes that three pointers are used per node of list
-        stats.currentEvictionMemSize.decr(stage.size() * 3 * sizeof(int*));
-        stage.clear();
-        timestats.endTime = ep_real_time();
-        timestats.completeTime = timestats.endTime - start;
-    }
+    void completeRebuild();
 
     EvictItem *evict(void) {
         LRUItem *ent = it++;
@@ -215,6 +158,27 @@ public:
     void getStats(const void *cookie, ADD_STAT add_stat);
 
 private:
+
+    void clearTemplist() {
+        if (templist) {
+            FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
+            while (tempit != templist->end()) {
+                LRUItem *item = tempit++;
+                item->reduceCurrentSize(stats);
+                delete item;
+            }
+            stats.currentEvictionMemSize.decr(templist->memSize());
+            delete templist;
+            templist = NULL;
+        }
+    }
+
+    void clearStage() {
+        // this assumes that three pointers are used per node of list
+        stats.currentEvictionMemSize.decr(stage.size() * 3 * sizeof(int*));
+        stage.clear();
+    }
+
     std::list<LRUItem*> stage;
     FixedList<LRUItem, LRUItemCompare> *list;
     FixedList<LRUItem, LRUItemCompare> *templist;
