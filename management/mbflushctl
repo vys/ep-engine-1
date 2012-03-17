@@ -69,7 +69,9 @@ Available params for "set":
     exp_pager_stime     - Expiry Pager Sleeptime
     max_evict_entries   - Maximum entries used by eviction job
     enable_eviction_job - Enable or Disable eviction job
-    eviction_policy     - Change the eviction policy """)
+    eviction_policy     - Change the eviction policy 
+    eviction_headroom   - Change the headroom to be kept aside through eviction
+    disable_inline_eviction   - Disable inline eviction""")
 
     c.addCommand('stop', stop, 'stop')
     c.addCommand('start', start, 'start')

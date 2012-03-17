@@ -187,11 +187,10 @@ public:
                                    const rel_time_t exptime)
     {
 /* Account for all threads that could be doing the memory check right now
- * PARALLEL_OVERHEAD: Max allocation possible by one thread * no. of threads
+ * Total headroom: No. of threads * configured headroom per thread
  * METADATA_OVERHEAD: Size of StoredValue strucure
  */
 #define PARALLELISM 4
-#define PARALLEL_OVERHEAD (2000000 * (PARALLELISM - 1))
 #define METADATA_OVERHEAD 72
         (void)cookie;
         if (nbytes > maxItemSize) {
@@ -201,8 +200,9 @@ public:
         time_t expiretime = (exptime == 0) ? 0 : ep_abs_time(ep_reltime(exptime));
 
         size_t needed = nkey + nbytes + METADATA_OVERHEAD;
-        if (StoredValue::hasEnoughMemory(needed + PARALLEL_OVERHEAD, stats) == false) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: No memory, attempting ejection.");
+        size_t cushion = eviction.headroom * (PARALLELISM - 1);
+        if (StoredValue::hasEnoughMemory(needed + cushion, stats) == false) {
+            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: No memory, attempting ejection.");
             epstore->getEvictionManager()->evictSize(needed);
         }
 
@@ -640,6 +640,14 @@ public:
         return epstore->setEvictionPolicy(name);
     }
 
+    void setEvictionHeadroom(size_t room) {
+        eviction.headroom = room;
+    }
+
+    void setEvictionDisable(bool doit) {
+        eviction.disableInlineEviction = doit;
+    }
+
 private:
     EventuallyPersistentEngine(GET_SERVER_API get_server_api);
     friend ENGINE_ERROR_CODE create_instance(uint64_t interface,
@@ -852,6 +860,11 @@ private:
         RestoreManager *manager;
         Atomic<bool> enabled;
     } restore;
+
+    struct evictionConfig {
+        size_t headroom;
+        bool disableInlineEviction;
+    } eviction;
 };
 
 #endif
