@@ -10,7 +10,7 @@ bool EvictionManager::evictSize(size_t size)
     while(cur < size) {
         EvictItem *ent = evpolicy->evict();
         if (ent == NULL) {
-            getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: Empty list, ejection failed.  Evicted only %udB out of a total %udB required.", cur, size);
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Empty list, ejection failed.  Evicted only %udB out of a total %udB required.", cur, size);
             stats.evictStats.numEmptyQueue++;
             return false;
         }
@@ -63,7 +63,7 @@ EvictionPolicy *EvictionManager::evictionBGJob(void)
     }
 
     if (policyName != evpolicy->description()) {
-        EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats);
+        EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats, maxSize);
         if (p) {
             delete evpolicy;
             evpolicy = p;
@@ -135,6 +135,7 @@ void LRUPolicy::completeRebuild() {
         templist = NULL;
         timestats.endTime = ep_real_time();
         timestats.completeTime = timestats.endTime - start;
+        userstats = timestats;
     } else {
         clearTemplist();
     }

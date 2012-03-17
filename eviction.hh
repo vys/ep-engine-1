@@ -116,8 +116,13 @@ public:
 //Implementation of LRU based eviction policy
 class LRUPolicy : public EvictionPolicy {
 public:
-    LRUPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) 
-        : EvictionPolicy(s, st, job), list(NULL), templist(NULL) {
+    LRUPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz) :
+              EvictionPolicy(s, st, job), maxSize(sz),
+              list(new FixedList<LRUItem, LRUItemCompare>(maxSize)),
+              templist(NULL) {
+        list->build();
+        it = list->begin();
+        stats.currentEvictionMemSize.incr(list->memSize());
         // this assumes that three pointers are used per node of list
         stats.currentEvictionMemSize.incr(sizeof(LRUPolicy) + 3 * sizeof(int*));
     }
@@ -137,6 +142,22 @@ public:
     }
 
     LRUItemCompare lruItemCompare;
+
+    size_t getPrimaryQueueSize() {
+        if (list) {
+            return list->size();
+        } else {
+            return 0;
+        }
+    }
+
+    size_t getSecondaryQueueSize() {
+        if (templist) {
+            return templist->size();
+        } else {
+            return 0;
+        }
+    }
 
     void setSize(size_t val) { maxSize = val; }
     
@@ -179,13 +200,14 @@ private:
         stage.clear();
     }
 
+    size_t maxSize;
     std::list<LRUItem*> stage;
     FixedList<LRUItem, LRUItemCompare> *list;
-    FixedList<LRUItem, LRUItemCompare> *templist;
     FixedList<LRUItem, LRUItemCompare>::iterator it;
-    size_t maxSize;
+    FixedList<LRUItem, LRUItemCompare> *templist;
     Atomic<uint32_t> count;
     BGTimeStats timestats;
+    BGTimeStats userstats;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -262,8 +284,9 @@ class RandomPolicy : public EvictionPolicy {
     };
 
 public:
-    RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job)
-        : EvictionPolicy(s, st, job), list(new RandomList()), it(list->begin()) {
+    RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz)
+        : EvictionPolicy(s, st, job), maxSize(sz), list(new RandomList()),
+          it(list->begin()) {
         stats.currentEvictionMemSize.incr(sizeof(RandomPolicy) + sizeof(RandomList) + RandomList::nodeSize());
     }
 
@@ -351,11 +374,12 @@ public:
     void getStats(const void *cookie, ADD_STAT add_stat);
 
     std::string description() const { return std::string("random"); }
+
 private:
+    size_t maxSize;
     RandomList *list;
     RandomList *templist;
     RandomList::iterator it;
-    size_t maxSize;
     size_t size;
     Atomic<size_t> queueSize;
     BGTimeStats timestats;
@@ -451,12 +475,13 @@ private:
 
 class EvictionPolicyFactory {
 public:
-    static EvictionPolicy *getInstance(std::string desc, EventuallyPersistentStore *s, EPStats &st) {
+    static EvictionPolicy *getInstance(std::string desc, EventuallyPersistentStore *s,
+                                       EPStats &st, size_t sz) {
         EvictionPolicy *p = NULL;
         if (desc == "lru") {
-            p = new LRUPolicy(s, st, true);
+            p = new LRUPolicy(s, st, true, sz);
         } else if (desc == "random") {
-            p = new RandomPolicy(s, st, true);
+            p = new RandomPolicy(s, st, true, sz);
         } else if (desc == "bgeviction") {
             p = new BGEvictionPolicy(s, st, true);
         } else {
@@ -471,14 +496,14 @@ public:
     EvictionManager(EventuallyPersistentStore *s, EPStats &st, const char *p) :
         maxSize(MAX_EVICTION_ENTRIES), count(0), pauseEviction(false),
         pauseJob(false), store(s), stats(st), policyName(p),
-        evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st)) {
+        evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)) {
         policies.insert("lru");
         policies.insert("random");
         policies.insert("bgeviction");
 
         // This is here in case the default argument was not set correctly
         if (!evpolicy) {
-            evpolicy = EvictionPolicyFactory::getInstance("random", s, st);
+            evpolicy = EvictionPolicyFactory::getInstance("random", s, st, maxSize);
         }
     }
 

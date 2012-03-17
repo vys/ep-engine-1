@@ -300,27 +300,42 @@ extern "C" {
                 uint64_t vsize = strtoull(valz, &ptr, 10);
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
-                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Setting exp_pager_stime value to %ulld via flush params.", vsize);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting exp_pager_stime value to %ulld via flush params.", vsize);
                 e->setExpiryPagerSleeptime((size_t)vsize);
             } else if (strcmp(keyz, "enable_eviction_job") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
                 int val = strtoull(valz, &ptr, 10);
                 validate(val, static_cast<int>(0), 1);
-                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Setting enable_eviction_job to %d via flush params.", val);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting enable_eviction_job to %d via flush params.", val);
                 e->evictionJobEnabled(val);
             } else if (strcmp(keyz, "eviction_policy") == 0) {
-                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Setting eviction policy to %s via flush params.", valz);
-                if (e->setEvictionPolicy(valz)) {
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction policy to %s via flush params.", valz);
+                if (!e->setEvictionPolicy(valz)) {
                     getLogger()->log(EXTENSION_LOG_WARNING, "Setting eviction policy to %s failed.", valz);
                 }
+            } else if (strcmp(keyz, "eviction_headroom") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         std::numeric_limits<uint64_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction_headroom to %d via flush params.", vsize);
+                e->setEvictionHeadroom(vsize);
+            } else if (strcmp(keyz, "disable_inline_eviction") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                int val = strtoull(valz, &ptr, 10);
+                validate(val, static_cast<int>(0), 1);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting disable_inline_eviction to %d via flush params.", val);
+                e->setEvictionDisable((size_t)val);
             } else if (strcmp(keyz, "max_evict_entries") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
                 uint64_t vsize = strtoull(valz, &ptr, 10);
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
-                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Setting max_evict_entries to %d via flush params.", vsize);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting max_evict_entries to %d via flush params.", vsize);
                 e->setMaxEvictEntries((size_t)vsize);
             } else if (strcmp(keyz, "inconsistent_slave_chk") == 0) {
                 bool inconsistentSlaveCheckpoint = false;
@@ -1101,11 +1116,13 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t maxEvictEntries = 500000;
     float tapThrottleThreshold(-1);
     bool enableEvictionJob = 1;
-    char *defaultEvictionPolicy = "random";
+    char *policy = "random";
 
     resetStats();
 
     stats.tapThrottleThreshold = 0.9;
+    eviction.headroom = 2000000;
+    eviction.disableInlineEviction = 0;
 
     if (config != NULL) {
         char *dbn = NULL, *shardPat = NULL, *initf = NULL, *pinitf = NULL,
@@ -1115,7 +1132,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         size_t maxSize = 0;
         float mutation_mem_threshold = 0;
 
-        const int max_items = 56;
+        const int max_items = 58;
         struct config_item items[max_items];
         int ii = 0;
         memset(items, 0, sizeof(items));
@@ -1271,7 +1288,17 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         ++ii;
         items[ii].key = "eviction_policy";
         items[ii].datatype = DT_STRING;
-        items[ii].value.dt_string = &defaultEvictionPolicy;
+        items[ii].value.dt_string = &policy;
+
+        ++ii;
+        items[ii].key = "eviction_headroom";
+        items[ii].datatype = DT_SIZE;
+        items[ii].value.dt_size = &eviction.headroom;
+
+        ++ii;
+        items[ii].key = "disable_inline_eviction";
+        items[ii].datatype = DT_BOOL;
+        items[ii].value.dt_bool = &eviction.disableInlineEviction;
 
         ++ii;
         items[ii].key = "db_shards";
@@ -1606,7 +1633,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         epstore->scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
 
         // Initialize the eviction manager
-        epstore->initEvictionManager(defaultEvictionPolicy);
+        epstore->initEvictionManager(policy);
 
         if (HashTable::getDefaultStorageValueType() != small) {
             shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
@@ -3032,17 +3059,15 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     add_casted_stat("ep_latency_arith_cmd", epstats.arithCmdHisto.total(),
                     add_stat, cookie);
 
+    // Eviction stats
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
                     add_stat, cookie);
     add_casted_stat("ep_max_evict_entries", epstore->getMaxEvictEntries(),
                     add_stat, cookie);
-    //FIXME
-#if 0
-    add_casted_stat("ep_lru_build_start_time", epstore->getActiveLRU()->getBuildStartTime(),
+    add_casted_stat("eviction_headroom", eviction.headroom, add_stat, cookie);
+    add_casted_stat("disable_inline_eviction",
+                    (eviction.disableInlineEviction == false) ? 0 : 1,
                     add_stat, cookie);
-    add_casted_stat("ep_lru_build_end_time", epstore->getActiveLRU()->getBuildEndTime(),
-                    add_stat, cookie);
-#endif
 
     add_casted_stat("ep_inconsistent_slave_chk", CheckpointManager::isInconsistentSlaveCheckpoint(),
                     add_stat, cookie);
@@ -3554,23 +3579,32 @@ void BGTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
 }
 
 void BGEvictionPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
-    timestats.getStats(cookie, add_stat);
+    add_casted_stat("eviction_policy", description(), add_stat, cookie);
     add_casted_stat("bg_evictions", ejected, add_stat, cookie);
+    timestats.getStats(cookie, add_stat);
 }
 
 void LRUPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
-    timestats.getStats(cookie, add_stat);
+    add_casted_stat("eviction_policy", description(), add_stat, cookie);
+    add_casted_stat("lru_policy_ev_queue_size", getPrimaryQueueSize(), add_stat, cookie);
+    add_casted_stat("lru_policy_secondary_ev_queue_size", getSecondaryQueueSize(), 
+                    add_stat, cookie);
+    add_casted_stat("eviction_policy", description(), add_stat, cookie);
+    userstats.getStats(cookie, add_stat);
 }
 
 void RandomPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
-    userstats.getStats(cookie, add_stat);
+    add_casted_stat("eviction_policy", description(), add_stat, cookie);
     add_casted_stat("random_policy_ev_queue_size", queueSize, add_stat, cookie);
     add_casted_stat("random_policy_secondary_queue_size", size, add_stat, cookie);
+    userstats.getStats(cookie, add_stat);
 }
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie,
                                                               ADD_STAT add_stat) 
 {
+    epstore->evictionPolicyStats(cookie, add_stat);
+
     add_casted_stat("eviction_total_evicts", stats.evictStats.numTotalEvictions, add_stat, cookie);
     add_casted_stat("eviction_keys_evicted", stats.evictStats.numTotalKeysEvicted, add_stat, cookie);
     add_casted_stat("eviction_failed_empty", stats.evictStats.numEmptyQueue, add_stat, cookie);
@@ -3580,7 +3614,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     add_casted_stat("eviction_failed_deleted", stats.evictStats.failedTotal.numDeleted, add_stat, cookie);
     add_casted_stat("eviction_failed_key_too_recent", stats.evictStats.failedTotal.numKeyTooRecent, add_stat, cookie);
 
-    epstore->evictionPolicyStats(cookie, add_stat);
     return ENGINE_SUCCESS;
 }
 
