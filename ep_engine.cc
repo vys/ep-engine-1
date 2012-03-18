@@ -3589,8 +3589,8 @@ void LRUPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("lru_policy_ev_queue_size", getPrimaryQueueSize(), add_stat, cookie);
     add_casted_stat("lru_policy_secondary_ev_queue_size", getSecondaryQueueSize(), 
                     add_stat, cookie);
-    add_casted_stat("eviction_policy", description(), add_stat, cookie);
     userstats.getStats(cookie, add_stat);
+    add_casted_stat("lru_age_histogram", getLruHisto(), add_stat, cookie);
 }
 
 void RandomPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
@@ -3603,7 +3603,6 @@ void RandomPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie,
                                                               ADD_STAT add_stat) 
 {
-    epstore->evictionPolicyStats(cookie, add_stat);
 
     add_casted_stat("eviction_total_evicts", stats.evictStats.numTotalEvictions, add_stat, cookie);
     add_casted_stat("eviction_keys_evicted", stats.evictStats.numTotalKeysEvicted, add_stat, cookie);
@@ -3614,6 +3613,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     add_casted_stat("eviction_failed_deleted", stats.evictStats.failedTotal.numDeleted, add_stat, cookie);
     add_casted_stat("eviction_failed_key_too_recent", stats.evictStats.failedTotal.numKeyTooRecent, add_stat, cookie);
 
+    epstore->evictionPolicyStats(cookie, add_stat);
     return ENGINE_SUCCESS;
 }
 

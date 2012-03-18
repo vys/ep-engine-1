@@ -12,6 +12,7 @@
 class EvictItem {
 public:
     EvictItem(StoredValue *v, uint16_t vb) : key(v->getKey()), vbid(vb) {}
+    EvictItem() : key(""), vbid(0) {}
     
     virtual ~EvictItem() {}
     
@@ -74,6 +75,8 @@ protected:
 class LRUItem : public EvictItem {
 public:
     LRUItem(StoredValue *v, uint16_t vb, time_t t) : EvictItem(v, vb), timestamp(t) {}
+    LRUItem(time_t t) : EvictItem(), timestamp(t) {}
+
     ~LRUItem() {}
 
     int getAttr() const {
@@ -207,10 +210,15 @@ public:
         return true;
     }
 
+    Histogram<int> &getLruHisto() {
+        return lruHisto;
+    }
+
     void completeRebuild() {
         assert(templist);
         time_t start = ep_real_time();
         templist->build();
+        genLruHisto();
         FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
         tempit = it.swap(tempit);
         while (tempit != list->end()) {
@@ -240,6 +248,33 @@ public:
     void getStats(const void *cookie, ADD_STAT add_stat);
 
 private:
+
+    // Generate histogram representing distribution of all the keys in the
+    // LRU queue with respect to their age.
+    void genLruHisto() {
+        lruHisto.reset();
+        time_t cur = ep_current_time();
+        int total = 0;
+        // Handle keys that are not accessed since startup. Those keys have
+        // the timestamp as 0 and cannot be used with a relative timestamp.
+        if (templist->first()->getAttr() == 0) {
+            LRUItem l(1);
+            total = templist->numLessThan(&l);
+            lruHisto.add(cur, total);
+        }
+        int remaining = templist->size() - total;
+        int i = 1;
+        total = 0;
+        while (total < remaining) {
+            time_t t = cur - 2 * i;
+            LRUItem l(t);
+            int curtotal = templist->numGreaterThan(&l);
+            lruHisto.add(2 * i, curtotal - total);
+            total = curtotal;
+            i++;
+        }
+    }
+
     size_t maxSize;
     std::list<LRUItem*> stage;
     FixedList<LRUItem, LRUItemCompare> *list;
@@ -248,6 +283,7 @@ private:
     Atomic<uint32_t> count;
     BGTimeStats timestats;
     BGTimeStats userstats;
+    Histogram<int> lruHisto;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -495,7 +531,7 @@ public:
 class EvictionManager {
 public:
     EvictionManager(EventuallyPersistentStore *s, EPStats &st, const char *p) :
-        maxSize(MAX_EVICTION_ENTRIES), count(0), pauseEviction(false),
+        maxSize(MAX_EVICTION_ENTRIES), count(0),
         pauseJob(false), store(s), stats(st), policyName(p),
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)) {
         policies.insert("lru");
@@ -550,7 +586,6 @@ public:
 private:
     uint32_t maxSize; // Total number of entries for eviction
     Atomic<int> count;
-    bool pauseEviction;
     bool pauseJob;
     EventuallyPersistentStore *store;
     EPStats &stats;

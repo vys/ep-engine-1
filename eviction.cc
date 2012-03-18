@@ -5,8 +5,6 @@ bool EvictionManager::evictSize(size_t size)
 {
     size_t cur = 0;
 
-    if (pauseEviction) { return false; }
-
     while(cur < size) {
         EvictItem *ent = evpolicy->evict();
         if (ent == NULL) {

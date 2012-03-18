@@ -203,7 +203,9 @@ public:
         size_t cushion = eviction.headroom * (PARALLELISM - 1);
         if (StoredValue::hasEnoughMemory(needed + cushion, stats) == false) {
             getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: No memory, attempting ejection.");
-            epstore->getEvictionManager()->evictSize(needed);
+            if (!eviction.disableInlineEviction) {
+                epstore->getEvictionManager()->evictSize(needed);
+            }
         }
 
         *item = new Item(key, nkey, nbytes, flags, expiretime);

@@ -203,6 +203,10 @@ public:
         return l;
     }
 
+    int numGreaterThan(T *compareTo) {
+        return _size - (numLessThan(compareTo));
+    }
+
     T* insert(T *data) {
         assert(!_built);
         if (_maxSize == 0) {
@@ -223,6 +227,11 @@ public:
     T* last() {
         assert(_size);
         return _data[_built ? _size-1 : 0];
+    }
+
+    T* first() {
+        assert(_size);
+        return _data[0];
     }
 
     iterator end() {
