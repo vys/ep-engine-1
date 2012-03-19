@@ -74,3 +74,64 @@ EvictionPolicy *EvictionManager::evictionBGJob(void)
         return NULL; 
     }
 }
+
+void LRUPolicy::initRebuild() {
+    if (store->getEvictionManager()->enableJob()) {
+        templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
+        stats.currentEvictionMemSize.incr(templist->memSize());
+        timestats.startTime = gethrtime();
+    }
+}
+
+bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
+    BlockTimer timer(&timestats.visitHisto);
+    if (templist && store->getEvictionManager()->enableJob()) {
+        LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
+        item->increaseCurrentSize(stats);
+        if ((templist->size() == maxSize) && (lruItemCompare(*templist->last(), *item) < 0)) {
+            return false;
+        }
+        stage.push_front(item);
+        // this assumes that three pointers are used per node of list
+        stats.currentEvictionMemSize.incr(3 * sizeof(int*));
+        return true;
+    }
+    clearTemplist();
+    clearStage();
+    return false;
+}
+
+bool LRUPolicy::storeEvictItem() {
+    BlockTimer timer(&timestats.storeHisto);
+    if (templist && store->getEvictionManager()->enableJob()) {
+        templist->insert(stage, true);
+        clearStage();
+        return true;
+    }
+    clearTemplist();
+    clearStage();
+    return false;
+}
+
+void LRUPolicy::completeRebuild() {
+    BlockTimer timer(&timestats.completeHisto);
+    if (templist && store->getEvictionManager()->enableJob()) {
+        templist->build();
+        genLruHisto();
+        FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
+        tempit = it.swap(tempit);
+        while (tempit != list->end()) {
+            LRUItem *item = tempit++;
+            item->reduceCurrentSize(stats);
+            delete item;
+        }
+        stats.currentEvictionMemSize.decr(templist->memSize());
+        delete list;
+        list = templist;
+        templist = NULL;
+        timestats.endTime = gethrtime();
+    } else {
+        clearTemplist();
+    }
+    clearStage();
+}
