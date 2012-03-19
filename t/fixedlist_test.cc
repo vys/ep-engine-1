@@ -4,7 +4,7 @@
 #include <iostream>
 #include <vector>
 
-#define TOTAL_SIZE 50000000
+#define TOTAL_SIZE 5000000
 #define LIST_SIZE   500000
 
 using namespace std;
@@ -62,6 +62,19 @@ void printAll(FixedList<Item> &l, vector<int> &v) {
 }
 #endif
 
+void checkNumLessThanVX(FixedList<Item> &l, vector<int> &v, int x) {
+    Item dummy(0);
+    if (x == LIST_SIZE) {
+        dummy.a = v[x-1] + 1;
+    } else {
+        while (x > 0 && v[x-1] == v[x]) {
+            x--;
+        }
+        dummy.a = v[x];
+    }
+    assert(l.numLessThan(&dummy) == x);
+}
+
 // ----------------------------------------------------------------------
 // Actual tests below.
 // ----------------------------------------------------------------------
@@ -85,14 +98,10 @@ void checkPreBuildSanity(FixedList<Item> &l) {
 
 void checkNumLessThan(FixedList<Item> &l, vector<int> &v) {
     int tries = 10;
-    Item dummy(0);
+    checkNumLessThanVX(l, v, 0);
+    checkNumLessThanVX(l, v, LIST_SIZE);
     for (int i = 0; i < tries; i++) {
-        int x = rand() % LIST_SIZE;
-        while (x > 0 && v[x-1] == v[x]) {
-            x--;
-        }
-        dummy.a = v[x];
-        assert(l.numLessThan(&dummy) == x);
+        checkNumLessThanVX(l, v, rand() % LIST_SIZE);
     }
 }
 
