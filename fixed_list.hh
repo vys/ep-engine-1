@@ -140,15 +140,16 @@ public:
         _built = false;
     }
 
-    void insert(std::list<T*> &l, bool deleteRemoved=false) {
+    std::list<T*> *insert(std::list<T*> &l) {
+        std::list<T*> *ret = new std::list<T*>;
+        T *dummy;
         typename std::list<T*>::iterator it;
         for (it = l.begin(); it != l.end(); it++) {
-            if (deleteRemoved) {
-                delete insert(*it);
-            } else {
-                insert(*it);
+            if ((dummy = insert(*it)) != NULL) {
+                ret->push_back(dummy);
             }
         }
+        return ret;
     }
 
     void build() {

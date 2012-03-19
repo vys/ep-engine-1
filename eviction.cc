@@ -9,7 +9,7 @@ bool EvictionManager::evictSize(size_t size)
         EvictItem *ent = evpolicy->evict();
         if (ent == NULL) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Empty list, ejection failed.  Evicted only %udB out of a total %udB required.", cur, size);
-            stats.evictStats.numEmptyQueue++;
+            stats.evictionStats.numEmptyQueue++;
             return false;
         }
         std::string k;
@@ -27,25 +27,25 @@ bool EvictionManager::evictSize(size_t size)
 
         if (!v) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not present.");
-            stats.evictStats.failedTotal.numKeyNotPresent++;
+            stats.evictionStats.failedTotal.numKeyNotPresent++;
     //        failedstats.numKeyNotPresent++;
         } else if (!v->ejectValue(stats, vb->ht)) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
             if (v->isResident() == false) {
-                stats.evictStats.failedTotal.numAlreadyEvicted++;
+                stats.evictionStats.failedTotal.numAlreadyEvicted++;
       //          failedstats.numAlreadyEvicted++;
             } else if (v->isClean() == false) {
-                stats.evictStats.failedTotal.numDirties++;
+                stats.evictionStats.failedTotal.numDirties++;
         //        failedstats.numDirties++;
             } else if (v->isDeleted() == false) {
-                stats.evictStats.failedTotal.numDeleted++;
+                stats.evictionStats.failedTotal.numDeleted++;
           //      failedstats.numDeleted++;
             }
         } else {
             cur += v->valLength(); 
             /* update stats for eviction that just happened */
-            stats.evictStats.numTotalKeysEvicted++;
-            stats.evictStats.numKeysEvicted++;
+            stats.evictionStats.numTotalKeysEvicted++;
+            stats.evictionStats.numKeysEvicted++;
         }
     }
 
@@ -78,7 +78,7 @@ EvictionPolicy *EvictionManager::evictionBGJob(void)
 void LRUPolicy::initRebuild() {
     if (store->getEvictionManager()->enableJob()) {
         templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
-        stats.currentEvictionMemSize.incr(templist->memSize());
+        stats.evictionStats.memSize.incr(templist->memSize());
         timestats.startTime = gethrtime();
     }
 }
@@ -93,7 +93,7 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
         }
         stage.push_front(item);
         // this assumes that three pointers are used per node of list
-        stats.currentEvictionMemSize.incr(3 * sizeof(int*));
+        stats.evictionStats.memSize.incr(3 * sizeof(int*));
         return true;
     }
     clearTemplist();
@@ -104,7 +104,13 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
 bool LRUPolicy::storeEvictItem() {
     BlockTimer timer(&timestats.storeHisto);
     if (templist && store->getEvictionManager()->enableJob()) {
-        templist->insert(stage, true);
+        std::list<LRUItem*> *l = templist->insert(stage);
+        for (std::list<LRUItem*>::iterator iter = l->begin(); iter != l->end(); iter++) {
+            LRUItem *item = *iter;
+            item->reduceCurrentSize(stats);
+            delete item;
+        }
+        delete l;
         clearStage();
         return true;
     }
@@ -125,7 +131,7 @@ void LRUPolicy::completeRebuild() {
             item->reduceCurrentSize(stats);
             delete item;
         }
-        stats.currentEvictionMemSize.decr(templist->memSize());
+        stats.evictionStats.memSize.decr(templist->memSize());
         delete list;
         list = templist;
         templist = NULL;

@@ -19,12 +19,12 @@ public:
     
     void increaseCurrentSize(EPStats &st) {
         size_t by = sizeof(EvictItem) + key.size();
-        st.currentEvictionMemSize.incr(by);
+        st.evictionStats.memSize.incr(by);
     }
 
     void reduceCurrentSize(EPStats &st) {
         size_t by = sizeof(EvictItem) + key.size();
-        st.currentEvictionMemSize.decr(by);
+        st.evictionStats.memSize.decr(by);
     }
 
     const std::string &getKey() { 
@@ -44,11 +44,11 @@ class EvictionPolicy {
 public:
     EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) : 
                    backgroundJob(job), store(s), stats(st) {
-        stats.currentEvictionMemSize.incr(sizeof(EvictionPolicy));
+        stats.evictionStats.memSize.incr(sizeof(EvictionPolicy));
     }
 
     virtual ~EvictionPolicy() {
-        stats.currentEvictionMemSize.decr(sizeof(EvictionPolicy));
+        stats.evictionStats.memSize.decr(sizeof(EvictionPolicy));
     }
 
     // Inline eviction method. Called during front-end operations.
@@ -123,9 +123,9 @@ public:
               templist(NULL) {
         list->build();
         it = list->begin();
-        stats.currentEvictionMemSize.incr(list->memSize());
+        stats.evictionStats.memSize.incr(list->memSize());
         // this assumes that three pointers are used per node of list
-        stats.currentEvictionMemSize.incr(sizeof(LRUPolicy) + 3 * sizeof(int*));
+        stats.evictionStats.memSize.incr(sizeof(LRUPolicy) + 3 * sizeof(int*));
     }
 
     ~LRUPolicy() {
@@ -137,9 +137,10 @@ public:
                 item->reduceCurrentSize(stats);
                 delete item;
             }
-            stats.currentEvictionMemSize.decr(list->memSize());
+            stats.evictionStats.memSize.decr(list->memSize());
             delete list;
         }
+        stats.evictionStats.memSize.decr(sizeof(LRUPolicy));
     }
 
     LRUItemCompare lruItemCompare;
@@ -219,7 +220,7 @@ private:
                 item->reduceCurrentSize(stats);
                 delete item;
             }
-            stats.currentEvictionMemSize.decr(templist->memSize());
+            stats.evictionStats.memSize.decr(templist->memSize());
             delete templist;
             templist = NULL;
         }
@@ -227,7 +228,7 @@ private:
 
     void clearStage() {
         // this assumes that three pointers are used per node of list
-        stats.currentEvictionMemSize.decr(stage.size() * 3 * sizeof(int*));
+        stats.evictionStats.memSize.decr(stage.size() * 3 * sizeof(int*));
         stage.clear();
     }
 
@@ -242,16 +243,17 @@ private:
 };
 
 class RandomPolicy : public EvictionPolicy {
-    class RandomNode {
-    public:
-        RandomNode(EvictItem* _data = NULL) : data(_data), next(NULL) {}
-        ~RandomNode() {}
-
-        EvictItem *data;
-        RandomNode *next;
-    };
-
     class RandomList {
+    private:
+        class RandomNode {
+        public:
+            RandomNode(EvictItem* _data = NULL) : data(_data), next(NULL) {}
+            ~RandomNode() {}
+
+            EvictItem *data;
+            RandomNode *next;
+        };
+
     public:
         RandomList() : head(new RandomNode) {}
         
@@ -310,36 +312,40 @@ class RandomPolicy : public EvictionPolicy {
             return sizeof(RandomNode);
         }
 
-        private:
-            RandomNode *head;
+    private:
+        RandomNode *head;
     };
 
 public:
     RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz)
         : EvictionPolicy(s, st, job), maxSize(sz), list(new RandomList()),
           it(list->begin()) {
-        stats.currentEvictionMemSize.incr(sizeof(RandomPolicy) + sizeof(RandomList) + RandomList::nodeSize());
+        stats.evictionStats.memSize.incr(sizeof(RandomPolicy) + sizeof(RandomList) + RandomList::nodeSize());
     }
 
     ~RandomPolicy() {
-        stats.currentEvictionMemSize.decr(sizeof(RandomPolicy));
         EvictItem *node;
         if (list) {
             while ((node = ++it) != NULL) {
                 node->reduceCurrentSize(stats);
                 delete node;
             }
-            stats.currentEvictionMemSize.decr(size * RandomList::nodeSize());
+            stats.evictionStats.memSize.decr(queueSize.get() * RandomList::nodeSize());
             delete list;
         }
         if (templist) {
             it = templist->begin();
+            int c = 0;
             while ((node = ++it) != NULL) {
+                c++;
                 node->reduceCurrentSize(stats);
                 delete node;
-                stats.currentEvictionMemSize.decr(RandomList::nodeSize());
+                stats.evictionStats.memSize.decr(RandomList::nodeSize());
             }
+            stats.evictionStats.memSize.decr((c+1) * RandomList::nodeSize());
+            delete templist;
         }
+        stats.evictionStats.memSize.decr(sizeof(RandomPolicy));
     }
 
     void setSize(size_t val) {
@@ -349,7 +355,7 @@ public:
     void initRebuild() {
         templist = new RandomList();
         timestats.startTime = gethrtime();
-        stats.currentEvictionMemSize.incr(sizeof(RandomList) + RandomList::nodeSize());
+        stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
     }
 
     bool addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
@@ -360,7 +366,7 @@ public:
         EvictItem *item = new EvictItem(v, currentBucket->getId());
         item->increaseCurrentSize(stats);
         templist->add(item);
-        stats.currentEvictionMemSize.incr(RandomList::nodeSize());
+        stats.evictionStats.memSize.incr(RandomList::nodeSize());
         size++;
         return true;
     }
@@ -380,10 +386,10 @@ public:
         EvictItem *node;
         while ((node = ++tempit) != NULL) {
             node->reduceCurrentSize(stats);
-            stats.currentEvictionMemSize.decr(RandomList::nodeSize());
+            stats.evictionStats.memSize.decr(RandomList::nodeSize());
             delete node;
         }
-        stats.currentEvictionMemSize.decr(sizeof(RandomList) + RandomList::nodeSize());
+        stats.evictionStats.memSize.decr(sizeof(RandomList) + RandomList::nodeSize());
         delete list;
         list = templist;
         templist = NULL;
@@ -393,7 +399,7 @@ public:
 
     EvictItem *evict() {
         EvictItem *ent = ++it;
-        stats.currentEvictionMemSize.decr(RandomList::nodeSize());
+        stats.evictionStats.memSize.decr(RandomList::nodeSize());
         queueSize--;
         return ent;
     }
@@ -418,11 +424,11 @@ class BGEvictionPolicy : public EvictionPolicy {
 public:
     BGEvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) :
                      EvictionPolicy(s, st, job), shouldRun(true), ejected(0) {
-        stats.currentEvictionMemSize.incr(sizeof(BGEvictionPolicy));
+        stats.evictionStats.memSize.incr(sizeof(BGEvictionPolicy));
     }
 
     ~BGEvictionPolicy() {
-        stats.currentEvictionMemSize.decr(sizeof(BGEvictionPolicy));
+        stats.evictionStats.memSize.decr(sizeof(BGEvictionPolicy));
     }
 
     void setSize(size_t val) {
