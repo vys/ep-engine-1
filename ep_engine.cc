@@ -3572,10 +3572,10 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
 void BGTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("evpolicy_job_start_timestamp", startTime, add_stat, cookie);
     add_casted_stat("evpolicy_job_end_timestamp", endTime, add_stat, cookie);
-    add_casted_stat("evpolicy_job_total_time", endTime - startTime, add_stat, cookie);
-    add_casted_stat("evpolicy_visit_time", visitTime, add_stat, cookie);
-    add_casted_stat("evpolicy_store_time", storeTime, add_stat, cookie);
-    add_casted_stat("evpolicy_complete_time", completeTime, add_stat, cookie);
+    add_casted_stat("evpolicy_job_total_time", (endTime - startTime) / 1000, add_stat, cookie);
+    add_casted_stat("evpolicy_visit_time", visitHisto, add_stat, cookie);
+    add_casted_stat("evpolicy_store_time", storeHisto, add_stat, cookie);
+    add_casted_stat("evpolicy_complete_time", completeHisto, add_stat, cookie);
 }
 
 void BGEvictionPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
@@ -3586,18 +3586,21 @@ void BGEvictionPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
 
 void LRUPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("eviction_policy", description(), add_stat, cookie);
+    add_casted_stat("eviction_max_queue_size", maxSize, add_stat, cookie);
     add_casted_stat("lru_policy_ev_queue_size", getPrimaryQueueSize(), add_stat, cookie);
     add_casted_stat("lru_policy_secondary_ev_queue_size", getSecondaryQueueSize(), 
                     add_stat, cookie);
-    userstats.getStats(cookie, add_stat);
+    timestats.getStats(cookie, add_stat);
     add_casted_stat("lru_age_histogram", getLruHisto(), add_stat, cookie);
 }
 
 void RandomPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("eviction_policy", description(), add_stat, cookie);
+    add_casted_stat("eviction_max_queue_size", maxSize, add_stat, cookie);
     add_casted_stat("random_policy_ev_queue_size", queueSize, add_stat, cookie);
     add_casted_stat("random_policy_secondary_queue_size", size, add_stat, cookie);
-    userstats.getStats(cookie, add_stat);
+
+    timestats.getStats(cookie, add_stat);
 }
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie,
@@ -3617,51 +3620,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     return ENGINE_SUCCESS;
 }
 
-ENGINE_ERROR_CODE EventuallyPersistentEngine::doLRUStats(const void *cookie,
-                                                            ADD_STAT add_stat) 
-{
-
-    add_casted_stat("ep_eviction_state_comin", 12345, add_stat, cookie);
-#if 0
-    std::vector<int> ints;
-    int rev_ints[MAX_INTERVALS];
-    
-    for (int i = MAX_INTERVALS - 1; i >= 0; --i) {
-        rev_ints[MAX_INTERVALS - i - 1]  = time_intervals[i];
-    }
-    //ints.assign(time_intervals, time_intervals + MAX_INTERVALS); 
-    ints.assign(rev_ints, rev_ints + MAX_INTERVALS); 
-    
-    FixedInputGenerator<int> fig(ints);
-    Histogram <int>histo(fig, MAX_INTERVALS - 1);
-    
-    lruList *lru = epstore->getActiveLRU();
-    if (lru->getBuildEndTime() == -1) {
-        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "LRU: Unbuilt, stats empty.");
-        return ENGINE_SUCCESS;
-    }
-    lru->getLRUStats(histo);
-    add_casted_stat("ep_lru_max_entries", lru->getMaxEntries(), add_stat, cookie);
-    add_casted_stat("ep_lru_total", lru->getLRUCount(), add_stat, cookie);
-    add_casted_stat("ep_lru_histo", histo, add_stat, cookie);
-    add_casted_stat("ep_lru_total_evicts", stats.lru_stats.numTotalEvicts, add_stat, cookie);
-    add_casted_stat("ep_lru_keys_evicted", stats.lru_stats.numTotalKeysEvicted, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_empty", stats.lru_stats.numEmptyLRU, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_key_absent", stats.lru_stats.failedTotal.numKeyNotPresent, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_dirty", stats.lru_stats.failedTotal.numDirties, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_already_evicted", stats.lru_stats.failedTotal.numAlreadyEvicted, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_deleted", stats.lru_stats.failedTotal.numDeleted, add_stat, cookie);
-    add_casted_stat("ep_lru_failed_key_too_recent", stats.lru_stats.failedTotal.numKeyTooRecent, add_stat, cookie);
-    add_casted_stat("ep_lru_num_prune_runs", stats.lru_prune_stats.numPruneRuns, add_stat, cookie);
-    add_casted_stat("ep_lru_num_keys_pruned", stats.lru_prune_stats.numKeyPrunes, add_stat, cookie);
-    add_casted_stat("ep_lru_mem_size", lruStats::lruMemSize, add_stat, cookie);
-    if (!lru->isEmpty()) {
-        add_casted_stat("ep_lru_oldest_age", lru->getOldest(), add_stat, cookie);
-        add_casted_stat("ep_lru_newest_age", lru->getNewest(), add_stat, cookie);
-    }
-#endif
-    return ENGINE_SUCCESS;
-}
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,
                                                             ADD_STAT add_stat) {
@@ -3790,10 +3748,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
         rv = doCheckpointStats(cookie, add_stat);
     } else if (nkey == 7 && strncmp(stat_key, "timings", 7) == 0) {
         rv = doTimingStats(cookie, add_stat);
-#if 1
-    } else if (nkey == 3 && strncmp(stat_key, "lru", 3) == 0) {
-        rv = doLRUStats(cookie, add_stat);
-#endif
     } else if (nkey == 8 && strncmp(stat_key, "eviction", 8) == 0) {
         rv = doEvictionStats(cookie, add_stat);
     } else if (nkey == 10 && strncmp(stat_key, "dispatcher", 10) == 0) {

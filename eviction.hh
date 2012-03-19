@@ -12,6 +12,7 @@
 class EvictItem {
 public:
     EvictItem(StoredValue *v, uint16_t vb) : key(v->getKey()), vbid(vb) {}
+
     EvictItem() : key(""), vbid(0) {}
     
     virtual ~EvictItem() {}
@@ -53,7 +54,9 @@ public:
         stats.currentEvictionMemSize.decr(sizeof(EvictionPolicy));
     }
 
+    // Inline eviction method. Called during front-end operations.
     virtual EvictItem* evict(void) = 0;
+
     virtual std::string description () const = 0;
     virtual void getStats(const void *cookie, ADD_STAT add_stat) = 0;
 
@@ -72,9 +75,24 @@ protected:
     EPStats &stats;
 };
 
+// Timing stats for the policies that use background job.
+class BGTimeStats {
+public:
+    BGTimeStats() {}
+
+    void getStats(const void *cookie, ADD_STAT add_stat);
+
+    Histogram<hrtime_t> visitHisto;
+    Histogram<hrtime_t> storeHisto;
+    Histogram<hrtime_t> completeHisto;
+    hrtime_t startTime;
+    hrtime_t endTime;
+};
+
 class LRUItem : public EvictItem {
 public:
     LRUItem(StoredValue *v, uint16_t vb, time_t t) : EvictItem(v, vb), timestamp(t) {}
+
     LRUItem(time_t t) : EvictItem(), timestamp(t) {}
 
     ~LRUItem() {}
@@ -97,26 +115,6 @@ public:
         }
         return 0;
     }
-};
-
-class BGTimeStats {
-public:
-    BGTimeStats() : startTime(0), endTime(0), visitTime(0), storeTime(0), completeTime(0) {}
-    void reset(void) {
-        startTime = 0;
-        endTime = 0;
-        visitTime = 0;
-        storeTime = 0;
-        completeTime = 0;
-    }
-
-    void getStats(const void *cookie, ADD_STAT add_stat);
-
-    time_t startTime;
-    time_t endTime;
-    time_t visitTime;
-    time_t storeTime;
-    time_t completeTime;
 };
 
 //Implementation of LRU based eviction policy
@@ -180,13 +178,12 @@ public:
     void initRebuild() {
         templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
         stats.currentEvictionMemSize.incr(templist->memSize());
-        timestats.reset();
-        timestats.startTime = ep_real_time(); 
+        timestats.startTime = gethrtime();
     }
 
     bool addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
+        BlockTimer timer(&timestats.visitHisto);
         assert(templist);
-        time_t start = ep_real_time();
         LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
         item->increaseCurrentSize(stats);
         if ((templist->size() == maxSize) && (lruItemCompare(*templist->last(), *item) < 0)) {
@@ -195,28 +192,22 @@ public:
         stage.push_front(item);
         // this assumes that three pointers are used per node of list
         stats.currentEvictionMemSize.incr(3 * sizeof(int*));
-        timestats.visitTime += ep_real_time() - start;
         return true;
     }
 
     bool storeEvictItem() {
         assert(templist);
-        time_t start = ep_real_time();
+        BlockTimer timer(&timestats.storeHisto);
         templist->insert(stage, true);
-        timestats.storeTime += ep_real_time() - start;
         // this assumes that three pointers are used per node of list
         stats.currentEvictionMemSize.decr(stage.size() * 3 * sizeof(int*));
         stage.clear();
         return true;
     }
 
-    Histogram<int> &getLruHisto() {
-        return lruHisto;
-    }
-
     void completeRebuild() {
         assert(templist);
-        time_t start = ep_real_time();
+        BlockTimer timer(&timestats.completeHisto);
         templist->build();
         genLruHisto();
         FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
@@ -233,9 +224,7 @@ public:
         // this assumes that three pointers are used per node of list
         stats.currentEvictionMemSize.decr(stage.size() * 3 * sizeof(int*));
         stage.clear();
-        timestats.endTime = ep_real_time();
-        timestats.completeTime = timestats.endTime - start;
-        userstats = timestats;
+        timestats.endTime = gethrtime();
     }
 
     EvictItem *evict(void) {
@@ -246,6 +235,10 @@ public:
     std::string description() const { return std::string("lru"); }
 
     void getStats(const void *cookie, ADD_STAT add_stat);
+
+    Histogram<int> &getLruHisto() {
+        return lruHisto;
+    }
 
 private:
 
@@ -282,7 +275,6 @@ private:
     FixedList<LRUItem, LRUItemCompare> *templist;
     Atomic<uint32_t> count;
     BGTimeStats timestats;
-    BGTimeStats userstats;
     Histogram<int> lruHisto;
 };
 
@@ -366,19 +358,17 @@ public:
     }
     void initRebuild() {
         templist = new RandomList();
-        timestats.reset();
-        timestats.startTime = ep_real_time();
+        timestats.startTime = gethrtime();
     }
 
-    bool addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
-        time_t start = ep_real_time();
+    bool addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
+        BlockTimer timer(&timestats.visitHisto);
         if (size == maxSize) {
             return false;
         }
         EvictItem *item = new EvictItem(v, currentBucket->getId());
         templist->add(item);
         size++;
-        timestats.visitTime += ep_real_time() - start;
         return true;
     }
 
@@ -390,7 +380,7 @@ public:
     }
 
     void completeRebuild() {
-        time_t start = ep_real_time();
+        BlockTimer timer(&timestats.completeHisto);
         RandomList::iterator tempit = templist->begin();
         queueSize = size;
         tempit = it.swap(tempit);
@@ -401,9 +391,7 @@ public:
         delete list;
         list = templist;
         size = 0;
-        timestats.endTime = ep_real_time();
-        timestats.completeTime = timestats.endTime - start;
-        userstats = timestats;
+        timestats.endTime = gethrtime();
     }
 
     EvictItem *evict() {
@@ -424,7 +412,6 @@ private:
     size_t size;
     Atomic<size_t> queueSize;
     BGTimeStats timestats;
-    BGTimeStats userstats;
 };
 
 // Background eviction policy to mimic the item-pager behaviour based on
@@ -441,8 +428,7 @@ public:
     }
 
     void initRebuild() {
-        timestats.reset();
-        timestats.startTime = ep_real_time();
+        timestats.startTime = gethrtime();
         double current = static_cast<double>(StoredValue::getCurrentSize(stats));
         double upper = static_cast<double>(stats.mem_high_wat);
         double lower = static_cast<double>(stats.mem_low_wat);
@@ -457,7 +443,6 @@ public:
     }
 
     bool addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
-        time_t start = ep_real_time();
         double r = static_cast<double>(std::rand()) / static_cast<double>(RAND_MAX);
         if (toKill >= r) {
             if (!v->eligibleForEviction()) {
@@ -476,7 +461,6 @@ public:
                 ++ejected;
             }
         }
-        timestats.visitTime += ep_real_time() - start;
         return true;
     }
 
@@ -488,9 +472,7 @@ public:
     }
 
     void completeRebuild() {
-        timestats.endTime = ep_real_time();
-        timestats.completeTime = 0; // No work here
-        userstats = timestats;
+        timestats.endTime = gethrtime();
     }
 
     EvictItem *evict() {
@@ -507,7 +489,6 @@ private:
     bool shouldRun;
     size_t ejected;
     BGTimeStats timestats;
-    BGTimeStats userstats;
 };
 
 class EvictionPolicyFactory {
