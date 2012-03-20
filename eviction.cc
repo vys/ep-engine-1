@@ -16,7 +16,6 @@ bool EvictionManager::evictSize(size_t size)
         uint16_t b;
         k = ent->getKey();
         b = ent->get_vbucket_id();
-        ent->reduceCurrentSize(stats);
         delete ent;
         count--;
 
@@ -140,4 +139,60 @@ void LRUPolicy::completeRebuild() {
         clearTemplist();
     }
     clearStage();
+}
+
+void RandomPolicy::initRebuild() {
+    if (store->getEvictionManager()->enableJob()) {
+        templist = new RandomList();
+        timestats.startTime = gethrtime();
+        stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
+    }
+}
+
+bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
+    BlockTimer timer(&timestats.visitHisto);
+    if (templist && store->getEvictionManager()->enableJob()) {
+        if (size == maxSize) {
+            return false;
+        }
+        EvictItem *item = new EvictItem(v, currentBucket->getId());
+        item->increaseCurrentSize(stats);
+        templist->add(item);
+        stats.evictionStats.memSize.incr(RandomList::nodeSize());
+        size++;
+        return true;
+    }
+    clearTemplist();
+    return false;
+}
+
+bool RandomPolicy::storeEvictItem() {
+    if (templist && store->getEvictionManager()->enableJob() && size < maxSize) {
+        return true;
+    }
+    clearTemplist();
+    return false;
+}
+
+void RandomPolicy::completeRebuild() {
+    BlockTimer timer(&timestats.completeHisto);
+    if (templist && store->getEvictionManager()->enableJob()) {
+        RandomList::iterator tempit = templist->begin();
+        queueSize = size;
+        tempit = it.swap(tempit);
+        EvictItem *node;
+        while ((node = ++tempit) != NULL) {
+            node->reduceCurrentSize(stats);
+            stats.evictionStats.memSize.decr(RandomList::nodeSize());
+            delete node;
+        }
+        stats.evictionStats.memSize.decr(sizeof(RandomList) + RandomList::nodeSize());
+        delete list;
+        list = templist;
+        templist = NULL;
+        size = 0;
+        timestats.endTime = gethrtime();
+    } else {
+        clearTemplist();
+    }
 }
