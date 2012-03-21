@@ -45,7 +45,6 @@ ep_la_SOURCES = \
                  atomic/gcc_atomics.h \
                  atomic/libatomic.h \
                  atomic.hh \
-                 atomic_consumer_queue.hh \
                  backfill.hh \
                  backfill.cc \
                  callbacks.hh \

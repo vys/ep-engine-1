@@ -768,7 +768,6 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority) {
                          "Rescheduling a task to snapshot vbuckets\n");
         scheduleVBSnapshot(priority);
     }
-
 }
 
 void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
@@ -1313,6 +1312,7 @@ bool EventuallyPersistentStore::getKeyStats(const std::string &key,
         kstats.dirtied = 0; // v->getDirtied();
         kstats.data_age = v->getDataAge();
         kstats.last_modification_time = ep_abs_time(v->getDataAge());
+        kstats.resident = v->isResident();
 //        kstats.in_lru = active_lru->keyInLru(v->getKeyBytes(), v->getKeyLen());
     }
     return found;
@@ -2380,6 +2380,6 @@ bool EventuallyPersistentStore::setEvictionPolicy(const char *name) {
 }
 
 void EventuallyPersistentStore::evictionPolicyStats(const void *cookie, ADD_STAT add_stat) {
-    EvictionPolicy *p = evictionManager->getCurrentPolicy(); 
+    EvictionPolicy *p = evictionManager->getCurrentPolicy();
     p->getStats(cookie, add_stat);
 }

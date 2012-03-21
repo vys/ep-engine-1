@@ -3557,6 +3557,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
                         kstats.data_age : 0, add_stat, cookie);
         add_casted_stat("key_last_modification_time", kstats.last_modification_time,
                         add_stat, cookie);
+        add_casted_stat("key_resident", kstats.resident, add_stat, cookie);
         add_casted_stat("key_in_lru", kstats.in_lru, add_stat, cookie);
         if (validate) {
             add_casted_stat("key_valid", valid.c_str(), add_stat, cookie);
@@ -3614,6 +3615,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     add_casted_stat("eviction_failed_dirty", stats.evictionStats.failedTotal.numDirties, add_stat, cookie);
     add_casted_stat("eviction_failed_already_evicted", stats.evictionStats.failedTotal.numAlreadyEvicted, add_stat, cookie);
     add_casted_stat("eviction_failed_deleted", stats.evictionStats.failedTotal.numDeleted, add_stat, cookie);
+    add_casted_stat("eviction_failed_in_checkpoints", stats.evictionStats.failedTotal.numInCheckpoints, add_stat, cookie);
     add_casted_stat("eviction_failed_key_too_recent", stats.evictionStats.failedTotal.numKeyTooRecent, add_stat, cookie);
     add_casted_stat("eviction_memory_size", stats.evictionStats.memSize, add_stat, cookie);
 

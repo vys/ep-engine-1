@@ -226,12 +226,16 @@ public:
     }
 
     T* last() {
-        assert(_size);
+        if (_size == 0) {
+            return NULL;
+        }
         return _data[_built ? _size-1 : 0];
     }
 
     T* first() {
-        assert(_size);
+        if (_size == 0) {
+            return NULL;
+        }
         return _data[0];
     }
 

@@ -274,9 +274,6 @@ void HashTable::visit(HashTableVisitor &visitor) {
         lh.unlock();
         aborted = !visitor.shouldContinue();
     }
-        getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
-			"XXX: Hash table visitor exiting: visited: = %d, aborted= %d\n", 
-			visited, (aborted ? 1 : 0));
     assert(aborted || visited == size);
 }
 

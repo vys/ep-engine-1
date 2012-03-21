@@ -3652,6 +3652,7 @@ static enum test_result test_key_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(vals.find("key_data_age") != vals.end(), "Found no key_data_age");
     check(vals.find("key_last_modification_time") != vals.end(),
                     "Found no key_last_modification_time");
+    check(vals.find("key_resident") != vals.end(), "Found no key_resident");
 
     // stat for key "k2" and vbucket "1"
     const char *statkey2 = "key k2 1";
@@ -5536,6 +5537,66 @@ static enum test_result test_get_last_closed_checkpoint_id(ENGINE_HANDLE *h, ENG
     return SUCCESS;
 }
 
+void run_batch(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int count, char *data, int vbucketId) {
+    static int batch_num = 0;
+    char keyname[20];
+    for (int i = 0; i < count; i++) {
+        sprintf(keyname, "key_%d_%d", batch_num, i);
+        check(store(h, h1, NULL, OPERATION_SET, keyname, data, NULL, 0, vbucketId)
+            == ENGINE_SUCCESS, "Failed to store an item");
+    }
+    batch_num++;
+}
+
+static enum test_result test_eviction_policy_switch(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    int max_size = 100000000;
+    int blen = 1000;
+    int pager_time = 2;
+    uint16_t vbucketId = 0;
+
+printf("yay!");
+    char *buffer = (char *)malloc(blen);
+
+printf("yay!");
+    sprintf(buffer, "%d", max_size);
+    set_flush_param(h, h1, "max_size", buffer);
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set exp_pager_stime param");
+
+printf("yay!");
+    sprintf(buffer, "%d", pager_time);
+    set_flush_param(h, h1, "exp_pager_stime", buffer);
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set exp_pager_stime param");
+
+printf("adgadg");
+    set_flush_param(h, h1, "eviction_policy", "lru");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set exp_pager_stime param");
+
+printf("yay!");
+
+    for (int i = 0; i < blen; i++)
+        buffer[i] = 'a';
+    buffer[blen-1] = '\0';
+
+    sleep(2 * pager_time);
+printf("yay2!");
+    int num_items = (max_size / blen) / 20;
+    run_batch(h, h1, num_items, buffer, vbucketId);
+
+printf("b1 done!");
+    sleep(2 * pager_time);
+printf("sl done!");
+
+    run_batch(h, h1, num_items, buffer, vbucketId);
+
+printf("yay!");
+    free(buffer);
+
+    return SUCCESS;
+}
+
 static enum test_result test_validate_checkpoint_params(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     set_flush_param(h, h1, "chk_max_items", "1000");
     check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
@@ -5564,6 +5625,7 @@ MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
     static engine_test_t tests[]  = {
+        {"eviction: switch policy", test_eviction_policy_switch, NULL, teardown, NULL},
         {"validate engine handle", test_validate_engine_handle, NULL, teardown,
          "db_strategy=singleDB;dbname=:memory:"},
         // basic tests

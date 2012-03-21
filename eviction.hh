@@ -1,5 +1,5 @@
-#ifndef EV_HH
-#define EV_HH 1
+#ifndef EVICTION_HH
+#define EVICTION_HH 1
 
 #include <set>
 
@@ -27,11 +27,11 @@ public:
         st.evictionStats.memSize.decr(by);
     }
 
-    const std::string &getKey() { 
+    std::string const getKey() { 
         return key; 
     }
     
-    uint16_t get_vbucket_id() const { 
+    uint16_t vbucketId() const { 
         return vbid; 
     }
 
@@ -43,16 +43,12 @@ protected:
 class EvictionPolicy {
 public:
     EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) : 
-                   backgroundJob(job), store(s), stats(st) {
-        stats.evictionStats.memSize.incr(sizeof(EvictionPolicy));
-    }
+                   backgroundJob(job), store(s), stats(st) {}
 
-    virtual ~EvictionPolicy() {
-        stats.evictionStats.memSize.decr(sizeof(EvictionPolicy));
-    }
+    virtual ~EvictionPolicy() {}
 
     // Inline eviction method. Called during front-end operations.
-    virtual EvictItem* evict(void) = 0;
+    virtual EvictItem* evict() = 0;
 
     virtual std::string description () const = 0;
     virtual void getStats(const void *cookie, ADD_STAT add_stat) = 0;
@@ -63,8 +59,8 @@ public:
     virtual void setSize(size_t val) = 0;
     virtual void initRebuild() = 0;
     virtual bool addEvictItem(StoredValue *v, RCPtr<VBucket>) = 0;
-    virtual bool storeEvictItem(void) = 0;
-    virtual void completeRebuild(void) = 0;
+    virtual bool storeEvictItem() = 0;
+    virtual void completeRebuild() = 0;
     bool backgroundJob;
 
 protected:
@@ -135,11 +131,13 @@ public:
         it = list->begin();
         stats.evictionStats.memSize.incr(list->memSize());
         // this assumes that three pointers are used per node of list
-        stats.evictionStats.memSize.incr(sizeof(LRUPolicy) + 3 * sizeof(int*));
+        stats.evictionStats.memSize.incr(3 * sizeof(int*));
     }
 
     ~LRUPolicy() {
         clearStage();
+        // this assumes that three pointers are used per node of list
+        stats.evictionStats.memSize.decr(3 * sizeof(int*));
         clearTemplist();
         if (list) {
             while (it != list->end()) {
@@ -150,7 +148,6 @@ public:
             stats.evictionStats.memSize.decr(list->memSize());
             delete list;
         }
-        stats.evictionStats.memSize.decr(sizeof(LRUPolicy));
     }
 
     LRUItemCompare lruItemCompare;
@@ -205,7 +202,7 @@ private:
         int total = 0;
         // Handle keys that are not accessed since startup. Those keys have
         // the timestamp as 0 and cannot be used with a relative timestamp.
-        if (templist->first()->getAttr() == 0) {
+        if (templist->size() && templist->first()->getAttr() == 0) {
             LRUItem l(1);
             total = templist->numLessThan(&l);
             lruHisto.add(cur, total);
@@ -331,7 +328,7 @@ public:
     RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz)
         : EvictionPolicy(s, st, job), maxSize(sz), list(new RandomList()),
           it(list->begin()) {
-        stats.evictionStats.memSize.incr(sizeof(RandomPolicy) + sizeof(RandomList) + RandomList::nodeSize());
+        stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
     }
 
     ~RandomPolicy() {
@@ -345,7 +342,6 @@ public:
             stats.evictionStats.memSize.decr(queueSize.get() * RandomList::nodeSize());
             delete list;
         }
-        stats.evictionStats.memSize.decr(sizeof(RandomPolicy));
     }
 
     void setSize(size_t val) {
@@ -405,13 +401,9 @@ private:
 class BGEvictionPolicy : public EvictionPolicy {
 public:
     BGEvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) :
-                     EvictionPolicy(s, st, job), shouldRun(true), ejected(0) {
-        stats.evictionStats.memSize.incr(sizeof(BGEvictionPolicy));
-    }
+                     EvictionPolicy(s, st, job), shouldRun(true), ejected(0) {}
 
-    ~BGEvictionPolicy() {
-        stats.evictionStats.memSize.decr(sizeof(BGEvictionPolicy));
-    }
+    ~BGEvictionPolicy() {}
 
     void setSize(size_t val) {
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "No use of size %d", val);
@@ -564,4 +556,4 @@ private:
     EvictionPolicy* evpolicy;
     std::set<std::string> policies;
 };
-#endif /* EV_HH */
+#endif /* EVICTION_HH */
