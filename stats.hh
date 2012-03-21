@@ -28,6 +28,7 @@ public:
     Atomic<uint32_t>    numAlreadyEvicted;
     Atomic<uint32_t>    numDeleted;
     Atomic<uint32_t>    numKeyTooRecent;
+    Atomic<uint32_t>    numInCheckpoints;
 
     void reset()
     {
@@ -36,6 +37,7 @@ public:
         numAlreadyEvicted = 0;
         numDeleted = 0;
         numKeyNotPresent = 0;
+        numInCheckpoints = 0;
     }
 };
 
@@ -52,7 +54,6 @@ public:
     Atomic<uint32_t>        numTotalKeysEvicted; // Total evictions so far
     Atomic<uint32_t>        numKeysEvicted;      // Evictions in this run
     Atomic<uint32_t>        numEmptyQueue;
-    time_t                  queueBuildTime;
     static Atomic<size_t>   evictMemSize;
     FailedEvictions   failedTotal;         // All failures so far
     // Add histogram structure here
@@ -485,6 +486,8 @@ struct key_stats {
     uint32_t flags;
     //! True if this item is dirty.
     bool dirty;
+    //! Resident?
+    bool resident;
     //! 1 if in LRU, 0 if not, -1 LRU is being built
     int in_lru;
 };

@@ -823,7 +823,6 @@ public:
 
     protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
 
-
     EvictionManager *getEvictionManager(void) {
         return evictionManager;
     }

@@ -15,7 +15,7 @@ bool EvictionManager::evictSize(size_t size)
         std::string k;
         uint16_t b;
         k = ent->getKey();
-        b = ent->get_vbucket_id();
+        b = ent->vbucketId();
         ent->reduceCurrentSize(stats);
         delete ent;
         count--;
@@ -28,26 +28,29 @@ bool EvictionManager::evictSize(size_t size)
         if (!v) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not present.");
             stats.evictStats.failedTotal.numKeyNotPresent++;
-    //        failedstats.numKeyNotPresent++;
-        } else if (!v->ejectValue(stats, vb->ht)) {
+        } else if (!v->eligibleForEviction()) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
             if (v->isResident() == false) {
                 stats.evictStats.failedTotal.numAlreadyEvicted++;
-      //          failedstats.numAlreadyEvicted++;
             } else if (v->isClean() == false) {
                 stats.evictStats.failedTotal.numDirties++;
-        //        failedstats.numDirties++;
             } else if (v->isDeleted() == false) {
                 stats.evictStats.failedTotal.numDeleted++;
-          //      failedstats.numDeleted++;
             }
         } else {
-            cur += v->valLength(); 
-            /* update stats for eviction that just happened */
-            stats.evictStats.numTotalKeysEvicted++;
-            stats.evictStats.numKeysEvicted++;
+            bool inCheckpoint = vb->checkpointManager.isKeyResidentInCheckpoints(v->getKey(),
+                                                                                 v->getCas());
+            if (inCheckpoint) {
+                stats.evictStats.failedTotal.numInCheckpoints++;
+            } else if (v->ejectValue(stats, vb->ht)) {
+                cur += v->valLength(); 
+                /* update stats for eviction that just happened */
+                stats.evictStats.numTotalKeysEvicted++;
+                stats.evictStats.numKeysEvicted++;
+            }
         }
     }
+    
 
     return true;
 }
@@ -88,7 +91,9 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
     if (templist && store->getEvictionManager()->enableJob()) {
         LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
         item->increaseCurrentSize(stats);
-        if ((templist->size() == maxSize) && (lruItemCompare(*templist->last(), *item) < 0)) {
+        size_t __size = templist->size(); 
+        if (__size && (__size == maxSize) &&
+            (lruItemCompare(*templist->last(), *item) < 0)) {
             return false;
         }
         stage.push_front(item);

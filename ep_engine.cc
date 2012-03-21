@@ -3557,6 +3557,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
                         kstats.data_age : 0, add_stat, cookie);
         add_casted_stat("key_last_modification_time", kstats.last_modification_time,
                         add_stat, cookie);
+        add_casted_stat("key_resident", kstats.resident, add_stat, cookie);
         add_casted_stat("key_in_lru", kstats.in_lru, add_stat, cookie);
         if (validate) {
             add_casted_stat("key_valid", valid.c_str(), add_stat, cookie);
@@ -3606,7 +3607,6 @@ void RandomPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie,
                                                               ADD_STAT add_stat) 
 {
-
     add_casted_stat("eviction_total_evicts", stats.evictStats.numTotalEvictions, add_stat, cookie);
     add_casted_stat("eviction_keys_evicted", stats.evictStats.numTotalKeysEvicted, add_stat, cookie);
     add_casted_stat("eviction_failed_empty", stats.evictStats.numEmptyQueue, add_stat, cookie);
@@ -3614,6 +3614,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     add_casted_stat("eviction_failed_dirty", stats.evictStats.failedTotal.numDirties, add_stat, cookie);
     add_casted_stat("eviction_failed_already_evicted", stats.evictStats.failedTotal.numAlreadyEvicted, add_stat, cookie);
     add_casted_stat("eviction_failed_deleted", stats.evictStats.failedTotal.numDeleted, add_stat, cookie);
+    add_casted_stat("eviction_failed_in_checkpoints", stats.evictStats.failedTotal.numInCheckpoints, add_stat, cookie);
     add_casted_stat("eviction_failed_key_too_recent", stats.evictStats.failedTotal.numKeyTooRecent, add_stat, cookie);
 
     epstore->evictionPolicyStats(cookie, add_stat);

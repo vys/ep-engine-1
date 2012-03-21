@@ -3652,6 +3652,7 @@ static enum test_result test_key_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(vals.find("key_data_age") != vals.end(), "Found no key_data_age");
     check(vals.find("key_last_modification_time") != vals.end(),
                     "Found no key_last_modification_time");
+    check(vals.find("key_resident") != vals.end(), "Found no key_resident");
 
     // stat for key "k2" and vbucket "1"
     const char *statkey2 = "key k2 1";
