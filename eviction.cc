@@ -91,7 +91,7 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
     if (templist && store->getEvictionManager()->enableJob()) {
         LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
         item->increaseCurrentSize(stats);
-        size_t __size = templist->size(); 
+        size_t __size = templist->size();
         if (__size && (__size == maxSize) &&
             (lruItemCompare(*templist->last(), *item) < 0)) {
             return false;
