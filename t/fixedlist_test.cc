@@ -4,13 +4,10 @@
 #include <iostream>
 #include <vector>
 
-#define TOTAL_SIZE 50000000
+#define TOTAL_SIZE 5000000
 #define LIST_SIZE   500000
-#define PRINT_TIME
 
 using namespace std;
-
-double total_time;
 
 class Item {
 public:
@@ -31,16 +28,12 @@ void destructItems(FixedList<Item> &l) {
 }
 
 void populate_list(FixedList<Item> &l, vector<int> &v) {
-    time_t start, end;
-    time(&start);
     for (int i = 0; i < TOTAL_SIZE; i++) {
         l.insert(new Item(v[i]));
     }
-    time(&end);
-    total_time += difftime(end, start);
 }
 
-void populate(FixedList<Item> &l, vector<int> &v) {
+void populate_vector(vector<int> &v) {
     srand(time(NULL));
 #ifdef PRINT_MODE
     cout << "Original:\n";
@@ -52,7 +45,6 @@ void populate(FixedList<Item> &l, vector<int> &v) {
 #endif
         v.push_back(c);
     }
-    populate_list(l, v);
 }
 
 #ifdef PRINT_MODE
@@ -69,6 +61,19 @@ void printAll(FixedList<Item> &l, vector<int> &v) {
         cout << v[i] << endl;
 }
 #endif
+
+void checkNumLessThanVX(FixedList<Item> &l, vector<int> &v, int x) {
+    Item dummy(0);
+    if (x == LIST_SIZE) {
+        dummy.a = v[x-1] + 1;
+    } else {
+        while (x > 0 && v[x-1] == v[x]) {
+            x--;
+        }
+        dummy.a = v[x];
+    }
+    assert(l.numLessThan(&dummy) == x);
+}
 
 // ----------------------------------------------------------------------
 // Actual tests below.
@@ -91,21 +96,41 @@ void checkPreBuildSanity(FixedList<Item> &l) {
     l.checkSanity();
 }
 
+void checkNumLessThan(FixedList<Item> &l, vector<int> &v) {
+    int tries = 10;
+    checkNumLessThanVX(l, v, 0);
+    checkNumLessThanVX(l, v, LIST_SIZE);
+    for (int i = 0; i < tries; i++) {
+        checkNumLessThanVX(l, v, rand() % LIST_SIZE);
+    }
+}
+
 int main() {
-    total_time = 0;
     vector<int> v;
     FixedList<Item> l(LIST_SIZE);
-    populate(l, v);
+    populate_vector(v);
 
-    checkPreBuildSanity(l);
-
+#ifdef TIMED_MODE
     time_t start, end;
     time(&start);
+#endif
+
+    populate_list(l, v);
+
+#ifndef TIMED_MODE
+    checkPreBuildSanity(l);
+#endif
+
     l.build();
+
+#ifdef TIMED_MODE
     time(&end);
-    total_time += difftime(end, start);
+    cout << "Time spent in seconds: " << difftime(end, start) << endl;
+#endif
 
     sort(v.begin(), v.end());
+
+    checkNumLessThan(l, v);
 
 #ifdef PRINT_MODE
     printAll(l, v);
@@ -114,8 +139,4 @@ int main() {
     checkSort(l, v);
 
     destructItems(l);
-
-#ifdef PRINT_TIME
-    cout << "Time spent in seconds: " << total_time << endl;
-#endif
 }
