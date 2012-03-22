@@ -180,6 +180,9 @@ public:
 
     EvictItem *evict(void) {
         LRUItem *ent = it++;
+        if (ent == NULL) {
+            return NULL;
+        }
         ent->reduceCurrentSize(stats);
         return static_cast<EvictItem *>(ent);
     }
@@ -358,6 +361,9 @@ public:
 
     EvictItem *evict() {
         EvictItem *ent = ++it;
+        if (ent == NULL) {
+            return NULL;
+        }
         ent->reduceCurrentSize(stats);
         stats.evictionStats.memSize.decr(RandomList::nodeSize());
         queueSize--;
