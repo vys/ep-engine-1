@@ -3607,15 +3607,17 @@ void RandomPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie,
                                                               ADD_STAT add_stat) 
 {
-    add_casted_stat("eviction_total_evicts", stats.evictStats.numTotalEvictions, add_stat, cookie);
-    add_casted_stat("eviction_keys_evicted", stats.evictStats.numTotalKeysEvicted, add_stat, cookie);
-    add_casted_stat("eviction_failed_empty", stats.evictStats.numEmptyQueue, add_stat, cookie);
-    add_casted_stat("eviction_failed_key_absent", stats.evictStats.failedTotal.numKeyNotPresent, add_stat, cookie);
-    add_casted_stat("eviction_failed_dirty", stats.evictStats.failedTotal.numDirties, add_stat, cookie);
-    add_casted_stat("eviction_failed_already_evicted", stats.evictStats.failedTotal.numAlreadyEvicted, add_stat, cookie);
-    add_casted_stat("eviction_failed_deleted", stats.evictStats.failedTotal.numDeleted, add_stat, cookie);
-    add_casted_stat("eviction_failed_in_checkpoints", stats.evictStats.failedTotal.numInCheckpoints, add_stat, cookie);
-    add_casted_stat("eviction_failed_key_too_recent", stats.evictStats.failedTotal.numKeyTooRecent, add_stat, cookie);
+
+    add_casted_stat("eviction_total_evicts", stats.evictionStats.numTotalEvictions, add_stat, cookie);
+    add_casted_stat("eviction_keys_evicted", stats.evictionStats.numTotalKeysEvicted, add_stat, cookie);
+    add_casted_stat("eviction_failed_empty", stats.evictionStats.numEmptyQueue, add_stat, cookie);
+    add_casted_stat("eviction_failed_key_absent", stats.evictionStats.failedTotal.numKeyNotPresent, add_stat, cookie);
+    add_casted_stat("eviction_failed_dirty", stats.evictionStats.failedTotal.numDirties, add_stat, cookie);
+    add_casted_stat("eviction_failed_already_evicted", stats.evictionStats.failedTotal.numAlreadyEvicted, add_stat, cookie);
+    add_casted_stat("eviction_failed_deleted", stats.evictionStats.failedTotal.numDeleted, add_stat, cookie);
+    add_casted_stat("eviction_failed_in_checkpoints", stats.evictionStats.failedTotal.numInCheckpoints, add_stat, cookie);
+    add_casted_stat("eviction_failed_key_too_recent", stats.evictionStats.failedTotal.numKeyTooRecent, add_stat, cookie);
+    add_casted_stat("eviction_memory_size", stats.evictionStats.memSize, add_stat, cookie);
 
     epstore->evictionPolicyStats(cookie, add_stat);
     return ENGINE_SUCCESS;

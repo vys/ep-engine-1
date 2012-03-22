@@ -5537,6 +5537,99 @@ static enum test_result test_get_last_closed_checkpoint_id(ENGINE_HANDLE *h, ENG
     return SUCCESS;
 }
 
+static enum test_result test_eviction_policy_switch(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    int pager_time = 1;
+    char buffer[20];
+
+    sprintf(buffer, "%d", pager_time);
+    set_flush_param(h, h1, "exp_pager_stime", buffer);
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set exp_pager_stime param");
+
+    set_flush_param(h, h1, "eviction_policy", "lru");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set eviction_policy param");
+
+    sleep(2 * pager_time);
+
+    check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    check(vals.find("eviction_policy") != vals.end(), "Missing stat");
+    check(vals["eviction_policy"] == "lru", "Expected policy name 'lru'");
+
+    set_flush_param(h, h1, "eviction_policy", "bgeviction");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set eviction_policy param");
+
+    sleep(2 * pager_time);
+
+    check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    check(vals.find("eviction_policy") != vals.end(), "Missing stat");
+    check(vals["eviction_policy"] == "bgeviction", "Expected policy name 'bgeviction'");
+
+    return SUCCESS;
+}
+
+static enum test_result test_eviction_pause(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    int pager_time = 1;
+    char buffer[20];
+
+    sprintf(buffer, "%d", pager_time);
+    set_flush_param(h, h1, "exp_pager_stime", buffer);
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set exp_pager_stime param");
+
+    set_flush_param(h, h1, "eviction_policy", "lru");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set eviction_policy param");
+
+    set_flush_param(h, h1, "enable_eviction_job", "0");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set enable_eviction_job param");
+
+    sleep(2 * pager_time);
+
+    check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    check(vals.find("evpolicy_job_start_timestamp") != vals.end(), "Missing stat");
+    std::string timestart = vals["evpolicy_job_start_timestamp"];
+    check(vals.find("evpolicy_job_end_timestamp") != vals.end(), "Missing stat");
+    std::string timeend = vals["evpolicy_job_end_timestamp"];
+
+    sleep(2 * pager_time);
+
+    check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    check(vals.find("evpolicy_job_start_timestamp") != vals.end(), "Missing stat");
+    check(vals["evpolicy_job_start_timestamp"] == timestart, "Expected unchanged value for start timestamp");
+    check(vals.find("evpolicy_job_end_timestamp") != vals.end(), "Missing stat");
+    check(vals["evpolicy_job_end_timestamp"] == timeend, "Expected unchanged value for end timestamp");
+
+    set_flush_param(h, h1, "enable_eviction_job", "1");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set enable_eviction_job param");
+
+    sleep(2 * pager_time);
+
+    check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    check(vals.find("evpolicy_job_start_timestamp") != vals.end(), "Missing stat");
+    check(vals["evpolicy_job_start_timestamp"] != timestart, "Expected unchanged value for start timestamp");
+    check(vals.find("evpolicy_job_end_timestamp") != vals.end(), "Missing stat");
+    check(vals["evpolicy_job_end_timestamp"] != timeend, "Expected unchanged value for end timestamp");
+
+    return SUCCESS;
+}
+
+static enum test_result test_eviction_pause_and_switch(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    enum test_result res = test_eviction_pause(h, h1);
+    if (res != SUCCESS) {
+        return res;
+    }
+    return test_eviction_policy_switch(h, h1);
+}
+
 static enum test_result test_validate_checkpoint_params(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     set_flush_param(h, h1, "chk_max_items", "1000");
     check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
@@ -5565,6 +5658,7 @@ MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
     static engine_test_t tests[]  = {
+        {"eviction: pause and switch", test_eviction_pause_and_switch, NULL, teardown, NULL},
         {"validate engine handle", test_validate_engine_handle, NULL, teardown,
          "db_strategy=singleDB;dbname=:memory:"},
         // basic tests

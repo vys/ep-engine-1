@@ -54,14 +54,15 @@ public:
     Atomic<uint32_t>        numTotalKeysEvicted; // Total evictions so far
     Atomic<uint32_t>        numKeysEvicted;      // Evictions in this run
     Atomic<uint32_t>        numEmptyQueue;
-    static Atomic<size_t>   evictMemSize;
-    FailedEvictions   failedTotal;         // All failures so far
+    //! Total size of objects used by eviction.
+    Atomic<size_t>          memSize;
+    FailedEvictions         failedTotal;         // All failures so far
     // Add histogram structure here
 
     void reset()
     {
         reset_();
-        EvictionStats::evictMemSize = 0;
+        EvictionStats::memSize = 0;
     }
 
 private:
@@ -208,8 +209,6 @@ public:
     Atomic<size_t> totalValueSize;
     //! Amount of memory used to track items and what-not.
     Atomic<size_t> memOverhead;
-    //! Total size of objects used by eviction.
-    Atomic<size_t> currentEvictionMemSize;
 
     //! Pager low water mark.
     Atomic<size_t> mem_low_wat;
@@ -388,7 +387,7 @@ public:
 
     Histogram<hrtime_t> checkpointRevertHisto;
 
-    EvictionStats evictStats;
+    EvictionStats evictionStats;
     lruPruneStats lru_prune_stats;
 
     //! Reset all stats to reasonable values.
