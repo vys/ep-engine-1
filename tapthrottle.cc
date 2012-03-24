@@ -10,13 +10,8 @@ bool TapThrottle::persistenceQueueSmallEnough() const {
     return queueSize < MAXIMUM_QUEUE;
 }
 
-bool TapThrottle::hasSomeMemory() const {
+bool TapThrottle::hasSomeMemory(size_t needed) const {
     double currentSize = static_cast<double>(stats.currentSize.get() + stats.memOverhead.get());
-    double maxSize = static_cast<double>(stats.maxDataSize.get());
-
-    return currentSize < (maxSize * stats.tapThrottleThreshold);
-}
-
-bool TapThrottle::shouldProcess() const {
-    return persistenceQueueSmallEnough() && hasSomeMemory();
+    double maxSize = static_cast<double>(stats.maxDataSize.get()) * stats.tapThrottleThreshold;
+    return (maxSize >= currentSize + needed);
 }

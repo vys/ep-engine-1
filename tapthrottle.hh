@@ -16,15 +16,14 @@ public:
     TapThrottle(EPStats &s) : stats(s) {}
 
     /**
-     * If true, we should process incoming tap requests.
+     * If both are true, we should process incoming tap requests.
      */
-    bool shouldProcess() const;
-private:
 
     bool persistenceQueueSmallEnough() const;
 
-    bool hasSomeMemory() const;
+    bool hasSomeMemory(size_t needed) const;
 
+private:
     EPStats &stats;
 };
 
