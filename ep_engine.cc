@@ -3588,7 +3588,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
 void BGTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("evpolicy_job_start_timestamp", startTime, add_stat, cookie);
     add_casted_stat("evpolicy_job_end_timestamp", endTime, add_stat, cookie);
-    add_casted_stat("evpolicy_job_total_time", (endTime - startTime) / 1000, add_stat, cookie);
+    add_casted_stat("evpolicy_job_total_time", (endTime - startTime), add_stat, cookie);
     add_casted_stat("evpolicy_visit_time", visitHisto, add_stat, cookie);
     add_casted_stat("evpolicy_store_time", storeHisto, add_stat, cookie);
     add_casted_stat("evpolicy_complete_time", completeHisto, add_stat, cookie);
