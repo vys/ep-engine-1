@@ -78,8 +78,8 @@ public:
     Histogram<hrtime_t> visitHisto;
     Histogram<hrtime_t> storeHisto;
     Histogram<hrtime_t> completeHisto;
-    hrtime_t startTime;
-    hrtime_t endTime;
+    time_t startTime;
+    time_t endTime;
 };
 
 class LRUItem : public EvictItem {
@@ -251,6 +251,7 @@ private:
     Atomic<uint32_t> count;
     BGTimeStats timestats;
     Histogram<int> lruHisto;
+    time_t startTime, endTime;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -400,6 +401,7 @@ private:
     size_t size;
     Atomic<size_t> queueSize;
     BGTimeStats timestats;
+    time_t startTime, endTime;
 };
 
 // Background eviction policy to mimic the item-pager behaviour based on
@@ -416,7 +418,7 @@ public:
     }
 
     void initRebuild() {
-        timestats.startTime = gethrtime();
+        startTime = ep_real_time();
         double current = static_cast<double>(StoredValue::getCurrentSize(stats));
         double upper = static_cast<double>(stats.mem_high_wat);
         double lower = static_cast<double>(stats.mem_low_wat);
@@ -460,7 +462,9 @@ public:
     }
 
     void completeRebuild() {
-        timestats.endTime = gethrtime();
+        endTime = ep_real_time();
+        timestats.startTime = startTime;
+        timestats.endTime = endTime;
     }
 
     EvictItem *evict() {
@@ -477,6 +481,7 @@ private:
     bool shouldRun;
     size_t ejected;
     BGTimeStats timestats;
+    time_t startTime, endTime;
 };
 
 class EvictionPolicyFactory {

@@ -2386,7 +2386,22 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
         break;
     case TAP_MUTATION:
         {
-            if (!tapThrottle->shouldProcess()) {
+#define METADATA_OVERHEAD 72
+            bool throttled = false;
+            if (tapThrottle->persistenceQueueSmallEnough()) {
+                size_t needed = nkey + ndata + METADATA_OVERHEAD;
+                if (!tapThrottle->hasSomeMemory(needed + eviction.headroom)) {
+                    if (!eviction.disableInlineEviction) {
+                        epstore->getEvictionManager()->evictSize(needed);
+                    } else {
+                        throttled = true;
+                    }
+                }
+            } else {
+                throttled = true;
+            }
+
+            if (throttled) {
                 ++stats.tapThrottled;
                 if (connection->supportsAck()) {
                     ret = ENGINE_TMPFAIL;
@@ -3573,7 +3588,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
 void BGTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("evpolicy_job_start_timestamp", startTime, add_stat, cookie);
     add_casted_stat("evpolicy_job_end_timestamp", endTime, add_stat, cookie);
-    add_casted_stat("evpolicy_job_total_time", (endTime - startTime) / 1000, add_stat, cookie);
+    add_casted_stat("evpolicy_job_total_time", (endTime - startTime), add_stat, cookie);
     add_casted_stat("evpolicy_visit_time", visitHisto, add_stat, cookie);
     add_casted_stat("evpolicy_store_time", storeHisto, add_stat, cookie);
     add_casted_stat("evpolicy_complete_time", completeHisto, add_stat, cookie);

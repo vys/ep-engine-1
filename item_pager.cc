@@ -124,9 +124,9 @@ public:
      * @param pause flag indicating if PagingVisitor can pause between vbucket visits
      */
     ExpiryPagingVisitor(EventuallyPersistentStore *s, EPStats &st,
-                  bool *sfin, bool pause = false, EvictionPolicy *ev = NULL)
+                  bool *sfin, EvictionPolicy *ev = NULL)
         : store(s), stats(st), ejected(0), startTime(ep_real_time()), stateFinalizer(sfin),
-          canPause(pause), evjob(ev) {
+          pauseMutations(false), evjob(ev) {
         if (evjob) {
             evjob->initRebuild();
         }
@@ -134,7 +134,7 @@ public:
 
     void visit(StoredValue *v) {
         // Remember expired objects -- we're going to delete them.
-        if (v->isExpired(startTime) && !v->isDeleted()) {
+        if (!pauseMutations && v->isExpired(startTime) && !v->isDeleted()) {
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
         } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty()) {
@@ -167,7 +167,8 @@ public:
 
     bool pauseVisitor() {
         size_t queueSize = stats.queue_size.get() + stats.flusher_todo.get();
-        return canPause && queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
+        pauseMutations = queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
+        return false;
     }
 
     bool shouldContinue() {
@@ -200,7 +201,7 @@ private:
     size_t                     ejected;
     time_t                     startTime;
     bool                      *stateFinalizer;
-    bool                       canPause;
+    bool                       pauseMutations;
     EvictionPolicy *evjob;
 };
 
@@ -253,8 +254,7 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
 
         available = false;
         shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
-                                                       &available, true,
-                                                       store->evictionBGJob()));
+                                                       &available, store->evictionBGJob()));
         store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
                      true, 10);
     }

@@ -5654,10 +5654,120 @@ static enum test_result test_validate_checkpoint_params(ENGINE_HANDLE *h, ENGINE
     return SUCCESS;
 }
 
+static enum test_result test_lru_queue(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+
+    uint16_t vbucketId = 0;
+    std::string s;
+
+    set_flush_param(h, h1, "exp_pager_stime", "2");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set exp_pager_stime param");
+
+    check(store(h, h1, NULL, OPERATION_SET, "key1", "data1", NULL, 0, vbucketId)
+                == ENGINE_SUCCESS, "Failed to store an item.");
+    check(store(h, h1, NULL, OPERATION_SET, "key2", "data2", NULL, 0, vbucketId)
+                == ENGINE_SUCCESS, "Failed to store an item.");
+
+    wait_for_flusher_to_settle(h, h1);
+    sleep(5);
+
+    check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    check(vals.find("lru_policy_ev_queue_size") != vals.end(), "Missing stat");
+    s = vals["lru_policy_ev_queue_size"];
+    check(strcmp(s.c_str(), "2") == 0, "Incorrect eviction queue count");
+
+    evict_key(h, h1, "key1");
+    sleep(5);
+
+    check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    check(vals.find("lru_policy_ev_queue_size") != vals.end(), "Missing stat");
+    s = vals["lru_policy_ev_queue_size"];
+    check(strcmp(s.c_str(), "1") == 0, "Incorrect eviction queue count");
+
+    return SUCCESS;
+}
+
+static void check_eviction_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int expected) {
+    std::string s;
+    int val;
+
+    check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    check(vals.find("eviction_keys_evicted") != vals.end(), "Missing stat");
+    s = vals["eviction_keys_evicted"];
+    val = strtol(s.c_str(), NULL, 10);
+    check(val == expected, "Incorrect evicted keys count");
+}
+
+/*
+ * Ensure eviction is triggered under the right conditions. 
+ * Evict if used + required > (total - (headroom  * 3 + total * 0.1))
+ */
+static enum test_result test_lru_eviction(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+#define BUFFER_SIZE 4096
+
+    char keyname[5];
+    uint16_t vbucketId = 0;
+    std::string s;
+    int i, mem_used, itemsRemoved;
+    char buffer[BUFFER_SIZE];
+
+    check(h1->flush(h, NULL, 0) == ENGINE_SUCCESS, "Failed to flush");
+    mem_used = get_int_stat(h, h1, "mem_used");
+    int remaining = (get_int_stat(h, h1, "ep_max_data_size") * 9 / 10) 
+                    - (get_int_stat(h, h1, "eviction_headroom") * 3 + mem_used);
+
+    int buf_size = remaining / 2 - 300; // delta for metadata
+    assert(buf_size > 0);
+    memset(buffer, 'a', sizeof(buffer));
+    buffer[buf_size - 1] = '\0';
+    itemsRemoved = get_int_stat(h, h1, "ep_items_rm_from_checkpoints");
+
+    for (i = 0; i < 2; ++i ) {
+        snprintf(keyname, 5, "key%d", i);
+        check(store(h, h1, NULL, OPERATION_SET, keyname, buffer, NULL, 0, vbucketId)
+              == ENGINE_SUCCESS, "Failed to store an item.");
+    }
+    check_eviction_stats(h, h1, 0);
+
+    wait_for_flusher_to_settle(h, h1);
+    testHarness.time_travel(65);
+    wait_for_stat_change(h, h1, "ep_items_rm_from_checkpoints", itemsRemoved);
+    
+    snprintf(keyname, 5, "key%d", 2);
+    buffer[buf_size/2 - 200] = '\0';
+    check(store(h, h1, NULL, OPERATION_SET, keyname, buffer, NULL, 0, vbucketId)
+          == ENGINE_SUCCESS, "Failed to store an item.");
+    check_eviction_stats(h, h1, 1);
+
+    snprintf(keyname, 5, "key%d", 3);
+    check(store(h, h1, NULL, OPERATION_SET, keyname, buffer, NULL, 0, vbucketId)
+          == ENGINE_SUCCESS, "Failed to store an item.");
+    check_eviction_stats(h, h1, 1);
+
+    wait_for_flusher_to_settle(h, h1);
+    testHarness.time_travel(65);
+    wait_for_stat_change(h, h1, "ep_items_rm_from_checkpoints", itemsRemoved);
+    sleep(5);
+
+    snprintf(keyname, 5, "key%d", 4);
+    buffer[buf_size/2 - 200] = 'a';
+    check(store(h, h1, NULL, OPERATION_SET, keyname, buffer, NULL, 0, vbucketId)
+          == ENGINE_SUCCESS, "Failed to store an item.");
+    check_eviction_stats(h, h1, 3);
+
+    return SUCCESS;
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
     static engine_test_t tests[]  = {
+        {"eviction: lru evictions", test_lru_eviction, NULL, teardown, 
+         "eviction_policy=lru;max_size=10000; exp_pager_stime=2;eviction_headroom=1000;chk_period=60;ht_size=3;ht_locks=1"},
+        {"eviction: lru queue", test_lru_queue, NULL, teardown, "eviction_policy=lru"},
         {"eviction: pause and switch", test_eviction_pause_and_switch, NULL, teardown, NULL},
         {"validate engine handle", test_validate_engine_handle, NULL, teardown,
          "db_strategy=singleDB;dbname=:memory:"},

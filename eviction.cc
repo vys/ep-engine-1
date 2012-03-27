@@ -80,7 +80,7 @@ void LRUPolicy::initRebuild() {
     if (store->getEvictionManager()->enableJob()) {
         templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
         stats.evictionStats.memSize.incr(templist->memSize());
-        timestats.startTime = gethrtime();
+        startTime = ep_real_time();
     }
 }
 
@@ -89,7 +89,7 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
     if (templist && store->getEvictionManager()->enableJob()) {
         LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
         item->increaseCurrentSize(stats);
-        size_t __size = templist->size(); 
+        size_t __size = templist->size();
         if (__size && (__size == maxSize) &&
             (lruItemCompare(*templist->last(), *item) < 0)) {
             return false;
@@ -138,17 +138,19 @@ void LRUPolicy::completeRebuild() {
         delete list;
         list = templist;
         templist = NULL;
-        timestats.endTime = gethrtime();
     } else {
         clearTemplist();
     }
     clearStage();
+    endTime = ep_real_time();
+    timestats.startTime = startTime;
+    timestats.endTime = endTime;
 }
 
 void RandomPolicy::initRebuild() {
     if (store->getEvictionManager()->enableJob()) {
         templist = new RandomList();
-        timestats.startTime = gethrtime();
+        startTime = ep_real_time();
         stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
     }
 }
@@ -195,8 +197,10 @@ void RandomPolicy::completeRebuild() {
         list = templist;
         templist = NULL;
         size = 0;
-        timestats.endTime = gethrtime();
     } else {
         clearTemplist();
     }
+    endTime = ep_real_time();
+    timestats.startTime = startTime;
+    timestats.endTime = endTime;
 }
