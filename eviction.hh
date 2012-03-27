@@ -126,7 +126,8 @@ public:
     LRUPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz) :
               EvictionPolicy(s, st, job), maxSize(sz),
               list(new FixedList<LRUItem, LRUItemCompare>(maxSize)),
-              templist(NULL) {
+              templist(NULL),
+              buildDead(false) {
         list->build();
         it = list->begin();
         stats.evictionStats.memSize.incr(list->memSize());
@@ -205,7 +206,7 @@ private:
         int total = 0;
         // Handle keys that are not accessed since startup. Those keys have
         // the timestamp as 0 and cannot be used with a relative timestamp.
-        if (templist->size() && templist->first()->getAttr() == 0) {
+        if (templist->size() && (*templist->begin())->getAttr() == 0) {
             LRUItem l(1);
             total = templist->numLessThan(&l);
             lruHisto.add(cur, total);
@@ -225,9 +226,10 @@ private:
 
     void clearTemplist() {
         if (templist) {
-            FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
-            while (tempit != templist->end()) {
-                LRUItem *item = tempit++;
+            int k = templist->size();
+            LRUItem** array = templist->getArray();
+            for (int i = 0; i < k; i++) {
+                LRUItem *item = array[i];
                 item->reduceCurrentSize(stats);
                 delete item;
             }
@@ -252,6 +254,7 @@ private:
     BGTimeStats timestats;
     Histogram<int> lruHisto;
     time_t startTime, endTime;
+    bool buildDead;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -330,8 +333,11 @@ class RandomPolicy : public EvictionPolicy {
 
 public:
     RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz)
-        : EvictionPolicy(s, st, job), maxSize(sz), list(new RandomList()),
-          it(list->begin()) {
+        :   EvictionPolicy(s, st, job),
+            maxSize(sz),
+            list(new RandomList()),
+            it(list->begin()),
+            buildDead(false) {
         stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
     }
 
@@ -402,6 +408,7 @@ private:
     Atomic<size_t> queueSize;
     BGTimeStats timestats;
     time_t startTime, endTime;
+    bool buildDead;
 };
 
 // Background eviction policy to mimic the item-pager behaviour based on

@@ -8,7 +8,7 @@ bool EvictionManager::evictSize(size_t size)
     while(cur < size) {
         EvictItem *ent = evpolicy->evict();
         if (ent == NULL) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Empty list, ejection failed.  Evicted only %udB out of a total %udB required.", cur, size);
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Empty list, ejection failed.  Evicted only %uB out of a total %uB required.", cur, size);
             stats.evictionStats.numEmptyQueue++;
             return false;
         }
@@ -77,7 +77,8 @@ EvictionPolicy *EvictionManager::evictionBGJob(void)
 }
 
 void LRUPolicy::initRebuild() {
-    if (store->getEvictionManager()->enableJob()) {
+    buildDead = !(store->getEvictionManager()->enableJob());
+    if (!buildDead) {
         templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
         stats.evictionStats.memSize.incr(templist->memSize());
         startTime = ep_real_time();
@@ -86,45 +87,45 @@ void LRUPolicy::initRebuild() {
 
 bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
     BlockTimer timer(&timestats.visitHisto);
-    if (templist && store->getEvictionManager()->enableJob()) {
-        LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
-        item->increaseCurrentSize(stats);
-        size_t __size = templist->size();
-        if (__size && (__size == maxSize) &&
-            (lruItemCompare(*templist->last(), *item) < 0)) {
-            return false;
-        }
-        stage.push_front(item);
-        // this assumes that three pointers are used per node of list
-        stats.evictionStats.memSize.incr(3 * sizeof(int*));
-        return true;
+    if (buildDead || !(store->getEvictionManager()->enableJob())) {
+        buildDead = true;
+        return false;
     }
-    clearTemplist();
-    clearStage();
-    return false;
+    LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
+    item->increaseCurrentSize(stats);
+    size_t __size = templist->size();
+    if (__size && (__size == maxSize) &&
+            (lruItemCompare(*templist->last(), *item) < 0)) {
+        return false;
+    }
+    stage.push_front(item);
+    // this assumes that three pointers are used per node of list
+    stats.evictionStats.memSize.incr(3 * sizeof(int*));
+    return true;
 }
 
 bool LRUPolicy::storeEvictItem() {
     BlockTimer timer(&timestats.storeHisto);
-    if (templist && store->getEvictionManager()->enableJob()) {
-        std::list<LRUItem*> *l = templist->insert(stage);
-        for (std::list<LRUItem*>::iterator iter = l->begin(); iter != l->end(); iter++) {
-            LRUItem *item = *iter;
-            item->reduceCurrentSize(stats);
-            delete item;
-        }
-        delete l;
-        clearStage();
-        return true;
+    if (buildDead || !(store->getEvictionManager()->enableJob())) {
+        buildDead = true;
+        return false;
     }
-    clearTemplist();
+    std::list<LRUItem*> *l = templist->insert(stage);
+    for (std::list<LRUItem*>::iterator iter = l->begin(); iter != l->end(); iter++) {
+        LRUItem *item = *iter;
+        item->reduceCurrentSize(stats);
+        delete item;
+    }
+    delete l;
     clearStage();
-    return false;
+    return true;
 }
 
 void LRUPolicy::completeRebuild() {
     BlockTimer timer(&timestats.completeHisto);
-    if (templist && store->getEvictionManager()->enableJob()) {
+    if (buildDead || !(store->getEvictionManager()->enableJob())) {
+        clearTemplist();
+    } else {
         templist->build();
         genLruHisto();
         FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
@@ -138,8 +139,6 @@ void LRUPolicy::completeRebuild() {
         delete list;
         list = templist;
         templist = NULL;
-    } else {
-        clearTemplist();
     }
     clearStage();
     endTime = ep_real_time();
@@ -148,7 +147,8 @@ void LRUPolicy::completeRebuild() {
 }
 
 void RandomPolicy::initRebuild() {
-    if (store->getEvictionManager()->enableJob()) {
+    buildDead = !(store->getEvictionManager()->enableJob());
+    if (!buildDead) {
         templist = new RandomList();
         startTime = ep_real_time();
         stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
@@ -157,32 +157,37 @@ void RandomPolicy::initRebuild() {
 
 bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
     BlockTimer timer(&timestats.visitHisto);
-    if (templist && store->getEvictionManager()->enableJob()) {
-        if (size == maxSize) {
-            return false;
-        }
-        EvictItem *item = new EvictItem(v, currentBucket->getId());
-        item->increaseCurrentSize(stats);
-        templist->add(item);
-        stats.evictionStats.memSize.incr(RandomList::nodeSize());
-        size++;
-        return true;
+    if (buildDead || !(store->getEvictionManager()->enableJob())) {
+        buildDead = true;
+        return false;
     }
-    clearTemplist();
-    return false;
+    if (size == maxSize) {
+        return false;
+    }
+    EvictItem *item = new EvictItem(v, currentBucket->getId());
+    item->increaseCurrentSize(stats);
+    templist->add(item);
+    stats.evictionStats.memSize.incr(RandomList::nodeSize());
+    size++;
+    return true;
 }
 
 bool RandomPolicy::storeEvictItem() {
-    if (templist && store->getEvictionManager()->enableJob() && size < maxSize) {
+    if (buildDead || !(store->getEvictionManager()->enableJob())) {
+        buildDead = true;
+        return false;
+    }
+    if (size < maxSize) { // shouldn't this be <=
         return true;
     }
-    clearTemplist();
     return false;
 }
 
 void RandomPolicy::completeRebuild() {
     BlockTimer timer(&timestats.completeHisto);
-    if (templist && store->getEvictionManager()->enableJob()) {
+    if (buildDead || !(store->getEvictionManager()->enableJob())) {
+        clearTemplist();
+    } else {
         RandomList::iterator tempit = templist->begin();
         queueSize = size;
         tempit = it.swap(tempit);
@@ -197,8 +202,6 @@ void RandomPolicy::completeRebuild() {
         list = templist;
         templist = NULL;
         size = 0;
-    } else {
-        clearTemplist();
     }
     endTime = ep_real_time();
     timestats.startTime = startTime;

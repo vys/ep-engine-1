@@ -95,6 +95,10 @@ public:
             return *curr;
         }
 
+        T* operator *() {
+            return *_node;
+        }
+
         bool operator ==(const FixedListIterator& b) {
             return (_node == b._node); // _usable equality is implied
         }
@@ -232,13 +236,6 @@ public:
         return _data[_built ? _size-1 : 0];
     }
 
-    T* first() {
-        if (_size == 0) {
-            return NULL;
-        }
-        return _data[0];
-    }
-
     iterator end() {
         assert(_built);
         return iterator(&_data[_size]);
@@ -247,6 +244,10 @@ public:
     iterator begin() {
         assert(_built);
         return iterator(_data);
+    }
+
+    T** getArray() {
+        return _data;
     }
 };
 
