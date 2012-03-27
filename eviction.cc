@@ -77,8 +77,8 @@ EvictionPolicy *EvictionManager::evictionBGJob(void)
 }
 
 void LRUPolicy::initRebuild() {
-    buildDead = !(store->getEvictionManager()->enableJob());
-    if (!buildDead) {
+    stopBuild = !(store->getEvictionManager()->enableJob());
+    if (!stopBuild) {
         templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
         stats.evictionStats.memSize.incr(templist->memSize());
         startTime = ep_real_time();
@@ -87,8 +87,8 @@ void LRUPolicy::initRebuild() {
 
 bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
     BlockTimer timer(&timestats.visitHisto);
-    if (buildDead || !(store->getEvictionManager()->enableJob())) {
-        buildDead = true;
+    stopBuild |= !(store->getEvictionManager()->enableJob());
+    if (stopBuild) {
         return false;
     }
     LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
@@ -106,8 +106,8 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
 
 bool LRUPolicy::storeEvictItem() {
     BlockTimer timer(&timestats.storeHisto);
-    if (buildDead || !(store->getEvictionManager()->enableJob())) {
-        buildDead = true;
+    stopBuild |= !(store->getEvictionManager()->enableJob());
+    if (stopBuild) {
         return false;
     }
     std::list<LRUItem*> *l = templist->insert(stage);
@@ -123,8 +123,10 @@ bool LRUPolicy::storeEvictItem() {
 
 void LRUPolicy::completeRebuild() {
     BlockTimer timer(&timestats.completeHisto);
-    if (buildDead || !(store->getEvictionManager()->enableJob())) {
+    stopBuild |= !(store->getEvictionManager()->enableJob());
+    if (stopBuild) {
         clearTemplist();
+        clearStage();
     } else {
         templist->build();
         genLruHisto();
@@ -140,15 +142,15 @@ void LRUPolicy::completeRebuild() {
         list = templist;
         templist = NULL;
     }
-    clearStage();
+    assert(stage.size() == 0);
     endTime = ep_real_time();
     timestats.startTime = startTime;
     timestats.endTime = endTime;
 }
 
 void RandomPolicy::initRebuild() {
-    buildDead = !(store->getEvictionManager()->enableJob());
-    if (!buildDead) {
+    stopBuild = !(store->getEvictionManager()->enableJob());
+    if (!stopBuild) {
         templist = new RandomList();
         startTime = ep_real_time();
         stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
@@ -157,11 +159,8 @@ void RandomPolicy::initRebuild() {
 
 bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
     BlockTimer timer(&timestats.visitHisto);
-    if (buildDead || !(store->getEvictionManager()->enableJob())) {
-        buildDead = true;
-        return false;
-    }
-    if (size == maxSize) {
+    stopBuild |= !(store->getEvictionManager()->enableJob());
+    if (stopBuild || size == maxSize) {
         return false;
     }
     EvictItem *item = new EvictItem(v, currentBucket->getId());
@@ -173,19 +172,17 @@ bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
 }
 
 bool RandomPolicy::storeEvictItem() {
-    if (buildDead || !(store->getEvictionManager()->enableJob())) {
-        buildDead = true;
+    stopBuild |= !(store->getEvictionManager()->enableJob());
+    if (stopBuild || size >= maxSize) { // should this be >
         return false;
     }
-    if (size < maxSize) { // shouldn't this be <=
-        return true;
-    }
-    return false;
+    return true;
 }
 
 void RandomPolicy::completeRebuild() {
     BlockTimer timer(&timestats.completeHisto);
-    if (buildDead || !(store->getEvictionManager()->enableJob())) {
+    stopBuild |= !(store->getEvictionManager()->enableJob());
+    if (stopBuild) {
         clearTemplist();
     } else {
         RandomList::iterator tempit = templist->begin();

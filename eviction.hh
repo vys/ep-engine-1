@@ -127,7 +127,7 @@ public:
               EvictionPolicy(s, st, job), maxSize(sz),
               list(new FixedList<LRUItem, LRUItemCompare>(maxSize)),
               templist(NULL),
-              buildDead(false) {
+              stopBuild(false) {
         list->build();
         it = list->begin();
         stats.evictionStats.memSize.incr(list->memSize());
@@ -254,7 +254,7 @@ private:
     BGTimeStats timestats;
     Histogram<int> lruHisto;
     time_t startTime, endTime;
-    bool buildDead;
+    bool stopBuild;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -280,9 +280,9 @@ class RandomPolicy : public EvictionPolicy {
             }
         }
     
-        class RandomListIteraror {
+        class RandomListIterator {
         public:
-            RandomListIteraror(RandomNode *node = NULL) : _node(node) {}
+            RandomListIterator(RandomNode *node = NULL) : _node(node) {}
 
             EvictItem* operator *() {
                 assert(_node && _node->data);
@@ -300,7 +300,7 @@ class RandomPolicy : public EvictionPolicy {
                 return old->data;
             }
 
-            RandomNode *swap(RandomListIteraror &it) {
+            RandomNode *swap(RandomListIterator &it) {
                 RandomNode *old;
                 do {
                     old = _node;
@@ -311,7 +311,7 @@ class RandomPolicy : public EvictionPolicy {
             RandomNode *_node;
         };
 
-        typedef RandomListIteraror iterator;
+        typedef RandomListIterator iterator;
 
         iterator begin() {
             return iterator(head);
@@ -337,7 +337,7 @@ public:
             maxSize(sz),
             list(new RandomList()),
             it(list->begin()),
-            buildDead(false) {
+            stopBuild(false) {
         stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
     }
 
@@ -408,7 +408,7 @@ private:
     Atomic<size_t> queueSize;
     BGTimeStats timestats;
     time_t startTime, endTime;
-    bool buildDead;
+    bool stopBuild;
 };
 
 // Background eviction policy to mimic the item-pager behaviour based on
