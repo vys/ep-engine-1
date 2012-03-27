@@ -173,7 +173,7 @@ bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
 
 bool RandomPolicy::storeEvictItem() {
     stopBuild |= !(store->getEvictionManager()->enableJob());
-    if (stopBuild || size >= maxSize) { // should this be >
+    if (stopBuild || size > maxSize) {
         return false;
     }
     return true;
