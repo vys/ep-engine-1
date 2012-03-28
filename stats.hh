@@ -246,6 +246,15 @@ public:
     //! Histogram of disk ages for items
     Histogram<uint32_t> itemDiskAgeHisto;
 
+    // Reference time at which the hotness is measured
+    time_t itemAgeStartTime;
+
+    // Histogram of age of items
+    Histogram<int>itemAgeHisto;
+
+    //Histogram of size of items
+    Histogram<uint32_t>itemSizeHisto;
+
     //! The number of samples the bgWaitDelta and bgLoadDelta contains of
     Atomic<size_t> bgNumOperations;
     /** The sum of the deltas (in usec) from an item was put in queue until

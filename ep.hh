@@ -815,6 +815,7 @@ public:
     void initEvictionManager(const char *p);
     void setMaxEvictEntries(int val);
     int getMaxEvictEntries();
+    void setPruneAge(int val);
     EvictionPolicy *evictionBGJob(void);
     void evictionJobEnabled(bool doit);
     bool evictionJobEnabled(void);

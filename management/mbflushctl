@@ -44,10 +44,6 @@ def evict(mc, key, username=None, password=""):
     auth(mc, username, password)
     mc.evict_key(key)
 
-def prune_lru(mc, age, username=None, password=""):
-    auth(mc, username, password)
-    mc.prune_lru(age)
-
 if __name__ == '__main__':
 
     c = clitool.CliTool("""
@@ -71,12 +67,12 @@ Available params for "set":
     enable_eviction_job - Enable or Disable eviction job
     eviction_policy     - Change the eviction policy 
     eviction_headroom   - Change the headroom to be kept aside through eviction
-    disable_inline_eviction   - Disable inline eviction""")
+    disable_inline_eviction   - Disable inline eviction
+    prune_lru_keys      - Prune keys that are older than the speificed timestamp""")
 
     c.addCommand('stop', stop, 'stop')
     c.addCommand('start', start, 'start')
     c.addCommand('set', set_param, 'set param value')
     c.addCommand('evict', evict, "evict key")
-    c.addCommand('prune_lru', prune_lru, "age")
 
     c.execute()

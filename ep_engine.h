@@ -186,12 +186,8 @@ public:
                                    const int flags,
                                    const rel_time_t exptime)
     {
-/* Account for all threads that could be doing the memory check right now
- * Total headroom: No. of threads * configured headroom per thread
- * METADATA_OVERHEAD: Size of StoredValue strucure
- */
-#define PARALLELISM 4
-#define METADATA_OVERHEAD 72
+#define METADATA_OVERHEAD 72 // Size of StoredValue strucure
+
         (void)cookie;
         if (nbytes > maxItemSize) {
             return ENGINE_E2BIG;
@@ -200,8 +196,8 @@ public:
         time_t expiretime = (exptime == 0) ? 0 : ep_abs_time(ep_reltime(exptime));
 
         size_t needed = nkey + nbytes + METADATA_OVERHEAD;
-        size_t cushion = eviction.headroom * (PARALLELISM - 1);
-        if (StoredValue::hasEnoughMemory(needed + cushion, stats) == false) {
+        size_t total_needed = needed + accountForNThreads();
+        if (StoredValue::hasEnoughMemory(total_needed, stats) == false) {
             getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: No memory, attempting ejection.");
             if (!eviction.disableInlineEviction) {
                 epstore->getEvictionManager()->evictSize(needed);
@@ -493,12 +489,6 @@ public:
         return epstore->evictKey(key, vbucket, msg, msg_size);
     }
 
-    protocol_binary_response_status pruneLRU(uint64_t age,
-                                             const char **msg,
-                                             size_t *msg_size) {
-        return epstore->pruneLRU(age, msg, msg_size);
-    }
-
     bool getLocked(const std::string &key,
                    uint16_t vbucket,
                    Callback<GetValue> &cb,
@@ -610,6 +600,10 @@ public:
         epstore->setMaxEvictEntries(val);
     }
 
+    void setPruneAge(int val) {
+        epstore->setPruneAge(val);
+    }
+
     size_t getExpiryPagerSleeptime(void) {
         LockHolder lh(expiryPager.mutex);
         return expiryPager.sleeptime;
@@ -649,6 +643,8 @@ public:
     void setEvictionDisable(bool doit) {
         eviction.disableInlineEviction = doit;
     }
+
+    size_t accountForNThreads();
 
 private:
     EventuallyPersistentEngine(GET_SERVER_API get_server_api);

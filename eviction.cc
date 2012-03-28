@@ -53,11 +53,26 @@ bool EvictionManager::evictSize(size_t size)
     return true;
 }
 
+// Evict key if it is older than the timestamp
+bool EvictionPolicy::evictItemByAge(int timestamp, StoredValue *v, RCPtr<VBucket> vb) {
+    int keyAge = ep_abs_time(v->getDataAge());
+
+    assert(timestamp != 0);
+    if (keyAge >= timestamp) {
+        return false;
+    } else if (v->ejectValue(stats, vb->ht)) {
+        //Update stats
+        return true;
+    }
+    return false;
+}
+
 // Periodic check to set policy and queue size due to config change
 // Return policy if it needs to run as a background job.
 EvictionPolicy *EvictionManager::evictionBGJob(void)
 {
     if (pauseJob) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: Key not eligible for eviction.");
         return NULL;
     }
 
@@ -69,10 +84,12 @@ EvictionPolicy *EvictionManager::evictionBGJob(void)
         }
     }
     evpolicy->setSize(maxSize);
-    if (evpolicy->backgroundJob) { 
-        return evpolicy; 
-    } else { 
-        return NULL; 
+    if (evpolicy->backgroundJob) {
+        evpolicy->evictAge(pruneAge);
+        pruneAge = 0;
+        return evpolicy;
+    } else {
+        return NULL;
     }
 }
 

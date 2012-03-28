@@ -2359,6 +2359,10 @@ void EventuallyPersistentStore::setMaxEvictEntries(int val) {
     evictionManager->setMaxSize(val);
 }
 
+void EventuallyPersistentStore::setPruneAge(int val) {
+    evictionManager->setPruneAge(val);
+}
+
 int EventuallyPersistentStore::getMaxEvictEntries(void) {
     return evictionManager->getMaxSize();
 }

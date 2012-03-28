@@ -43,7 +43,7 @@ protected:
 class EvictionPolicy {
 public:
     EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) : 
-                   backgroundJob(job), store(s), stats(st) {}
+                   backgroundJob(job), store(s), stats(st), age(0) {}
 
     virtual ~EvictionPolicy() {}
 
@@ -52,6 +52,12 @@ public:
 
     virtual std::string description () const = 0;
     virtual void getStats(const void *cookie, ADD_STAT add_stat) = 0;
+
+    int evictAge() { return age; }
+
+    void evictAge(int val) {age = val; }
+
+    bool evictItemByAge(int age, StoredValue *v, RCPtr<VBucket> vb);
 
     /* Following set of functions are needed only by policies that need a 
        background job to build their data structures.
@@ -66,6 +72,9 @@ public:
 protected:
     EventuallyPersistentStore *store;
     EPStats &stats;
+
+private:
+    int age;
 };
 
 // Timing stats for the policies that use background job.
@@ -521,7 +530,8 @@ public:
     EvictionManager(EventuallyPersistentStore *s, EPStats &st, const char *p) :
         maxSize(MAX_EVICTION_ENTRIES), count(0),
         pauseJob(false), store(s), stats(st), policyName(p),
-        evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)) {
+        evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
+        pruneAge(0) {
         policies.insert("lru");
         policies.insert("random");
         policies.insert("bgeviction");
@@ -571,6 +581,10 @@ public:
         maxSize = val;
     }
 
+    void setPruneAge(int val) {
+        pruneAge = val;
+    }
+
 private:
     uint32_t maxSize; // Total number of entries for eviction
     Atomic<int> count;
@@ -580,5 +594,6 @@ private:
     std::string policyName;
     EvictionPolicy* evpolicy;
     std::set<std::string> policies;
+    int pruneAge;
 };
 #endif /* EVICTION_HH */
