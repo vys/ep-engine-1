@@ -20,25 +20,25 @@ template <typename T, typename Compare = less<T> >
 class FixedList {
 private:
     void clear() {
-        delete [] _data;
-        _data = NULL;
+        delete [] data;
+        data = NULL;
     }
 
     void swap(int i, int j) {
-        T *tmp = _data[i];
-        _data[i] = _data[j];
-        _data[j] = tmp;
+        T *tmp = data[i];
+        data[i] = data[j];
+        data[j] = tmp;
     }
 
-    void siftDown(int p, int __size) {
+    void siftDown(int p, int s) {
         int l;
-        while ((l = hleft(p)) < __size) {
+        while ((l = hleft(p)) < s) {
             int c = p;
-            if (_comp(*_data[c], *_data[l]) < 0) {
+            if (comparator(*data[c], *data[l]) < 0) {
                 c = l;
             }
             l = hright(p);
-            if (l < __size && _comp(*_data[c], *_data[l]) < 0) {
+            if (l < s && comparator(*data[c], *data[l]) < 0) {
                 c = l;
             }
             if (c == p) {
@@ -53,7 +53,7 @@ private:
     void siftUp(int p) {
         while (p != 0) {
             int parent = hparent(p);
-            if (_comp(*_data[p], *_data[parent]) > 0) {
+            if (comparator(*data[p], *data[parent]) > 0) {
                 swap(p, parent);
             } else {
                 return;
@@ -63,67 +63,71 @@ private:
     }
 
     void sortHeapToArray() {
-        int __size = _size;
-        while (__size > 1) {
-            swap(__size - 1, 0);
-            __size--;
-            siftDown(0, __size);
+        int s = currentSize;
+        while (s > 1) {
+            swap(s - 1, 0);
+            s--;
+            siftDown(0, s);
         }
     }
 
-    size_t      _size;
-    size_t      _maxSize;
-    Compare     _comp;
-    T           **_data;
-    bool        _built;
+    size_t      currentSize;
+    size_t      maxSize;
+    Compare     comparator;
+    T           **data;
+    bool        built;
 
 public:
     class FixedListIterator {
     public:
-        FixedListIterator() : _node(NULL) {}
+        FixedListIterator() : node(NULL) {}
 
         // performs the pop operation
         T* operator ++(int) {
-            assert(_node);
+            assert(node);
             T **curr;
             do {
-                curr = _node;
+                curr = node;
                 if (*curr == NULL) {
                     return NULL;
                 }
-            } while (!ep_sync_bool_compare_and_swap(&_node, curr, curr+1));
+            } while (!ep_sync_bool_compare_and_swap(&node, curr, curr+1));
             return *curr;
         }
 
+        T* operator *() {
+            return *node;
+        }
+
         bool operator ==(const FixedListIterator& b) {
-            return (_node == b._node); // _usable equality is implied
+            return (node == b.node);
         }
 
         bool operator !=(const FixedListIterator& b) {
-            return (_node != b._node); // _usable equality is implied
+            return (node != b.node);
         }
 
         FixedListIterator swap(const FixedListIterator& b) {
-            assert(b._node);
+            assert(b.node);
             T **curr;
             do {
-                curr = _node;
-            } while (!ep_sync_bool_compare_and_swap(&_node, curr, b._node));
+                curr = node;
+            } while (!ep_sync_bool_compare_and_swap(&node, curr, b.node));
             return FixedListIterator(curr);
         }
 
     private:
-        FixedListIterator(T **node) : _node(node) {}
+        FixedListIterator(T **n) : node(n) {}
 
         friend class FixedList;
 
-        T   **_node;
+        T   **node;
     };
 
     typedef FixedListIterator iterator;
 
-    FixedList(size_t maxSize, const Compare& comp = Compare()) : _data(NULL) { // Set _data to NULL to ensure safe call to clear()
-        init(maxSize, comp);
+    FixedList(size_t sz, const Compare& comp = Compare()) : data(NULL) { // Set data to NULL to ensure safe call to clear()
+        init(sz, comp);
     }
 
     ~FixedList() {
@@ -131,15 +135,19 @@ public:
     }
 
     // Initialize (equivalent to destructing and constructing again)
-    void init(size_t maxSize, const Compare& comp = Compare()) {
+    void init(size_t sz, const Compare& comp = Compare()) {
         clear();
-        _comp = comp;
-        _maxSize = maxSize;
-        _size = 0;
-        _data = new T*[maxSize + 1]; // the last one is potentially a tail (when array is full)
-        _built = false;
+        comparator = comp;
+        maxSize = sz;
+        currentSize = 0;
+        data = new T*[maxSize + 1]; // the last one is potentially a tail (when array is full)
+        built = false;
     }
 
+    /**
+     * Inserts all items from l and returns a list of items that were either rejected
+     *  or removed from the list
+     */
     std::list<T*> *insert(std::list<T*> &l) {
         std::list<T*> *ret = new std::list<T*>;
         T *dummy;
@@ -154,48 +162,48 @@ public:
 
     void build() {
         sortHeapToArray();
-        _data[_size] = NULL;
-        _built = true;
+        data[currentSize] = NULL;
+        built = true;
     }
 
     size_t size() {
-        return _size;
+        return currentSize;
     }
 
     size_t memSize() {
-        return sizeof(FixedList) + (_data ? (_maxSize + 1) * sizeof(T*) : 0);
+        return sizeof(FixedList) + (data ? (maxSize + 1) * sizeof(T*) : 0);
     }
 
     void checkSanity() {
-        assert(_size <= _maxSize);
-        if (_built) {
+        assert(currentSize <= maxSize);
+        if (built) {
             // check sorted list validity
-            for (size_t i = 0; i < _size-1; i++) {
-                assert(_comp(*_data[i], *_data[i+1]) <= 0);
+            for (size_t i = 0; i < currentSize-1; i++) {
+                assert(comparator(*data[i], *data[i+1]) <= 0);
             }
         } else {
             // check heap validity
-            for (size_t i = 0; i < _size; i++) {
+            for (size_t i = 0; i < currentSize; i++) {
                 size_t c = hleft(i);
-                if (c < _size) {
-                    assert(_comp(*_data[i], *_data[c]) >= 0);
+                if (c < currentSize) {
+                    assert(comparator(*data[i], *data[c]) >= 0);
                 } else {
                     break;
                 }
                 c = hright(i);
-                if (c < _size) {
-                    assert(_comp(*_data[i], *_data[c]) >= 0);
+                if (c < currentSize) {
+                    assert(comparator(*data[i], *data[c]) >= 0);
                 }
             }
         }
     }
 
     int numLessThan(T *compareTo) {
-        assert(_built);
-        int l = 0, r = _size, m;
+        assert(built);
+        int l = 0, r = currentSize, m;
         while (l < r) {
             m = (l+r) / 2;
-            if (_comp(*_data[m], *compareTo) < 0) {
+            if (comparator(*data[m], *compareTo) < 0) {
                 l = m + 1;
             } else {
                 r = m;
@@ -205,48 +213,50 @@ public:
     }
 
     int numGreaterThan(T *compareTo) {
-        return _size - (numLessThan(compareTo));
+        return currentSize - (numLessThan(compareTo));
     }
 
-    T* insert(T *data) {
-        assert(!_built);
-        if (_maxSize == 0) {
-            return NULL;
+    /**
+     * Returns the rejected item or NULL if none
+     */
+    T* insert(T *item) {
+        assert(!built);
+        if (maxSize == 0) {
+            return item;
         }
         T* ret = NULL;
-        if (_size < _maxSize) {
-            _data[_size++] = data;
-            siftUp(_size - 1);
-        } else if (_comp(*_data[0], *data) > 0) {
-            ret = _data[0];
-            _data[0] = data;
-            siftDown(0, _size);
+        if (currentSize < maxSize) {
+            data[currentSize++] = item;
+            siftUp(currentSize - 1);
+        } else if (comparator(*data[0], *item) > 0) {
+            ret = data[0];
+            data[0] = item;
+            siftDown(0, currentSize);
+        } else {
+            ret = item;
         }
         return ret;
     }
 
     T* last() {
-        if (_size == 0) {
+        if (currentSize == 0) {
             return NULL;
         }
-        return _data[_built ? _size-1 : 0];
-    }
-
-    T* first() {
-        if (_size == 0) {
-            return NULL;
-        }
-        return _data[0];
+        return data[built ? currentSize-1 : 0];
     }
 
     iterator end() {
-        assert(_built);
-        return iterator(&_data[_size]);
+        assert(built);
+        return iterator(&data[currentSize]);
     }
 
     iterator begin() {
-        assert(_built);
-        return iterator(_data);
+        assert(built);
+        return iterator(data);
+    }
+
+    T** getArray() {
+        return data;
     }
 };
 

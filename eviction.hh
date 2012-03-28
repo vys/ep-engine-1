@@ -135,7 +135,8 @@ public:
     LRUPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz) :
               EvictionPolicy(s, st, job), maxSize(sz),
               list(new FixedList<LRUItem, LRUItemCompare>(maxSize)),
-              templist(NULL) {
+              templist(NULL),
+              stopBuild(false) {
         list->build();
         it = list->begin();
         stats.evictionStats.memSize.incr(list->memSize());
@@ -144,7 +145,7 @@ public:
     }
 
     ~LRUPolicy() {
-        clearStage();
+        clearStage(true);
         // this assumes that three pointers are used per node of list
         stats.evictionStats.memSize.decr(3 * sizeof(int*));
         clearTemplist();
@@ -214,7 +215,7 @@ private:
         int total = 0;
         // Handle keys that are not accessed since startup. Those keys have
         // the timestamp as 0 and cannot be used with a relative timestamp.
-        if (templist->size() && templist->first()->getAttr() == 0) {
+        if (templist->size() && (*templist->begin())->getAttr() == 0) {
             LRUItem l(1);
             total = templist->numLessThan(&l);
             lruHisto.add(cur, total);
@@ -234,9 +235,10 @@ private:
 
     void clearTemplist() {
         if (templist) {
-            FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
-            while (tempit != templist->end()) {
-                LRUItem *item = tempit++;
+            int k = templist->size();
+            LRUItem** array = templist->getArray();
+            for (int i = 0; i < k; i++) {
+                LRUItem *item = array[i];
                 item->reduceCurrentSize(stats);
                 delete item;
             }
@@ -246,9 +248,16 @@ private:
         }
     }
 
-    void clearStage() {
+    void clearStage(bool deleteItems = false) {
         // this assumes that three pointers are used per node of list
         stats.evictionStats.memSize.decr(stage.size() * 3 * sizeof(int*));
+        if (deleteItems) {
+            for (std::list<LRUItem*>::iterator iter = stage.begin(); iter != stage.end(); iter++) {
+                LRUItem *item = *iter;
+                item->reduceCurrentSize(stats);
+                delete item;
+            }
+        }
         stage.clear();
     }
 
@@ -261,6 +270,7 @@ private:
     BGTimeStats timestats;
     Histogram<int> lruHisto;
     time_t startTime, endTime;
+    bool stopBuild;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -286,9 +296,9 @@ class RandomPolicy : public EvictionPolicy {
             }
         }
     
-        class RandomListIteraror {
+        class RandomListIterator {
         public:
-            RandomListIteraror(RandomNode *node = NULL) : _node(node) {}
+            RandomListIterator(RandomNode *node = NULL) : _node(node) {}
 
             EvictItem* operator *() {
                 assert(_node && _node->data);
@@ -306,7 +316,7 @@ class RandomPolicy : public EvictionPolicy {
                 return old->data;
             }
 
-            RandomNode *swap(RandomListIteraror &it) {
+            RandomNode *swap(RandomListIterator &it) {
                 RandomNode *old;
                 do {
                     old = _node;
@@ -317,7 +327,7 @@ class RandomPolicy : public EvictionPolicy {
             RandomNode *_node;
         };
 
-        typedef RandomListIteraror iterator;
+        typedef RandomListIterator iterator;
 
         iterator begin() {
             return iterator(head);
@@ -339,8 +349,11 @@ class RandomPolicy : public EvictionPolicy {
 
 public:
     RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz)
-        : EvictionPolicy(s, st, job), maxSize(sz), list(new RandomList()),
-          it(list->begin()) {
+        :   EvictionPolicy(s, st, job),
+            maxSize(sz),
+            list(new RandomList()),
+            it(list->begin()),
+            stopBuild(false) {
         stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
     }
 
@@ -411,6 +424,7 @@ private:
     Atomic<size_t> queueSize;
     BGTimeStats timestats;
     time_t startTime, endTime;
+    bool stopBuild;
 };
 
 // Background eviction policy to mimic the item-pager behaviour based on
