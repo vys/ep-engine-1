@@ -128,6 +128,9 @@ public:
         : store(s), stats(st), ejected(0), startTime(ep_real_time()), stateFinalizer(sfin),
           pauseMutations(false), evjob(ev) {
         if (evjob) {
+            stats.itemAgeStartTime = startTime;
+            ageHisto.reset();
+            sizeHisto.reset();
             evjob->initRebuild();
         }
     }
@@ -138,6 +141,9 @@ public:
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
         } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty()) {
+            time_t age = startTime - ep_abs_time(v->getDataAge());
+            ageHisto.add(age);
+            sizeHisto.add(v->valLength());
             evjob->addEvictItem(v, currentBucket);
         }
     }
@@ -185,6 +191,18 @@ public:
         }
         if (evjob) {
             evjob->completeRebuild();
+            // Copy out the histograms
+            stats.itemAgeHisto.reset();
+            Histogram<int>::iterator it = ageHisto.begin();
+            for (; it != ageHisto.end(); ++it) {
+                stats.itemAgeHisto.add((*it)->start(), (*it)->count());
+            }
+            stats.itemSizeHisto.reset();
+            Histogram<size_t>::iterator it1 = sizeHisto.begin();
+            for (; it1 != sizeHisto.end(); ++it1) {
+                stats.itemSizeHisto.add((*it1)->start(), (*it1)->count());
+            }
+
         }
     }
     
@@ -203,6 +221,8 @@ private:
     bool                      *stateFinalizer;
     bool                       pauseMutations;
     EvictionPolicy *evjob;
+    Histogram<int> ageHisto;
+    Histogram<size_t> sizeHisto;
 };
 
 bool ItemPager::callback(Dispatcher &d, TaskId t) {

@@ -2390,7 +2390,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
             bool throttled = false;
             if (tapThrottle->persistenceQueueSmallEnough()) {
                 size_t needed = nkey + ndata + METADATA_OVERHEAD;
-                if (!tapThrottle->hasSomeMemory(needed + eviction.headroom)) {
+                size_t total_needed = needed + accountForNThreads();
+                if (!tapThrottle->hasSomeMemory(total_needed)) {
                     if (!eviction.disableInlineEviction) {
                         epstore->getEvictionManager()->evictSize(needed);
                     } else {
@@ -3652,6 +3653,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,
 
     add_casted_stat("item_memory_age", stats.itemMemoryAgeHisto, add_stat, cookie);
     add_casted_stat("item_disk_age", stats.itemDiskAgeHisto, add_stat, cookie);
+    add_casted_stat("item_hotness_timestamp", stats.itemAgeStartTime, add_stat, cookie);
+    add_casted_stat("item_hotness_age", stats.itemAgeHisto, add_stat, cookie);
+    add_casted_stat("item_sizes", stats.itemSizeHisto, add_stat, cookie);
 
     // Regular commands
     add_casted_stat("get_cmd", stats.getCmdHisto, add_stat, cookie);
@@ -4372,4 +4376,13 @@ EventuallyPersistentEngine::resetReplicationChain(const void *cookie,
         return ENGINE_SUCCESS;
     }
     return ENGINE_FAILED;
+}
+
+size_t EventuallyPersistentEngine::accountForNThreads() {
+/* Account for all threads that could be doing the memory check right now
+ * Total headroom: No. of threads * configured headroom per thread
+ */
+#define PARALLELISM 4
+
+    return eviction.headroom* (PARALLELISM - 1);
 }
