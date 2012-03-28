@@ -489,12 +489,6 @@ public:
         return epstore->evictKey(key, vbucket, msg, msg_size);
     }
 
-    protocol_binary_response_status pruneLRU(uint64_t age,
-                                             const char **msg,
-                                             size_t *msg_size) {
-        return epstore->pruneLRU(age, msg, msg_size);
-    }
-
     bool getLocked(const std::string &key,
                    uint16_t vbucket,
                    Callback<GetValue> &cb,
@@ -604,6 +598,10 @@ public:
 
     void setMaxEvictEntries(int val) {
         epstore->setMaxEvictEntries(val);
+    }
+
+    void setPruneAge(int val) {
+        epstore->setPruneAge(val);
     }
 
     size_t getExpiryPagerSleeptime(void) {

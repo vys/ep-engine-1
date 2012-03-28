@@ -123,7 +123,6 @@
  */
 #define CMD_RESET_REPLICATION_CHAIN 0x9f
 
-#define CMD_PRUNE_LRU 0xa0
 /*
  * IDs for the events of the SYNC command.
  */

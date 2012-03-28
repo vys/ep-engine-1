@@ -141,10 +141,14 @@ public:
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
         } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty()) {
-            time_t age = startTime - ep_abs_time(v->getDataAge());
-            ageHisto.add(age);
-            sizeHisto.add(v->valLength());
-            evjob->addEvictItem(v, currentBucket);
+            if (evjob->evictAge() &&
+                evjob->evictItemByAge(evjob->evictAge(), v, currentBucket) == false) {
+            } else {
+                time_t age = startTime - ep_abs_time(v->getDataAge());
+                ageHisto.add(age);
+                sizeHisto.add(v->valLength());
+                evjob->addEvictItem(v, currentBucket);
+            }
         }
     }
 

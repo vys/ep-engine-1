@@ -337,6 +337,14 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting max_evict_entries to %d via flush params.", vsize);
                 e->setMaxEvictEntries((size_t)vsize);
+            } else if (strcmp(keyz, "prune_lru_keys") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                int vsize = strtol(valz, &ptr, 10);
+                validate(vsize, static_cast<int>(0),
+                         std::numeric_limits<int>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting prune_lru_keys to %d via flush params.", vsize);
+                e->setPruneAge(vsize);
             } else if (strcmp(keyz, "inconsistent_slave_chk") == 0) {
                 bool inconsistentSlaveCheckpoint = false;
                 if (strcmp(valz, "true") == 0) {
@@ -388,28 +396,6 @@ extern "C" {
                          keyz);
 
         return e->evictKey(key, vbucket, msg, msg_size);
-    }
-
-    static protocol_binary_response_status pruneLRU(EventuallyPersistentEngine *e,
-                                                    protocol_binary_request_header *request,
-                                                    const char **msg,
-                                                    size_t *msg_size) {
-    
-        protocol_binary_request_no_extras *req =
-            (protocol_binary_request_no_extras*)request;
-        char val[256];
-
-        int len = ntohs(req->message.header.request.keylen);
-        if (len >= (int)sizeof(val)) {
-            *msg = "Invalid time interval.";
-            return PROTOCOL_BINARY_RESPONSE_EINVAL;
-        }
-
-        memcpy(val, ((char*)request) + sizeof(req->message.header), len);
-        char *ptr = NULL;
-        uint64_t age = strtoull(val, &ptr, 10);
-        
-        return e->pruneLRU(age, msg, msg_size);
     }
 
     ENGINE_ERROR_CODE getLocked(EventuallyPersistentEngine *e,
@@ -857,9 +843,6 @@ extern "C" {
             break;
         case CMD_EVICT_KEY:
             res = evictKey(h, request, &msg, &msg_size);
-            break;
-        case CMD_PRUNE_LRU:
-            res = pruneLRU(h, request, &msg, &msg_size);
             break;
         case CMD_GET_LOCKED:
             rv = getLocked(h, (protocol_binary_request_getl*)request, cookie, &item, &msg, &msg_size, &res);
