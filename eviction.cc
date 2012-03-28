@@ -92,12 +92,13 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
         return false;
     }
     LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
-    item->increaseCurrentSize(stats);
-    size_t __size = templist->size();
-    if (__size && (__size == maxSize) &&
+    size_t size = templist->size();
+    if (size && (size == maxSize) &&
             (lruItemCompare(*templist->last(), *item) < 0)) {
+        delete item;
         return false;
     }
+    item->increaseCurrentSize(stats);
     stage.push_front(item);
     // this assumes that three pointers are used per node of list
     stats.evictionStats.memSize.incr(3 * sizeof(int*));
@@ -126,7 +127,7 @@ void LRUPolicy::completeRebuild() {
     stopBuild |= !(store->getEvictionManager()->enableJob());
     if (stopBuild) {
         clearTemplist();
-        clearStage();
+        clearStage(true);
     } else {
         templist->build();
         genLruHisto();

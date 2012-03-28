@@ -136,7 +136,7 @@ public:
     }
 
     ~LRUPolicy() {
-        clearStage();
+        clearStage(true);
         // this assumes that three pointers are used per node of list
         stats.evictionStats.memSize.decr(3 * sizeof(int*));
         clearTemplist();
@@ -239,9 +239,16 @@ private:
         }
     }
 
-    void clearStage() {
+    void clearStage(bool deleteItems = false) {
         // this assumes that three pointers are used per node of list
         stats.evictionStats.memSize.decr(stage.size() * 3 * sizeof(int*));
+        if (deleteItems) {
+            for (std::list<LRUItem*>::iterator iter = stage.begin(); iter != stage.end(); iter++) {
+                LRUItem *item = *iter;
+                item->reduceCurrentSize(stats);
+                delete item;
+            }
+        }
         stage.clear();
     }
 

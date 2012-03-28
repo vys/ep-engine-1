@@ -144,6 +144,10 @@ public:
         built = false;
     }
 
+    /**
+     * Inserts all items from l and returns a list of items that were either rejected
+     *  or removed from the list
+     */
     std::list<T*> *insert(std::list<T*> &l) {
         std::list<T*> *ret = new std::list<T*>;
         T *dummy;
@@ -212,10 +216,13 @@ public:
         return currentSize - (numLessThan(compareTo));
     }
 
+    /**
+     * Returns the rejected item or NULL if none
+     */
     T* insert(T *item) {
         assert(!built);
         if (maxSize == 0) {
-            return NULL;
+            return item;
         }
         T* ret = NULL;
         if (currentSize < maxSize) {
@@ -225,6 +232,8 @@ public:
             ret = data[0];
             data[0] = item;
             siftDown(0, currentSize);
+        } else {
+            ret = item;
         }
         return ret;
     }
