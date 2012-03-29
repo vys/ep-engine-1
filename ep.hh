@@ -815,14 +815,12 @@ public:
     void initEvictionManager(const char *p);
     void setMaxEvictEntries(int val);
     int getMaxEvictEntries();
-    void setPruneAge(int val);
+    void setPruneAge(time_t val);
     EvictionPolicy *evictionBGJob(void);
     void evictionJobEnabled(bool doit);
     bool evictionJobEnabled(void);
     bool setEvictionPolicy(const char *name);
     void evictionPolicyStats(const void *cookie, ADD_STAT add_stat);
-
-    protocol_binary_response_status pruneLRU(uint64_t age, const char**msg, size_t *msg_size);
 
     EvictionManager *getEvictionManager(void) {
         return evictionManager;

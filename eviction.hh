@@ -53,11 +53,11 @@ public:
     virtual std::string description () const = 0;
     virtual void getStats(const void *cookie, ADD_STAT add_stat) = 0;
 
-    int evictAge() { return age; }
+    time_t evictAge() { return age; }
 
-    void evictAge(int val) {age = val; }
+    void evictAge(time_t val) {age = val; }
 
-    bool evictItemByAge(int age, StoredValue *v, RCPtr<VBucket> vb);
+    bool evictItemByAge(time_t age, StoredValue *v, RCPtr<VBucket> vb);
 
     /* Following set of functions are needed only by policies that need a 
        background job to build their data structures.
@@ -74,7 +74,7 @@ protected:
     EPStats &stats;
 
 private:
-    int age;
+    time_t age;
 };
 
 // Timing stats for the policies that use background job.
@@ -178,7 +178,13 @@ public:
         }
     }
 
-    void setSize(size_t val) { maxSize = val; }
+    void setSize(size_t val) { 
+        if (maxSize != val) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "Eviction: Setting max entries to %llu", maxSize);
+        }
+        maxSize = val; 
+    }
     
     void initRebuild();
 
@@ -561,10 +567,6 @@ public:
 
     bool evictSize(size_t size);
 
-    void prune(uint64_t age) {
-        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Pruning keys with age %ull", age); 
-    }
-
     int getMaxSize(void) {
         return maxSize;
     }
@@ -581,7 +583,7 @@ public:
         maxSize = val;
     }
 
-    void setPruneAge(int val) {
+    void setPruneAge(time_t val) {
         pruneAge = val;
     }
 
@@ -594,6 +596,6 @@ private:
     std::string policyName;
     EvictionPolicy* evpolicy;
     std::set<std::string> policies;
-    int pruneAge;
+    time_t pruneAge;
 };
 #endif /* EVICTION_HH */

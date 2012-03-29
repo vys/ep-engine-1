@@ -600,7 +600,7 @@ public:
         epstore->setMaxEvictEntries(val);
     }
 
-    void setPruneAge(int val) {
+    void setPruneAge(time_t val) {
         epstore->setPruneAge(val);
     }
 

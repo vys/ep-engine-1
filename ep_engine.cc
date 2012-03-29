@@ -337,13 +337,13 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting max_evict_entries to %d via flush params.", vsize);
                 e->setMaxEvictEntries((size_t)vsize);
-            } else if (strcmp(keyz, "prune_lru_keys") == 0) {
+            } else if (strcmp(keyz, "prune_lru_age") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
-                int vsize = strtol(valz, &ptr, 10);
-                validate(vsize, static_cast<int>(0),
-                         std::numeric_limits<int>::max());
-                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting prune_lru_keys to %d via flush params.", vsize);
+                time_t vsize = strtol(valz, &ptr, 10);
+                validate(vsize, static_cast<time_t>(0),
+                         std::numeric_limits<time_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting prune_lru_age to %d via flush params.", vsize);
                 e->setPruneAge(vsize);
             } else if (strcmp(keyz, "inconsistent_slave_chk") == 0) {
                 bool inconsistentSlaveCheckpoint = false;
@@ -3619,6 +3619,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     add_casted_stat("eviction_memory_size", stats.evictionStats.memSize, add_stat, cookie);
 
     epstore->evictionPolicyStats(cookie, add_stat);
+    add_casted_stat("eviction_prune_runs", stats.pruneStats.numPruneRuns, add_stat, cookie);
+    add_casted_stat("eviction_num_keys_pruned", stats.pruneStats.numKeysPruned, add_stat, cookie);
     return ENGINE_SUCCESS;
 }
 
