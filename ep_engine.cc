@@ -3587,6 +3587,7 @@ void BGEvictionPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
 void LRUPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("eviction_policy", description(), add_stat, cookie);
     add_casted_stat("eviction_max_queue_size", maxSize, add_stat, cookie);
+    add_casted_stat("lru_policy_evictable_items", getNumEvictableItems(), add_stat, cookie);
     add_casted_stat("lru_policy_ev_queue_size", getPrimaryQueueSize(), add_stat, cookie);
     add_casted_stat("lru_policy_secondary_ev_queue_size", getSecondaryQueueSize(), 
                     add_stat, cookie);

@@ -136,7 +136,8 @@ public:
               EvictionPolicy(s, st, job), maxSize(sz),
               list(new FixedList<LRUItem, LRUItemCompare>(maxSize)),
               templist(NULL),
-              stopBuild(false) {
+              stopBuild(false),
+              count(0) {
         list->build();
         it = list->begin();
         stats.evictionStats.memSize.incr(list->memSize());
@@ -161,6 +162,10 @@ public:
     }
 
     LRUItemCompare lruItemCompare;
+
+    size_t getNumEvictableItems() {
+        return count.get();
+    }
 
     size_t getPrimaryQueueSize() {
         if (list) {
@@ -199,6 +204,7 @@ public:
         if (ent == NULL) {
             return NULL;
         }
+        count--;
         ent->reduceCurrentSize(stats);
         return static_cast<EvictItem *>(ent);
     }
@@ -272,11 +278,11 @@ private:
     FixedList<LRUItem, LRUItemCompare> *list;
     FixedList<LRUItem, LRUItemCompare>::iterator it;
     FixedList<LRUItem, LRUItemCompare> *templist;
-    Atomic<uint32_t> count;
     BGTimeStats timestats;
     Histogram<int> lruHisto;
     time_t startTime, endTime;
     bool stopBuild;
+    Atomic<size_t> count;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -534,7 +540,7 @@ public:
 class EvictionManager {
 public:
     EvictionManager(EventuallyPersistentStore *s, EPStats &st, const char *p) :
-        maxSize(MAX_EVICTION_ENTRIES), count(0),
+        maxSize(MAX_EVICTION_ENTRIES),
         pauseJob(false), store(s), stats(st), policyName(p),
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
         pruneAge(0) {
@@ -589,7 +595,6 @@ public:
 
 private:
     uint32_t maxSize; // Total number of entries for eviction
-    Atomic<int> count;
     bool pauseJob;
     EventuallyPersistentStore *store;
     EPStats &stats;
