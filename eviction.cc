@@ -17,10 +17,9 @@ bool EvictionManager::evictSize(size_t size)
         k = ent->getKey();
         b = ent->vbucketId();
         delete ent;
-        count--;
 
         RCPtr<VBucket> vb = store->getVBucket(b);
-        int bucket_num(0);
+        int bucket_num;
         LockHolder lh = vb->ht.getLockedBucket(k, &bucket_num);
         StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
 
@@ -147,11 +146,13 @@ void LRUPolicy::completeRebuild() {
         clearStage(true);
     } else {
         templist->build();
+        count.incr(templist->size());
         genLruHisto();
         FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
         tempit = it.swap(tempit);
         while (tempit != list->end()) {
             LRUItem *item = tempit++;
+            count--;
             item->reduceCurrentSize(stats);
             delete item;
         }
