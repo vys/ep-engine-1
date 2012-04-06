@@ -329,6 +329,11 @@ extern "C" {
                 validate(val, static_cast<int>(0), 1);
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting disable_inline_eviction to %d via flush params.", val);
                 e->setEvictionDisable((size_t)val);
+            } else if (strcmp(keyz, "lru_rebuild_percent") == 0) {
+                validate(v, 0, 100);
+                EPStats &stats = e->getEpStats();
+                stats.lruRebuildPercent = static_cast<double>(v) / 100.0;
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction_rebuild_percent to %f via flush params.", v);
             } else if (strcmp(keyz, "max_evict_entries") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -1099,7 +1104,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t maxEvictEntries = 500000;
     float tapThrottleThreshold(-1);
     bool enableEvictionJob = 1;
-    char *policy = "random";
+    char *policy = "lru";
 
     resetStats();
 

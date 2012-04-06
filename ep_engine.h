@@ -624,7 +624,7 @@ public:
 
             epstore->getNonIODispatcher()->schedule(exp_cb, &expiryPager.task,
                                                     Priority::ItemPagerPriority,
-                                                    expiryPager.sleeptime);
+                                                    10);
         }
     }
 

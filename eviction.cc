@@ -1,5 +1,38 @@
 #include <eviction.hh>
 
+// Periodic check to set policy and queue size due to config change
+// Return policy if it needs to run as a background job.
+EvictionPolicy *EvictionManager::evictionBGJob(void) {
+    if (pauseJob) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: Job has been stopped");
+        return NULL;
+    }
+
+    if (policyName != evpolicy->description()) {
+        EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats, maxSize);
+        if (p) {
+            delete evpolicy;
+            evpolicy = p;
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "Eviction: Switching policy to %s", evpolicy->description().c_str());
+        }
+    }
+    evpolicy->setSize(maxSize);
+    if (evpolicy->backgroundJob) {
+        evpolicy->evictAge(pruneAge);
+        if (pruneAge != 0) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                         "Eviction: Pruning keys that are older than %llu", pruneAge);
+            stats.pruneStats.numPruneRuns++;
+        }
+        pruneAge = 0;
+        return evpolicy;
+    } else {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: No background job");
+        return NULL;
+    }
+}
+
 // Evict keys from memory to make room for 'size' bytes
 bool EvictionManager::evictSize(size_t size)
 {
@@ -66,39 +99,6 @@ bool EvictionPolicy::evictItemByAge(time_t timestamp, StoredValue *v, RCPtr<VBuc
     return false;
 }
 
-// Periodic check to set policy and queue size due to config change
-// Return policy if it needs to run as a background job.
-EvictionPolicy *EvictionManager::evictionBGJob(void) {
-    if (pauseJob) {
-        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: Job has been stopped");
-        return NULL;
-    }
-
-    if (policyName != evpolicy->description()) {
-        EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats, maxSize);
-        if (p) {
-            delete evpolicy;
-            evpolicy = p;
-            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                             "Eviction: Switching policy to %s", evpolicy->description().c_str());
-        }
-    }
-    evpolicy->setSize(maxSize);
-    if (evpolicy->backgroundJob) {
-        evpolicy->evictAge(pruneAge);
-        if (pruneAge != 0) {
-            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                         "Eviction: Pruning keys that are older than %llu", pruneAge);
-            stats.pruneStats.numPruneRuns++;
-        }
-        pruneAge = 0;
-        return evpolicy;
-    } else {
-        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: No background job");
-        return NULL;
-    }
-}
-
 void LRUPolicy::initRebuild() {
     stopBuild = !(store->getEvictionManager()->enableJob());
     if (!stopBuild) {
@@ -153,7 +153,8 @@ void LRUPolicy::completeRebuild() {
         clearStage(true);
     } else {
         templist->build();
-        count.incr(templist->size());
+        curSize = templist->size();
+        count.incr(curSize);
         genLruHisto();
         FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
         tempit = it.swap(tempit);

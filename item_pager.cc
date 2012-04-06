@@ -258,31 +258,29 @@ bool ItemPager::callback(Dispatcher &d, TaskId t) {
 }
 
 /*
-    Need expiry pager to do the following at least:
-    -Initialize the stage/queue when the pager begins
-    -visit: should add elements to the expired queue as well as the stage.
-    -shouldContinue: commit/merge the stage with the actual queue
-    -complete: switch lists
-    -Implement pauseQueue: disable rebuild if told to do so
+ * Check if the pager needs to run. Needed if:
+ * --Expiry timer frequency is hit, or
+ * --Items need to be evicted.
+*/   
 
-
-    ..
-    get policy from epstore->evictionManager
-    if the policy needs a background job, initialize it.
-        else leave it as null.
-    add policy to the ExpiredItemPager.
-*/
 bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
     if (available) {
-        ++stats.expiryPagerRuns;
-
-        available = false;
-        shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
-                                                       &available, store->evictionBGJob()));
-        store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
-                     true, 10);
+        EvictionPolicy *policy = store->evictionBGJob();
+        bool evictionNeeded = false;
+        if (policy && policy->evictionRunNeeded()) {
+            evictionNeeded = true;
+        }
+        if (pagerRunNeeded() || evictionNeeded) {
+            lastRun = ep_real_time();
+            available = false;
+            shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
+                                                   &available, 
+                                                   evictionNeeded ? policy : NULL));
+            store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
+                         true, 10);
+        }
     }
-    d.snooze(t, sleepTime);
+    d.snooze(t, 10);
     return true;
 }
 

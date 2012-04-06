@@ -68,7 +68,8 @@ Available params for "set":
     eviction_policy     - Change the eviction policy 
     eviction_headroom   - Change the headroom to be kept aside through eviction
     disable_inline_eviction   - Disable inline eviction
-    prune_lru_age      - Prune keys that are older than the speificed timestamp""")
+    prune_lru_age       - Prune keys that are older than the speificed timestamp
+    lru_rebuild_percent - Rebuild LRU when no. of items in the queue reaches the percent""")
 
     c.addCommand('stop', stop, 'stop')
     c.addCommand('start', start, 'start')
