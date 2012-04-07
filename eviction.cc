@@ -1,5 +1,8 @@
 #include <eviction.hh>
 
+double LRUPolicy::rebuildPercent = 0.5;
+Atomic<size_t> EvictionManager::minBlobSize = 5;
+
 // Periodic check to set policy and queue size due to config change
 // Return policy if it needs to run as a background job.
 EvictionPolicy *EvictionManager::evictionBGJob(void) {

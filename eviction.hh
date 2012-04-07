@@ -211,7 +211,7 @@ public:
     }
 
     bool evictionRunNeeded() {
-        size_t target = (size_t)(stats.lruRebuildPercent * curSize);
+        size_t target = (size_t)(rebuildPercent * curSize);
         if (evictAge() != 0) {
             return true;
         }
@@ -227,6 +227,14 @@ public:
 
     Histogram<int> &getLruHisto() {
         return lruHisto;
+    }
+
+    static void setRebuildPercent(double v) {
+        rebuildPercent = v;
+    }
+
+    static double getRebuildPercent() {
+        return rebuildPercent;
     }
 
 private:
@@ -296,6 +304,7 @@ private:
     time_t startTime, endTime;
     bool stopBuild;
     Atomic<size_t> count;
+    static double rebuildPercent;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -614,6 +623,14 @@ public:
         pruneAge = val;
     }
 
+    static void setMinBlobSize(size_t ss) {
+        minBlobSize = ss;
+    }
+
+    static size_t getMinBlobSize() {
+        return minBlobSize;
+    }
+
 private:
     uint32_t maxSize; // Total number of entries for eviction
     bool pauseJob;
@@ -623,5 +640,6 @@ private:
     EvictionPolicy* evpolicy;
     std::set<std::string> policies;
     time_t pruneAge;
+    static Atomic<size_t> minBlobSize;
 };
 #endif /* EVICTION_HH */
