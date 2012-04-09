@@ -1625,14 +1625,14 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         epstore->scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
 
         // Initialize the eviction manager
-        epstore->initEvictionManager(policy);
+        EvictionManager::createInstance(epstore, stats, policy);
 
         if (HashTable::getDefaultStorageValueType() != small) {
             shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
             epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::ItemPagerPriority, 10);
             setExpiryPagerSleeptime(expiryPagerSleeptime);
-            epstore->setMaxEvictEntries(maxEvictEntries);
-            epstore->evictionJobEnabled(enableEvictionJob);
+            EvictionManager::getInstance()->setMaxSize(maxEvictEntries);
+            EvictionManager::getInstance()->enableJob(enableEvictionJob);
         }
 
         shared_ptr<DispatcherCallback> htr(new HashtableResizer(epstore));
@@ -2385,7 +2385,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
                 size_t total_needed = needed + accountForNThreads();
                 if (!tapThrottle->hasSomeMemory(total_needed)) {
                     if (!eviction.disableInlineEviction) {
-                        epstore->getEvictionManager()->evictSize(needed);
+                        EvictionManager::getInstance()->evictSize(needed);
                     } else {
                         throttled = true;
                     }
@@ -3070,7 +3070,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     // Eviction stats
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
                     add_stat, cookie);
-    add_casted_stat("ep_max_evict_entries", epstore->getMaxEvictEntries(),
+    add_casted_stat("ep_max_evict_entries", EvictionManager::getInstance()->getMaxSize(),
                     add_stat, cookie);
     add_casted_stat("eviction_headroom", eviction.headroom, add_stat, cookie);
     add_casted_stat("disable_inline_eviction",
@@ -3630,7 +3630,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     add_casted_stat("eviction_memory_size", stats.evictionStats.memSize, add_stat, cookie);
     add_casted_stat("eviction_min_blob_size", EvictionManager::getMinBlobSize(), add_stat, cookie);
 
-    epstore->evictionPolicyStats(cookie, add_stat);
+    EvictionManager::getInstance()->getCurrentPolicy()->getStats(cookie, add_stat);
+
     add_casted_stat("eviction_prune_runs", stats.pruneStats.numPruneRuns, add_stat, cookie);
     add_casted_stat("eviction_num_keys_pruned", stats.pruneStats.numKeysPruned, add_stat, cookie);
     return ENGINE_SUCCESS;

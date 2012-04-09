@@ -2,6 +2,7 @@
 
 double LRUPolicy::rebuildPercent = 0.5;
 Atomic<size_t> EvictionManager::minBlobSize = 5;
+EvictionManager *EvictionManager::managerInstance = NULL;
 
 // Periodic check to set policy and queue size due to config change
 // Return policy if it needs to run as a background job.
@@ -103,7 +104,7 @@ bool EvictionPolicy::evictItemByAge(time_t timestamp, StoredValue *v, RCPtr<VBuc
 }
 
 void LRUPolicy::initRebuild() {
-    stopBuild = !(store->getEvictionManager()->enableJob());
+    stopBuild = !(EvictionManager::getInstance()->enableJob());
     if (!stopBuild) {
         templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
         stats.evictionStats.memSize.incr(templist->memSize());
@@ -113,7 +114,7 @@ void LRUPolicy::initRebuild() {
 
 bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
     BlockTimer timer(&timestats.visitHisto);
-    stopBuild |= !(store->getEvictionManager()->enableJob());
+    stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
         return false;
     }
@@ -133,7 +134,7 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
 
 bool LRUPolicy::storeEvictItem() {
     BlockTimer timer(&timestats.storeHisto);
-    stopBuild |= !(store->getEvictionManager()->enableJob());
+    stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
         return false;
     }
@@ -150,7 +151,7 @@ bool LRUPolicy::storeEvictItem() {
 
 void LRUPolicy::completeRebuild() {
     BlockTimer timer(&timestats.completeHisto);
-    stopBuild |= !(store->getEvictionManager()->enableJob());
+    stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
         clearTemplist();
         clearStage(true);
@@ -179,7 +180,7 @@ void LRUPolicy::completeRebuild() {
 }
 
 void RandomPolicy::initRebuild() {
-    stopBuild = !(store->getEvictionManager()->enableJob());
+    stopBuild = !(EvictionManager::getInstance()->enableJob());
     if (!stopBuild) {
         templist = new RandomList();
         startTime = ep_real_time();
@@ -189,7 +190,7 @@ void RandomPolicy::initRebuild() {
 
 bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
     BlockTimer timer(&timestats.visitHisto);
-    stopBuild |= !(store->getEvictionManager()->enableJob());
+    stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild || size == maxSize) {
         return false;
     }
@@ -202,7 +203,7 @@ bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
 }
 
 bool RandomPolicy::storeEvictItem() {
-    stopBuild |= !(store->getEvictionManager()->enableJob());
+    stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild || size > maxSize) {
         return false;
     }
@@ -211,7 +212,7 @@ bool RandomPolicy::storeEvictItem() {
 
 void RandomPolicy::completeRebuild() {
     BlockTimer timer(&timestats.completeHisto);
-    stopBuild |= !(store->getEvictionManager()->enableJob());
+    stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
         clearTemplist();
     } else {

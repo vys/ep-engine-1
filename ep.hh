@@ -442,8 +442,6 @@ private:
 };
 
 class EventuallyPersistentEngine;
-class EvictionPolicy;
-class EvictionManager;
 
 /**
  * Manager of all interaction with the persistence.
@@ -812,21 +810,6 @@ public:
      */
     void completeOnlineRestore();
 
-    void initEvictionManager(const char *p);
-    void setMaxEvictEntries(int val);
-    int getMaxEvictEntries();
-    void setPruneAge(time_t val);
-    EvictionPolicy *evictionBGJob(void);
-    void evictionJobEnabled(bool doit);
-    bool evictionJobEnabled(void);
-    bool setEvictionPolicy(const char *name);
-    void evictionPolicyStats(const void *cookie, ADD_STAT add_stat);
-
-    EvictionManager *getEvictionManager(void) {
-        return evictionManager;
-    }
-    
-
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -942,7 +925,6 @@ private:
         std::set<std::string> itemsDeleted;
     } restore;
 
-    EvictionManager *evictionManager;
     DISALLOW_COPY_AND_ASSIGN(EventuallyPersistentStore);
 };
 

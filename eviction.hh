@@ -575,18 +575,14 @@ public:
 
 class EvictionManager {
 public:
-    EvictionManager(EventuallyPersistentStore *s, EPStats &st, const char *p) :
-        maxSize(MAX_EVICTION_ENTRIES),
-        pauseJob(false), store(s), stats(st), policyName(p),
-        evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
-        pruneAge(0) {
-        policies.insert("lru");
-        policies.insert("random");
-        policies.insert("bgeviction");
+    
+    static EvictionManager *getInstance() {
+        return managerInstance;
+    }
 
-        // This is here in case the default argument was not set correctly
-        if (!evpolicy) {
-            evpolicy = EvictionPolicyFactory::getInstance("random", s, st, maxSize);
+    static void createInstance(EventuallyPersistentStore *s, EPStats &st, const char *p) {
+        if (managerInstance == NULL) {
+            managerInstance = new EvictionManager(s, st, p);
         }
     }
 
@@ -647,5 +643,23 @@ private:
     std::set<std::string> policies;
     time_t pruneAge;
     static Atomic<size_t> minBlobSize;
+    static EvictionManager *managerInstance;
+
+    EvictionManager(EventuallyPersistentStore *s, EPStats &st, const char *p) :
+        maxSize(MAX_EVICTION_ENTRIES),
+        pauseJob(false), store(s), stats(st), policyName(p),
+        evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
+        pruneAge(0) {
+        policies.insert("lru");
+        policies.insert("random");
+        policies.insert("bgeviction");
+
+        // This is here in case the default argument was not set correctly
+        if (!evpolicy) {
+            evpolicy = EvictionPolicyFactory::getInstance("random", s, st, maxSize);
+        }
+    }
+
+    DISALLOW_COPY_AND_ASSIGN(EvictionManager);
 };
 #endif /* EVICTION_HH */
