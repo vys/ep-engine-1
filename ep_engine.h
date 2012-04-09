@@ -200,7 +200,7 @@ public:
         if (StoredValue::hasEnoughMemory(total_needed, stats) == false) {
             getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: No memory, attempting ejection.");
             if (!eviction.disableInlineEviction) {
-                epstore->getEvictionManager()->evictSize(needed);
+                EvictionManager::getInstance()->evictSize(needed);
             }
         }
 
@@ -592,16 +592,12 @@ public:
         return syncTimeout;
     }
 
-    int getMaxEvictEntries(void) {
-        return epstore->getMaxEvictEntries();
-    }
-
     void setMaxEvictEntries(int val) {
-        epstore->setMaxEvictEntries(val);
+        EvictionManager::getInstance()->setMaxSize(val);
     }
 
     void setPruneAge(time_t val) {
-        epstore->setPruneAge(val);
+        EvictionManager::getInstance()->setPruneAge(val);
     }
 
     size_t getExpiryPagerSleeptime(void) {
@@ -627,11 +623,11 @@ public:
     }
 
     void evictionJobEnabled(bool val) {
-        epstore->evictionJobEnabled(val);
+        EvictionManager::getInstance()->enableJob(val);
     }
 
     bool setEvictionPolicy(const char *name) {
-        return epstore->setEvictionPolicy(name);
+        return EvictionManager::getInstance()->setPolicy(name);
     }
 
     void setEvictionHeadroom(size_t room) {

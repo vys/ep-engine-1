@@ -267,7 +267,7 @@ bool ItemPager::callback(Dispatcher &d, TaskId t) {
 
 bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
     if (available) {
-        EvictionPolicy *policy = store->evictionBGJob();
+        EvictionPolicy *policy = EvictionManager::getInstance()->evictionBGJob();
         bool expiryNeeded = pagerRunNeeded();
         bool evictionNeeded = policy && policy->evictionRunNeeded(expiryNeeded);
         if (expiryNeeded || evictionNeeded) {
