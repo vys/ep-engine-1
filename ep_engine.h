@@ -618,13 +618,11 @@ public:
 
         expiryPager.sleeptime = val;
         if (val != 0) {
-            shared_ptr<DispatcherCallback> exp_cb(new ExpiredItemPager(epstore, stats,
-                                                                       expiryPager.sleeptime));
-
-
+            ExpiredItemPager *pager = new ExpiredItemPager(epstore, stats, expiryPager.sleeptime);
+            shared_ptr<DispatcherCallback> exp_cb(pager);
             epstore->getNonIODispatcher()->schedule(exp_cb, &expiryPager.task,
                                                     Priority::ItemPagerPriority,
-                                                    10);
+                                                    pager->callbackFreq());
         }
     }
 

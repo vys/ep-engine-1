@@ -72,6 +72,14 @@ public:
         return false;
     }
 
+    uint32_t callbackFreq() {
+        if ((uint32_t)sleepTime < 10) {
+            return (uint32_t)sleepTime;
+        } else {
+            return 10;
+        }
+    }
+
 private:
     EventuallyPersistentStore *store;
     EPStats                   &stats;

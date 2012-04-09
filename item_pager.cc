@@ -179,7 +179,7 @@ public:
     bool pauseVisitor() {
         size_t queueSize = stats.queue_size.get() + stats.flusher_todo.get();
         pauseMutations = queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
-        return false;
+        return (pauseMutations && !evjob);
     }
 
     bool shouldContinue() {
@@ -259,19 +259,18 @@ bool ItemPager::callback(Dispatcher &d, TaskId t) {
 }
 
 /*
- * Check if the pager needs to run. Needed if:
- * --Expiry timer frequency is hit, or
- * --Items need to be evicted.
+ * This pager takes care of both evictions as well as expired items.
+ * Runs if:
+ * Eviction run is needed, or
+ * Expired item frequency is hit
 */   
 
 bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
     if (available) {
         EvictionPolicy *policy = store->evictionBGJob();
-        bool evictionNeeded = false;
-        if (policy && policy->evictionRunNeeded()) {
-            evictionNeeded = true;
-        }
-        if (pagerRunNeeded() || evictionNeeded) {
+        bool expiryNeeded = pagerRunNeeded();
+        bool evictionNeeded = policy && policy->evictionRunNeeded(expiryNeeded);
+        if (expiryNeeded || evictionNeeded) {
             lastRun = ep_real_time();
             available = false;
             shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
@@ -281,7 +280,7 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
                          true, 10);
         }
     }
-    d.snooze(t, 10);
+    d.snooze(t, callbackFreq());
     return true;
 }
 

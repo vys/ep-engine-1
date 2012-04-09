@@ -67,7 +67,7 @@ public:
     virtual bool addEvictItem(StoredValue *v, RCPtr<VBucket>) = 0;
     virtual bool storeEvictItem() = 0;
     virtual void completeRebuild() = 0;
-    virtual bool evictionRunNeeded() = 0;
+    virtual bool evictionRunNeeded(bool timerElapsed) = 0;
     bool backgroundJob;
 
 protected:
@@ -210,12 +210,15 @@ public:
         return static_cast<EvictItem *>(ent);
     }
 
-    bool evictionRunNeeded() {
+    bool evictionRunNeeded(bool timerElapsed) {
+        if (timerElapsed) {
+            return true;
+        }
         size_t target = (size_t)(rebuildPercent * curSize);
         if (evictAge() != 0) {
             return true;
         }
-        if (curSize  == 0 || count < target) {
+        if (curSize == 0 || count <= target) {
             return true;
         }
         return false;
@@ -427,7 +430,8 @@ public:
         return ent;
     }
 
-    bool evictionRunNeeded() {
+    bool evictionRunNeeded(bool timerElapsed) {
+        (void) timerElapsed;
         return true;
     }
 
@@ -512,6 +516,7 @@ public:
 
     void completeRebuild() {
         endTime = ep_real_time();
+        toKill = 0;
         timestats.startTime = startTime;
         timestats.endTime = endTime;
     }
@@ -521,7 +526,8 @@ public:
         return NULL;
     }
 
-    bool evictionRunNeeded() {
+    bool evictionRunNeeded(bool timerElapsed) {
+        (void) timerElapsed;
         if (evictAge() != 0) {
             return true;
         }
