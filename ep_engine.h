@@ -592,10 +592,6 @@ public:
         return syncTimeout;
     }
 
-    int getMaxEvictEntries(void) {
-        return EvictionManager::getInstance()->getMaxSize();
-    }
-
     void setMaxEvictEntries(int val) {
         EvictionManager::getInstance()->setMaxSize(val);
     }
