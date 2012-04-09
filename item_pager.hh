@@ -58,17 +58,34 @@ public:
     ExpiredItemPager(EventuallyPersistentStore *s, EPStats &st,
                      size_t stime) :
         store(s), stats(st), sleepTime(static_cast<double>(stime)),
-        available(true) {}
+        available(true), lastRun(ep_real_time()) {}
 
     bool callback(Dispatcher &d, TaskId t);
 
     std::string description() { return std::string("Paging expired items."); }
+
+    bool pagerRunNeeded() {
+        if (lastRun + sleepTime < ep_real_time()) {
+            stats.expiryPagerRuns++;
+            return true;
+        }
+        return false;
+    }
+
+    uint32_t callbackFreq() {
+        if ((uint32_t)sleepTime < 10) {
+            return (uint32_t)sleepTime;
+        } else {
+            return 10;
+        }
+    }
 
 private:
     EventuallyPersistentStore *store;
     EPStats                   &stats;
     double                     sleepTime;
     bool                       available;
+    time_t lastRun;
 };
 
 /**

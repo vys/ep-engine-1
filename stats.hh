@@ -77,20 +77,18 @@ private:
     }
 };
 
-class lruPruneStats {
+class EvictionPruneStats {
 public:
-    lruPruneStats()
-    {
+    EvictionPruneStats() {
         reset();
     }
 
-    Atomic<uint32_t>        numPruneRuns;
-    Atomic<uint64_t>        numKeyPrunes;
+    Atomic<uint32_t> numPruneRuns;
+    Atomic<uint64_t> numKeysPruned;
 
-    void reset()
-    {
+    void reset() {
         numPruneRuns = 0;
-        numKeyPrunes = 0;
+        numKeysPruned = 0;
     }
 };
 
@@ -103,7 +101,7 @@ public:
     EPStats() : maxDataSize(DEFAULT_MAX_DATA_SIZE),
                 dirtyAgeHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25),
                 dataAgeHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25),
-                diskCommitHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25) {}
+                diskCommitHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25 ){}
 
     //! How long it took us to load the data from disk.
     Atomic<hrtime_t> warmupTime;
@@ -397,7 +395,7 @@ public:
     Histogram<hrtime_t> checkpointRevertHisto;
 
     EvictionStats evictionStats;
-    lruPruneStats lru_prune_stats;
+    EvictionPruneStats pruneStats;
 
     //! Reset all stats to reasonable values.
     void reset() {

@@ -1,5 +1,41 @@
 #include <eviction.hh>
 
+double LRUPolicy::rebuildPercent = 0.5;
+Atomic<size_t> EvictionManager::minBlobSize = 5;
+
+// Periodic check to set policy and queue size due to config change
+// Return policy if it needs to run as a background job.
+EvictionPolicy *EvictionManager::evictionBGJob(void) {
+    if (pauseJob) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: Job has been stopped");
+        return NULL;
+    }
+
+    if (policyName != evpolicy->description()) {
+        EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats, maxSize);
+        if (p) {
+            delete evpolicy;
+            evpolicy = p;
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "Eviction: Switching policy to %s", evpolicy->description().c_str());
+        }
+    }
+    evpolicy->setSize(maxSize);
+    if (evpolicy->backgroundJob) {
+        evpolicy->evictAge(pruneAge);
+        if (pruneAge != 0) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                         "Eviction: Pruning keys that are older than %llu", pruneAge);
+            stats.pruneStats.numPruneRuns++;
+        }
+        pruneAge = 0;
+        return evpolicy;
+    } else {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: No background job");
+        return NULL;
+    }
+}
+
 // Evict keys from memory to make room for 'size' bytes
 bool EvictionManager::evictSize(size_t size)
 {
@@ -53,43 +89,17 @@ bool EvictionManager::evictSize(size_t size)
 }
 
 // Evict key if it is older than the timestamp
-bool EvictionPolicy::evictItemByAge(int timestamp, StoredValue *v, RCPtr<VBucket> vb) {
-    int keyAge = ep_abs_time(v->getDataAge());
-
+bool EvictionPolicy::evictItemByAge(time_t timestamp, StoredValue *v, RCPtr<VBucket> vb) {
+    time_t keyAge = ep_abs_time(v->getDataAge());
     assert(timestamp != 0);
+
     if (keyAge >= timestamp) {
         return false;
     } else if (v->ejectValue(stats, vb->ht)) {
-        //Update stats
+        stats.pruneStats.numKeysPruned++;
         return true;
     }
     return false;
-}
-
-// Periodic check to set policy and queue size due to config change
-// Return policy if it needs to run as a background job.
-EvictionPolicy *EvictionManager::evictionBGJob(void)
-{
-    if (pauseJob) {
-        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: Key not eligible for eviction.");
-        return NULL;
-    }
-
-    if (policyName != evpolicy->description()) {
-        EvictionPolicy *p = EvictionPolicyFactory::getInstance(policyName, store, stats, maxSize);
-        if (p) {
-            delete evpolicy;
-            evpolicy = p;
-        }
-    }
-    evpolicy->setSize(maxSize);
-    if (evpolicy->backgroundJob) {
-        evpolicy->evictAge(pruneAge);
-        pruneAge = 0;
-        return evpolicy;
-    } else {
-        return NULL;
-    }
 }
 
 void LRUPolicy::initRebuild() {
@@ -146,7 +156,8 @@ void LRUPolicy::completeRebuild() {
         clearStage(true);
     } else {
         templist->build();
-        count.incr(templist->size());
+        curSize = templist->size();
+        count.incr(curSize);
         genLruHisto();
         FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
         tempit = it.swap(tempit);

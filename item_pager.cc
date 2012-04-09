@@ -140,7 +140,8 @@ public:
         if (!pauseMutations && v->isExpired(startTime) && !v->isDeleted()) {
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
-        } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty()) {
+        } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty() &&
+                   v->valLength() > EvictionManager::getMinBlobSize()) {
             if (evjob->evictAge() &&
                 evjob->evictItemByAge(evjob->evictAge(), v, currentBucket) == false) {
             } else {
@@ -178,7 +179,7 @@ public:
     bool pauseVisitor() {
         size_t queueSize = stats.queue_size.get() + stats.flusher_todo.get();
         pauseMutations = queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
-        return false;
+        return (pauseMutations && !evjob);
     }
 
     bool shouldContinue() {
@@ -258,31 +259,28 @@ bool ItemPager::callback(Dispatcher &d, TaskId t) {
 }
 
 /*
-    Need expiry pager to do the following at least:
-    -Initialize the stage/queue when the pager begins
-    -visit: should add elements to the expired queue as well as the stage.
-    -shouldContinue: commit/merge the stage with the actual queue
-    -complete: switch lists
-    -Implement pauseQueue: disable rebuild if told to do so
+ * This pager takes care of both evictions as well as expired items.
+ * Runs if:
+ * Eviction run is needed, or
+ * Expired item frequency is hit
+*/   
 
-
-    ..
-    get policy from epstore->evictionManager
-    if the policy needs a background job, initialize it.
-        else leave it as null.
-    add policy to the ExpiredItemPager.
-*/
 bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
     if (available) {
-        ++stats.expiryPagerRuns;
-
-        available = false;
-        shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
-                                                       &available, store->evictionBGJob()));
-        store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
-                     true, 10);
+        EvictionPolicy *policy = store->evictionBGJob();
+        bool expiryNeeded = pagerRunNeeded();
+        bool evictionNeeded = policy && policy->evictionRunNeeded(expiryNeeded);
+        if (expiryNeeded || evictionNeeded) {
+            lastRun = ep_real_time();
+            available = false;
+            shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
+                                                   &available, 
+                                                   evictionNeeded ? policy : NULL));
+            store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
+                         true, 10);
+        }
     }
-    d.snooze(t, sleepTime);
+    d.snooze(t, callbackFreq());
     return true;
 }
 

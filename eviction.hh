@@ -53,11 +53,11 @@ public:
     virtual std::string description () const = 0;
     virtual void getStats(const void *cookie, ADD_STAT add_stat) = 0;
 
-    int evictAge() { return age; }
+    time_t evictAge() { return age; }
 
-    void evictAge(int val) {age = val; }
+    void evictAge(time_t val) {age = val; }
 
-    bool evictItemByAge(int age, StoredValue *v, RCPtr<VBucket> vb);
+    bool evictItemByAge(time_t age, StoredValue *v, RCPtr<VBucket> vb);
 
     /* Following set of functions are needed only by policies that need a 
        background job to build their data structures.
@@ -67,6 +67,7 @@ public:
     virtual bool addEvictItem(StoredValue *v, RCPtr<VBucket>) = 0;
     virtual bool storeEvictItem() = 0;
     virtual void completeRebuild() = 0;
+    virtual bool evictionRunNeeded(bool timerElapsed) = 0;
     bool backgroundJob;
 
 protected:
@@ -74,13 +75,13 @@ protected:
     EPStats &stats;
 
 private:
-    int age;
+    time_t age;
 };
 
 // Timing stats for the policies that use background job.
 class BGTimeStats {
 public:
-    BGTimeStats() {}
+    BGTimeStats() : startTime(0), endTime(0) {}
 
     void getStats(const void *cookie, ADD_STAT add_stat);
 
@@ -183,7 +184,13 @@ public:
         }
     }
 
-    void setSize(size_t val) { maxSize = val; }
+    void setSize(size_t val) { 
+        if (maxSize != val) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "Eviction: Setting max entries to %llu", maxSize);
+        }
+        maxSize = val; 
+    }
     
     void initRebuild();
 
@@ -203,12 +210,34 @@ public:
         return static_cast<EvictItem *>(ent);
     }
 
+    bool evictionRunNeeded(bool timerElapsed) {
+        if (timerElapsed) {
+            return true;
+        }
+        size_t target = (size_t)(rebuildPercent * curSize);
+        if (evictAge() != 0) {
+            return true;
+        }
+        if (curSize == 0 || count <= target) {
+            return true;
+        }
+        return false;
+    }
+
     std::string description() const { return std::string("lru"); }
 
     void getStats(const void *cookie, ADD_STAT add_stat);
 
     Histogram<int> &getLruHisto() {
         return lruHisto;
+    }
+
+    static void setRebuildPercent(double v) {
+        rebuildPercent = v;
+    }
+
+    static double getRebuildPercent() {
+        return rebuildPercent;
     }
 
 private:
@@ -268,6 +297,7 @@ private:
     }
 
     size_t maxSize;
+    size_t curSize;
     std::list<LRUItem*> stage;
     FixedList<LRUItem, LRUItemCompare> *list;
     FixedList<LRUItem, LRUItemCompare>::iterator it;
@@ -277,6 +307,7 @@ private:
     time_t startTime, endTime;
     bool stopBuild;
     Atomic<size_t> count;
+    static double rebuildPercent;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -399,6 +430,11 @@ public:
         return ent;
     }
 
+    bool evictionRunNeeded(bool timerElapsed) {
+        (void) timerElapsed;
+        return true;
+    }
+
     void getStats(const void *cookie, ADD_STAT add_stat);
 
     std::string description() const { return std::string("random"); }
@@ -438,7 +474,8 @@ private:
 class BGEvictionPolicy : public EvictionPolicy {
 public:
     BGEvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) :
-                     EvictionPolicy(s, st, job), shouldRun(true), ejected(0) {}
+                     EvictionPolicy(s, st, job), shouldRun(true), ejected(0),
+                     startTime(0), endTime(0) {}
 
     ~BGEvictionPolicy() {}
 
@@ -448,17 +485,6 @@ public:
 
     void initRebuild() {
         startTime = ep_real_time();
-        double current = static_cast<double>(StoredValue::getCurrentSize(stats));
-        double upper = static_cast<double>(stats.mem_high_wat);
-        double lower = static_cast<double>(stats.mem_low_wat);
-
-        if (current > upper) {
-            toKill = (current - static_cast<double>(lower)) / current;
-            shouldRun = true;
-        } else {
-            shouldRun = false;
-            return;
-        }
     }
 
     bool addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
@@ -484,14 +510,13 @@ public:
     }
 
     bool storeEvictItem() {
-        if (!shouldRun) {
-            return false;
-        }
+        // No stopping once started
         return true; 
     }
 
     void completeRebuild() {
         endTime = ep_real_time();
+        toKill = 0;
         timestats.startTime = startTime;
         timestats.endTime = endTime;
     }
@@ -499,6 +524,23 @@ public:
     EvictItem *evict() {
         // No evictions in the front-end op
         return NULL;
+    }
+
+    bool evictionRunNeeded(bool timerElapsed) {
+        (void) timerElapsed;
+        if (evictAge() != 0) {
+            return true;
+        }
+        double current = static_cast<double>(StoredValue::getCurrentSize(stats));
+        double upper = static_cast<double>(stats.mem_high_wat);
+        double lower = static_cast<double>(stats.mem_low_wat);
+
+        if (current > upper) {
+            toKill = (current - static_cast<double>(lower)) / current;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     void getStats(const void *cookie, ADD_STAT add_stat);
@@ -567,10 +609,6 @@ public:
 
     bool evictSize(size_t size);
 
-    void prune(uint64_t age) {
-        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Pruning keys with age %ull", age); 
-    }
-
     int getMaxSize(void) {
         return maxSize;
     }
@@ -587,8 +625,16 @@ public:
         maxSize = val;
     }
 
-    void setPruneAge(int val) {
+    void setPruneAge(time_t val) {
         pruneAge = val;
+    }
+
+    static void setMinBlobSize(size_t ss) {
+        minBlobSize = ss;
+    }
+
+    static size_t getMinBlobSize() {
+        return minBlobSize;
     }
 
 private:
@@ -599,6 +645,7 @@ private:
     std::string policyName;
     EvictionPolicy* evpolicy;
     std::set<std::string> policies;
-    int pruneAge;
+    time_t pruneAge;
+    static Atomic<size_t> minBlobSize;
 };
 #endif /* EVICTION_HH */

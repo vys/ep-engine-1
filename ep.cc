@@ -576,19 +576,6 @@ protocol_binary_response_status EventuallyPersistentStore::evictKey(const std::s
     return rv;
 }
 
-protocol_binary_response_status EventuallyPersistentStore::pruneLRU(uint64_t age,
-                                                      const char** msg,
-                                                      size_t *msg_size)
-{
-    protocol_binary_response_status rv(PROTOCOL_BINARY_RESPONSE_SUCCESS);
-
-    *msg_size = 0;
-    evictionManager->prune(age);
-	
-	*msg = "Pruned keys.";
-    return rv;
-}
-
 ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
                                                  const void *cookie,
                                                  bool force) {
@@ -2350,8 +2337,7 @@ bool VBCBAdaptor::callback(Dispatcher & d, TaskId t) {
     return !isdone;
 }
 
-void EventuallyPersistentStore::initEvictionManager(const char *p)
-{
+void EventuallyPersistentStore::initEvictionManager(const char *p) {
     evictionManager = new EvictionManager(this, stats, p);
 }
 
@@ -2359,7 +2345,7 @@ void EventuallyPersistentStore::setMaxEvictEntries(int val) {
     evictionManager->setMaxSize(val);
 }
 
-void EventuallyPersistentStore::setPruneAge(int val) {
+void EventuallyPersistentStore::setPruneAge(time_t val) {
     evictionManager->setPruneAge(val);
 }
 

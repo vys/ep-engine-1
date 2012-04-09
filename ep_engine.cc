@@ -329,6 +329,15 @@ extern "C" {
                 validate(val, static_cast<int>(0), 1);
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting disable_inline_eviction to %d via flush params.", val);
                 e->setEvictionDisable((size_t)val);
+            } else if (strcmp(keyz, "lru_rebuild_percent") == 0) {
+                validate(v, 0, 100);
+                LRUPolicy::setRebuildPercent(static_cast<double>(v) / 100.0);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction_rebuild_percent to %f via flush params.", v);
+            } else if (strcmp(keyz, "evict_min_blob_size") == 0) {
+                validate((uint32_t)v, static_cast<uint32_t>(0),
+                         std::numeric_limits<uint32_t>::max());
+                EvictionManager::setMinBlobSize((size_t) v);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting evict_min_blob_size to %u via flush params.", v);
             } else if (strcmp(keyz, "max_evict_entries") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -337,13 +346,13 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting max_evict_entries to %d via flush params.", vsize);
                 e->setMaxEvictEntries((size_t)vsize);
-            } else if (strcmp(keyz, "prune_lru_keys") == 0) {
+            } else if (strcmp(keyz, "prune_lru_age") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
-                int vsize = strtol(valz, &ptr, 10);
-                validate(vsize, static_cast<int>(0),
-                         std::numeric_limits<int>::max());
-                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting prune_lru_keys to %d via flush params.", vsize);
+                time_t vsize = strtol(valz, &ptr, 10);
+                validate(vsize, static_cast<time_t>(0),
+                         std::numeric_limits<time_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting prune_lru_age to %d via flush params.", vsize);
                 e->setPruneAge(vsize);
             } else if (strcmp(keyz, "inconsistent_slave_chk") == 0) {
                 bool inconsistentSlaveCheckpoint = false;
@@ -1099,7 +1108,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t maxEvictEntries = 500000;
     float tapThrottleThreshold(-1);
     bool enableEvictionJob = 1;
-    char *policy = "random";
+    char *policy = "lru";
 
     resetStats();
 
@@ -3587,6 +3596,7 @@ void BGEvictionPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
 void LRUPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("eviction_policy", description(), add_stat, cookie);
     add_casted_stat("eviction_max_queue_size", maxSize, add_stat, cookie);
+    add_casted_stat("lru_rebuild_percent", rebuildPercent, add_stat, cookie);
     add_casted_stat("lru_policy_evictable_items", getNumEvictableItems(), add_stat, cookie);
     add_casted_stat("lru_policy_ev_queue_size", getPrimaryQueueSize(), add_stat, cookie);
     add_casted_stat("lru_policy_secondary_ev_queue_size", getSecondaryQueueSize(), 
@@ -3618,8 +3628,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     add_casted_stat("eviction_failed_in_checkpoints", stats.evictionStats.failedTotal.numInCheckpoints, add_stat, cookie);
     add_casted_stat("eviction_failed_key_too_recent", stats.evictionStats.failedTotal.numKeyTooRecent, add_stat, cookie);
     add_casted_stat("eviction_memory_size", stats.evictionStats.memSize, add_stat, cookie);
+    add_casted_stat("eviction_min_blob_size", EvictionManager::getMinBlobSize(), add_stat, cookie);
 
     epstore->evictionPolicyStats(cookie, add_stat);
+    add_casted_stat("eviction_prune_runs", stats.pruneStats.numPruneRuns, add_stat, cookie);
+    add_casted_stat("eviction_num_keys_pruned", stats.pruneStats.numKeysPruned, add_stat, cookie);
     return ENGINE_SUCCESS;
 }
 
