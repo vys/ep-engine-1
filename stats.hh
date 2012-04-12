@@ -27,7 +27,7 @@ public:
     Atomic<uint32_t>    numDirties;
     Atomic<uint32_t>    numAlreadyEvicted;
     Atomic<uint32_t>    numDeleted;
-    Atomic<uint32_t>    numKeyTooRecent;
+    Atomic<uint32_t>    numPolicyIneligible;
     Atomic<uint32_t>    numInCheckpoints;
 
     void reset()
@@ -36,6 +36,7 @@ public:
         numDirties = 0;
         numAlreadyEvicted = 0;
         numDeleted = 0;
+        numPolicyIneligible = 0;
         numKeyNotPresent = 0;
         numInCheckpoints = 0;
     }

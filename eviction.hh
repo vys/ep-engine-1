@@ -15,7 +15,7 @@ public:
 
     EvictItem() : key(""), vbid(0) {}
     
-    virtual ~EvictItem() {}
+    ~EvictItem() {}
     
     void increaseCurrentSize(EPStats &st) {
         size_t by = sizeof(EvictItem) + key.size();
@@ -68,6 +68,11 @@ public:
     virtual bool storeEvictItem() = 0;
     virtual void completeRebuild() = 0;
     virtual bool evictionRunNeeded(bool timerElapsed) = 0;
+    virtual bool eligibleForEviction(StoredValue *v, EvictItem *e) {
+        (void)v;
+        (void)e;
+        return true;
+    }
     bool backgroundJob;
 
 protected:
@@ -222,6 +227,11 @@ public:
             return true;
         }
         return false;
+    }
+
+    bool eligibleForEviction(StoredValue *v, EvictItem *e) {
+        LRUItem *l = static_cast<LRUItem*>(e);
+        return (int(v->getDataAge()) <= l->getAttr());
     }
 
     std::string description() const { return std::string("lru"); }

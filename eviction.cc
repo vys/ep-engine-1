@@ -53,7 +53,6 @@ bool EvictionManager::evictSize(size_t size)
         uint16_t b;
         k = ent->getKey();
         b = ent->vbucketId();
-        delete ent;
 
         RCPtr<VBucket> vb = store->getVBucket(b);
         int bucket_num;
@@ -72,6 +71,9 @@ bool EvictionManager::evictSize(size_t size)
             } else if (v->isDeleted() == false) {
                 stats.evictionStats.failedTotal.numDeleted++;
             }
+        } else if (!evpolicy->eligibleForEviction(v, ent)) {
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
+            stats.evictionStats.failedTotal.numPolicyIneligible++;
         } else {
             bool inCheckpoint = vb->checkpointManager.isKeyResidentInCheckpoints(v->getKey(),
                                                                                  v->getCas());
@@ -84,6 +86,7 @@ bool EvictionManager::evictSize(size_t size)
                 stats.evictionStats.numKeysEvicted++;
             }
         }
+        delete ent;
     }
 
     return true;
