@@ -3625,8 +3625,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     add_casted_stat("eviction_failed_dirty", stats.evictionStats.failedTotal.numDirties, add_stat, cookie);
     add_casted_stat("eviction_failed_already_evicted", stats.evictionStats.failedTotal.numAlreadyEvicted, add_stat, cookie);
     add_casted_stat("eviction_failed_deleted", stats.evictionStats.failedTotal.numDeleted, add_stat, cookie);
+    add_casted_stat("eviction_failed_policy_ineligible", stats.evictionStats.failedTotal.numPolicyIneligible, add_stat, cookie);
     add_casted_stat("eviction_failed_in_checkpoints", stats.evictionStats.failedTotal.numInCheckpoints, add_stat, cookie);
-    add_casted_stat("eviction_failed_key_too_recent", stats.evictionStats.failedTotal.numKeyTooRecent, add_stat, cookie);
     add_casted_stat("eviction_memory_size", stats.evictionStats.memSize, add_stat, cookie);
     add_casted_stat("eviction_min_blob_size", EvictionManager::getMinBlobSize(), add_stat, cookie);
 
