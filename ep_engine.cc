@@ -364,6 +364,9 @@ extern "C" {
         protocol_binary_request_header *request = &(grequest->message.header);
         protocol_binary_request_no_extras *req =
             (protocol_binary_request_no_extras*)request;
+        static char *ret_metadata = NULL;
+        static int ret_metadata_len = 0;
+
         *res = PROTOCOL_BINARY_RESPONSE_SUCCESS;
 
         char keyz[256];
@@ -387,11 +390,21 @@ extern "C" {
         uint32_t lockTimeout;
         uint32_t max_timeout = (unsigned int)e->getGetlMaxTimeout();
         uint32_t default_timeout = (unsigned int)e->getGetlDefaultTimeout();
+        char *in_metadata = NULL;
+        uint16_t in_metadata_len = 0;
+
         if (extlen >= 4) {
             lockTimeout = ntohl(grequest->message.body.expiration);
         } else {
             lockTimeout = default_timeout;
         }
+
+        if (extlen >= 5) {
+            in_metadata_len = ntohs(grequest->message.body.metadata_len);
+            in_metadata = (char*)request + sizeof(req->message.header) + extlen + keylen;
+        }
+
+        std::string metadata(in_metadata, in_metadata_len);
 
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Executing getl for key %s timeout %d max: %d, default: %d\n",
@@ -403,7 +416,7 @@ extern "C" {
 
         bool gotLock = e->getLocked(key, vbucket, getCb,
                                     ep_current_time(),
-                                    lockTimeout, cookie);
+                                    lockTimeout, metadata, cookie);
 
         getCb.waitForValue();
         ENGINE_ERROR_CODE rv = getCb.val.getStatus();
@@ -416,9 +429,18 @@ extern "C" {
             // need to wait for value
             return rv;
         } else if (!gotLock){
-
-            *msg =  "LOCK_ERROR";
-            *res = PROTOCOL_BINARY_RESPONSE_ETMPFAIL;
+            int out_metadata_len = metadata.length();
+            if (out_metadata_len > 0) {
+                if (ret_metadata_len < out_metadata_len + (signed int) sizeof("LOCK_ERROR \r\n")) {
+                    ret_metadata_len = out_metadata_len + sizeof("LOCK_ERROR \r\n");
+                    ret_metadata = (char *)realloc(ret_metadata, ret_metadata_len);
+                }
+                snprintf(ret_metadata, ret_metadata_len, "LOCK_ERROR %s\r\n", metadata.c_str());  
+                *msg = ret_metadata;
+            } else {        
+                *msg =  "LOCK_ERROR";
+                *res = PROTOCOL_BINARY_RESPONSE_ETMPFAIL;
+            }
             return ENGINE_TMPFAIL;
         } else {
             RCPtr<VBucket> vb = e->getVBucket(vbucket);

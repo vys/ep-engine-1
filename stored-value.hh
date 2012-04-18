@@ -12,6 +12,7 @@
 #include "stats.hh"
 #include "histo.hh"
 #include "queueditem.hh"
+#include "meta.h"
 
 extern "C" {
     extern rel_time_t (*ep_current_time)();
@@ -42,6 +43,8 @@ struct feature_data {
     rel_time_t lock_expiry;     //!< getl lock expiration
     bool       locked : 1;      //!< True if this item is locked
     bool       resident : 1;    //!< True if this object's value is in memory.
+    bool       has_metadata : 1;    //!< True if this object is locked has metadata associated with the lock, 
+                                    //!< valid only if the lock has not expired
     uint8_t    keylen;          //!< Length of the key
     char       keybytes[1];     //!< The key itself.
 };
@@ -338,10 +341,16 @@ public:
      *
      * This is a NOOP for small item types.
      */
-    void lock(rel_time_t expiry) {
+    void lock(rel_time_t expiry, std::string &metadata) {
         if (!_isSmall) {
             extra.feature.locked = true;
             extra.feature.lock_expiry = expiry;
+    
+	        if (metadata.length() > 0) {
+                std::string key(getKeyBytes(), getKeyLen());
+		        extra.feature.has_metadata = true;
+		        hashMetaData::getInstance()->setMetaData(key, expiry, metadata);
+	        }   
         }
     }
 
@@ -350,10 +359,35 @@ public:
      */
     void unlock() {
         if (!_isSmall) {
+            resetMetadata();
             extra.feature.locked = false;
             extra.feature.lock_expiry = 0;
         }
     }
+
+    /**
+     * Reset the metadata associated with this item.
+     */
+    void resetMetadata() {
+        if (!_isSmall && extra.feature.has_metadata == true) {
+            std::string key(getKeyBytes(), getKeyLen());
+            extra.feature.has_metadata = false;
+            hashMetaData::getInstance()->freeMetaData(key, extra.feature.lock_expiry);  
+        }
+    }
+
+    /**
+     * Return the metadata associated with this item.
+     */
+    std::string getMetadata() {
+        if (!_isSmall && extra.feature.locked && extra.feature.has_metadata) {
+            std::string key(getKeyBytes(), getKeyLen());
+            return hashMetaData::getInstance()->getMetaData(key, 
+                                           extra.feature.lock_expiry);
+        }
+        return std::string();	 
+    }
+
 
     /**
      * True if this item has an ID.
@@ -1005,6 +1039,7 @@ public:
                     return IS_LOCKED;
                 }
                 /* allow operation*/
+				// Unlock will also clear the metadata associated with the lock
                 v->unlock();
             } else if (val.getCas() != 0 && val.getCas() != v->getCas()) {
                 return INVALID_CAS;

@@ -43,6 +43,12 @@
 #define MIN_SYNC_TIMEOUT 10
 #endif
 
+#ifndef MAX_METADATA_LEN
+#define MAX_METADATA_LEN       1024
+#endif
+
+
+
 extern "C" {
     EXPORT_FUNCTION
     ENGINE_ERROR_CODE create_instance(uint64_t interface,
@@ -483,8 +489,9 @@ public:
                    Callback<GetValue> &cb,
                    rel_time_t currentTime,
                    uint32_t lockTimeout,
+                   std::string &metadata,
                    const void *cookie) {
-        return epstore->getLocked(key, vbucket, cb, currentTime, lockTimeout, cookie);
+        return epstore->getLocked(key, vbucket, cb, currentTime, lockTimeout, metadata, cookie);
     }
 
     ENGINE_ERROR_CODE sync(std::set<key_spec_t> *keys,

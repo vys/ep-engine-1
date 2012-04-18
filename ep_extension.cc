@@ -101,12 +101,21 @@ ENGINE_ERROR_CODE GetlExtension::executeGetl(int argc, token_t *argv,
                                              RESPONSE_HANDLER_T response_handler)
 {
     uint32_t lockTimeout = ITEM_LOCK_TIMEOUT;
+    char *metadata_ptr = NULL;
+    int metadata_len = 0;
 
-    if (argc == 3) {
+
+    if (argc >= 3) {
         if (!parseUint32(argv[2].value, &lockTimeout) ||
                 lockTimeout > (ITEM_LOCK_TIMEOUT * 2)) {
             lockTimeout = ITEM_LOCK_TIMEOUT;
         }
+        if (argc > 3) {
+            metadata_ptr = argv[3].value;
+            metadata_len = argv[3].length;  
+        }
+
+
     } else if (argc != 2) {
         return response_handler(response_cookie,
                                 sizeof("CLIENT_ERROR\r\n") - 1,
@@ -114,12 +123,13 @@ ENGINE_ERROR_CODE GetlExtension::executeGetl(int argc, token_t *argv,
     }
 
     std::string k(argv[1].value, argv[1].length);
+    std::string metadata(metadata_ptr, metadata_len);
     RememberingCallback<GetValue> getCb;
 
     // TODO:  Get vbucket ID here.
     bool gotLock = backend->getLocked(k, 0, getCb,
             serverApi->core->get_current_time(),
-            lockTimeout, response_cookie);
+            lockTimeout, metadata, response_cookie);
 
     Item *item = NULL;
     ENGINE_ERROR_CODE ret;
@@ -150,8 +160,15 @@ ENGINE_ERROR_CODE GetlExtension::executeGetl(int argc, token_t *argv,
     } else if (rv == ENGINE_EWOULDBLOCK) {
         ret = rv;
     } else if (!gotLock) {
-        ret = response_handler(response_cookie,
-                               sizeof("LOCK_ERROR\r\n") - 1, "LOCK_ERROR\r\n");
+        if (metadata.length() > 0) {
+           std::stringstream strm;
+           strm << "LOCK_ERROR " << metadata << "\r\n";
+           ret = response_handler(response_cookie, 
+                              sizeof("LOCK_ERROR \r\n") - 1 + metadata.length(), strm.str().c_str()); 
+        } else {
+           ret = response_handler(response_cookie,
+                              sizeof("LOCK_ERROR\r\n") - 1, "LOCK_ERROR\r\n");
+        }
     } else {
         ret = response_handler(response_cookie,
                                sizeof("NOT_FOUND\r\n") - 1, "NOT_FOUND\r\n");
