@@ -2382,7 +2382,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
             bool throttled = false;
             if (tapThrottle->persistenceQueueSmallEnough()) {
                 size_t needed = nkey + ndata + METADATA_OVERHEAD + accountForNThreads();
-                int64_t deficit = StoredValue::getMemoryDeficit(needed, stats);
+                int64_t deficit = tapThrottle->hasSomeMemory(needed);
                 if (deficit > 0) {
                     if (!eviction.disableInlineEviction) {
                         EvictionManager::getInstance()->evictSize(deficit);
