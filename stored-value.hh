@@ -549,7 +549,7 @@ public:
      * Get the current amount of of data stored.
      */
     static size_t getCurrentSize(EPStats&);
-	static bool hasEnoughMemory(size_t needed, EPStats &stats); 
+	static int64_t getMemoryDeficit(size_t needed, EPStats &stats); 
 private:
 
     StoredValue(const Item &itm, StoredValue *n, EPStats &stats, HashTable &ht,

@@ -409,9 +409,9 @@ bool StoredValue::hasAvailableSpace(EPStats &st, const Item &item) {
     return newSize <= maxSize;
 }
 
-bool StoredValue::hasEnoughMemory(size_t needed, EPStats &stats) 
+int64_t StoredValue::getMemoryDeficit(size_t needed, EPStats &stats)
 {
 	double current = static_cast<double>(getCurrentSize(stats));
 	double max =  static_cast<double>(getMaxDataSize(stats)) * mutation_mem_threshold;
-	return (max >= (current + needed));
+    return (int64_t) ((current + needed) - max);
 }

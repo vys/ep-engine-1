@@ -195,12 +195,12 @@ public:
 
         time_t expiretime = (exptime == 0) ? 0 : ep_abs_time(ep_reltime(exptime));
 
-        size_t needed = nkey + nbytes + METADATA_OVERHEAD;
-        size_t total_needed = needed + accountForNThreads();
-        if (StoredValue::hasEnoughMemory(total_needed, stats) == false) {
+        size_t needed = nkey + nbytes + METADATA_OVERHEAD + accountForNThreads();
+        int64_t deficit = StoredValue::getMemoryDeficit(needed, stats);
+        if (deficit > 0) {
             getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: No memory, attempting ejection.");
             if (!eviction.disableInlineEviction) {
-                EvictionManager::getInstance()->evictSize(needed);
+                EvictionManager::getInstance()->evictSize(deficit);
             }
         }
 
