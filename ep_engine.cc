@@ -2381,11 +2381,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
 #define METADATA_OVERHEAD 72
             bool throttled = false;
             if (tapThrottle->persistenceQueueSmallEnough()) {
-                size_t needed = nkey + ndata + METADATA_OVERHEAD;
-                size_t total_needed = needed + accountForNThreads();
-                if (!tapThrottle->hasSomeMemory(total_needed)) {
+                size_t needed = nkey + ndata + METADATA_OVERHEAD + accountForNThreads();
+                int64_t deficit = tapThrottle->hasSomeMemory(needed);
+                if (deficit > 0) {
                     if (!eviction.disableInlineEviction) {
-                        EvictionManager::getInstance()->evictSize(needed);
+                        EvictionManager::getInstance()->evictSize(deficit);
                     } else {
                         throttled = true;
                     }
@@ -4378,9 +4378,10 @@ EventuallyPersistentEngine::resetReplicationChain(const void *cookie,
 
 size_t EventuallyPersistentEngine::accountForNThreads() {
 /* Account for all threads that could be doing the memory check right now
- * Total headroom: No. of threads * configured headroom per thread
+ * Total accounting: No. of threads * Max per thread + Configured headroom
  */
 #define PARALLELISM 4
+#define MAX_PER_THREAD 2000000
 
-    return eviction.headroom* (PARALLELISM - 1);
+    return eviction.headroom + MAX_PER_THREAD * (PARALLELISM - 1);
 }
