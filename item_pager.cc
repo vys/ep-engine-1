@@ -137,6 +137,7 @@ public:
 
     void visit(StoredValue *v) {
         // Remember expired objects -- we're going to delete them.
+        BlockTimer timer(&stats.expiryPagerTimeStats.visitHisto);
         if (!pauseMutations && v->isExpired(startTime) && !v->isDeleted()) {
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
@@ -183,6 +184,7 @@ public:
     }
 
     bool shouldContinue() {
+        BlockTimer timer(&stats.expiryPagerTimeStats.storeHisto);
         if (evjob) {
             return evjob->storeEvictItem();
         }
@@ -190,6 +192,7 @@ public:
     }
 
     void complete() {
+        BlockTimer timer(&stats.expiryPagerTimeStats.completeHisto);
         update();
         if (stateFinalizer) {
             *stateFinalizer = true;
@@ -209,6 +212,9 @@ public:
             }
 
         }
+        endTime = ep_real_time();
+        stats.expiryPagerTimeStats.startTime = startTime;
+        stats.expiryPagerTimeStats.endTime = endTime;
     }
     
     /**
@@ -223,11 +229,12 @@ private:
     EPStats                   &stats;
     size_t                     ejected;
     time_t                     startTime;
+    time_t                     endTime;
     bool                      *stateFinalizer;
     bool                       pauseMutations;
-    EvictionPolicy *evjob;
-    Histogram<int> ageHisto;
-    Histogram<size_t> sizeHisto;
+    EvictionPolicy            *evjob;
+    Histogram<int>             ageHisto;
+    Histogram<size_t>          sizeHisto;
 };
 
 bool ItemPager::callback(Dispatcher &d, TaskId t) {

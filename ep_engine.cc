@@ -3587,6 +3587,15 @@ void BGTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("evpolicy_complete_time", completeHisto, add_stat, cookie);
 }
 
+void ExpiryPagerTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
+    add_casted_stat("expiry_pager_start_timestamp", startTime, add_stat, cookie);
+    add_casted_stat("expiry_pager_end_timestamp", endTime, add_stat, cookie);
+    add_casted_stat("expiry_pager_total_time", (endTime - startTime), add_stat, cookie);
+    add_casted_stat("expiry_pager_visit_time", visitHisto, add_stat, cookie);
+    add_casted_stat("expiry_pager_store_time", storeHisto, add_stat, cookie);
+    add_casted_stat("expiry_pager_complete_time", completeHisto, add_stat, cookie);
+}
+
 void BGEvictionPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("eviction_policy", description(), add_stat, cookie);
     add_casted_stat("bg_evictions", ejected, add_stat, cookie);
@@ -3654,6 +3663,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,
     add_casted_stat("item_hotness_timestamp", stats.itemAgeStartTime, add_stat, cookie);
     add_casted_stat("item_hotness_age", stats.itemAgeHisto, add_stat, cookie);
     add_casted_stat("item_sizes", stats.itemSizeHisto, add_stat, cookie);
+
+    stats.expiryPagerTimeStats.getStats(cookie, add_stat);
 
     // Regular commands
     add_casted_stat("get_cmd", stats.getCmdHisto, add_stat, cookie);

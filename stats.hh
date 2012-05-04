@@ -93,6 +93,20 @@ public:
     }
 };
 
+// Timing stats for expiry pager
+class ExpiryPagerTimeStats {
+public:
+    ExpiryPagerTimeStats() : startTime(0), endTime(0) {}
+
+    void getStats(const void *cookie, ADD_STAT add_stat);
+
+    Histogram<hrtime_t> visitHisto;
+    Histogram<hrtime_t> storeHisto;
+    Histogram<hrtime_t> completeHisto;
+    time_t startTime;
+    time_t endTime;
+};
+
 /**
  * Global engine stats container.
  */
@@ -397,6 +411,7 @@ public:
 
     EvictionStats evictionStats;
     EvictionPruneStats pruneStats;
+    ExpiryPagerTimeStats expiryPagerTimeStats;
 
     //! Reset all stats to reasonable values.
     void reset() {
