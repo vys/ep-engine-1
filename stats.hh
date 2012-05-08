@@ -103,6 +103,9 @@ public:
     Histogram<hrtime_t> visitHisto;
     Histogram<hrtime_t> storeHisto;
     Histogram<hrtime_t> completeHisto;
+    Atomic<hrtime_t> visitTotal;
+    Atomic<hrtime_t> updateTotal;
+    Atomic<hrtime_t> storeTotal;
     time_t startTime;
     time_t endTime;
 };
