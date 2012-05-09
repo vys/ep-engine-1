@@ -133,6 +133,7 @@ public:
             sizeHisto.reset();
             evjob->initRebuild();
         }
+        stats.expiryPagerTimeStats.reset();
     }
 
     void visit(StoredValue *v) {
