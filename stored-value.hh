@@ -346,11 +346,14 @@ public:
             extra.feature.locked = true;
             extra.feature.lock_expiry = expiry;
     
-	        if (metadata.length() > 0) {
+            if (metadata.length() > 0) {
                 std::string key(getKeyBytes(), getKeyLen());
-		        extra.feature.has_metadata = true;
-		        hashMetaData::getInstance()->setMetaData(key, expiry, metadata);
-	        }   
+                extra.feature.has_metadata = true;
+                hashMetaData::getInstance()->setMetaData(key, expiry, metadata);
+            }   
+            else {
+                extra.feature.has_metadata = false;
+            }
         }
     }
 
@@ -380,7 +383,7 @@ public:
      * Return the metadata associated with this item.
      */
     std::string getMetadata() {
-        if (!_isSmall && extra.feature.locked && extra.feature.has_metadata) {
+        if (!_isSmall && extra.feature.locked && (extra.feature.has_metadata == true)) {
             std::string key(getKeyBytes(), getKeyLen());
             return hashMetaData::getInstance()->getMetaData(key, 
                                            extra.feature.lock_expiry);
@@ -599,6 +602,7 @@ private:
             extra.feature.exptime = itm.getExptime();
             extra.feature.locked = false;
             extra.feature.resident = true;
+            extra.feature.has_metadata = false;
             extra.feature.lock_expiry = 0;
             extra.feature.keylen = itm.getKey().length();
         }
@@ -1039,7 +1043,7 @@ public:
                     return IS_LOCKED;
                 }
                 /* allow operation*/
-				// Unlock will also clear the metadata associated with the lock
+                // Unlock will also clear the metadata associated with the lock
                 v->unlock();
             } else if (val.getCas() != 0 && val.getCas() != v->getCas()) {
                 return INVALID_CAS;
