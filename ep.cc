@@ -1343,6 +1343,12 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
             LockHolder rlh(restore.mutex);
             restore.itemsDeleted.insert(key);
         } else {
+            if (CheckpointManager::isInconsistentSlaveCheckpoint()) {
+                queueDirty(key, vbucket, queue_op_del, value_t(NULL), 0, 0, cas, rowid);
+
+                getLogger()->log(EXTENSION_LOG_INFO, NULL, "Forward del %s to checkpoint "
+                                                "(not-found in hash table)", key.c_str());
+            }
             return ENGINE_KEY_ENOENT;
         }
     } else {
