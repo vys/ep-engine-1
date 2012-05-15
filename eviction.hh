@@ -214,6 +214,11 @@ public:
     }
 
     bool evictionRunNeeded(bool timerElapsed) {
+        size_t mem_used = stats.currentSize + stats.memOverhead;
+        size_t max_size = StoredValue::getMaxDataSize(stats);
+        if (mem_used < (size_t)(memThresholdPercent * max_size)) {
+            return false;
+        }
         if (timerElapsed) {
             return true;
         }
@@ -244,8 +249,8 @@ public:
         rebuildPercent = v;
     }
 
-    static double getRebuildPercent() {
-        return rebuildPercent;
+    static void setMemThresholdPercent(double v) {
+        memThresholdPercent = v;
     }
 
 private:
@@ -316,6 +321,7 @@ private:
     bool stopBuild;
     Atomic<size_t> count;
     static double rebuildPercent;
+    static double memThresholdPercent;
 };
 
 class RandomPolicy : public EvictionPolicy {
