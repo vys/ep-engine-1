@@ -99,24 +99,12 @@ public:
     ExpiryPagerTimeStats() : startTime(0), endTime(0) {}
 
     void reset() {
-        visitHisto.reset();
-        storeHisto.reset();
-        completeHisto.reset();
-        visitTotal = 0;
-        updateTotal = 0;
-        storeTotal = 0;
         startTime = 0;
         endTime = 0;
     }
 
     void getStats(const void *cookie, ADD_STAT add_stat);
 
-    Histogram<hrtime_t> visitHisto;
-    Histogram<hrtime_t> storeHisto;
-    Histogram<hrtime_t> completeHisto;
-    Atomic<hrtime_t> visitTotal;
-    Atomic<hrtime_t> updateTotal;
-    Atomic<hrtime_t> storeTotal;
     time_t startTime;
     time_t endTime;
 };

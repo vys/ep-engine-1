@@ -90,8 +90,6 @@ public:
 
     void getStats(const void *cookie, ADD_STAT add_stat);
 
-    Histogram<hrtime_t> visitHisto;
-    Histogram<hrtime_t> storeHisto;
     Histogram<hrtime_t> completeHisto;
     time_t startTime;
     time_t endTime;

@@ -116,7 +116,6 @@ void LRUPolicy::initRebuild() {
 }
 
 bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
-    BlockTimer timer(&timestats.visitHisto);
     stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
         return false;
@@ -136,7 +135,6 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
 }
 
 bool LRUPolicy::storeEvictItem() {
-    BlockTimer timer(&timestats.storeHisto);
     stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
         return false;
@@ -192,7 +190,6 @@ void RandomPolicy::initRebuild() {
 }
 
 bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
-    BlockTimer timer(&timestats.visitHisto);
     stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild || size == maxSize) {
         return false;

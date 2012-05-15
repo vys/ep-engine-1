@@ -3582,8 +3582,6 @@ void BGTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("evpolicy_job_start_timestamp", startTime, add_stat, cookie);
     add_casted_stat("evpolicy_job_end_timestamp", endTime, add_stat, cookie);
     add_casted_stat("evpolicy_job_total_time", (endTime - startTime), add_stat, cookie);
-    add_casted_stat("evpolicy_visit_time", visitHisto, add_stat, cookie);
-    add_casted_stat("evpolicy_store_time", storeHisto, add_stat, cookie);
     add_casted_stat("evpolicy_complete_time", completeHisto, add_stat, cookie);
 }
 
@@ -3591,12 +3589,6 @@ void ExpiryPagerTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("expiry_pager_start_timestamp", startTime, add_stat, cookie);
     add_casted_stat("expiry_pager_end_timestamp", endTime, add_stat, cookie);
     add_casted_stat("expiry_pager_total_time", (endTime - startTime), add_stat, cookie);
-    add_casted_stat("expiry_pager_visit_time", visitHisto, add_stat, cookie);
-    add_casted_stat("expiry_pager_store_time", storeHisto, add_stat, cookie);
-    add_casted_stat("expiry_pager_complete_time", completeHisto, add_stat, cookie);
-    add_casted_stat("expiry_pager_total_visit_time", visitTotal, add_stat, cookie);
-    add_casted_stat("expiry_pager_total_update_time", updateTotal, add_stat, cookie);
-    add_casted_stat("expiry_pager_total_store_time", storeTotal, add_stat, cookie);
 }
 
 void BGEvictionPolicy::getStats(const void *cookie, ADD_STAT add_stat) {

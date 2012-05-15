@@ -138,8 +138,6 @@ public:
 
     void visit(StoredValue *v) {
         // Remember expired objects -- we're going to delete them.
-        BlockTimer timer(&stats.expiryPagerTimeStats.visitHisto);
-        BlockTimerSum timersum(&stats.expiryPagerTimeStats.visitTotal);
         if (!pauseMutations && v->isExpired(startTime) && !v->isDeleted()) {
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
@@ -162,7 +160,6 @@ public:
     }
 
     void update() {
-        BlockTimerSum timersum(&stats.expiryPagerTimeStats.updateTotal);
         stats.expired.incr(expired.size());
 
         store->deleteExpiredItems(expired);
@@ -187,8 +184,6 @@ public:
     }
 
     bool shouldContinue() {
-        BlockTimer timer(&stats.expiryPagerTimeStats.storeHisto);
-        BlockTimerSum timersum(&stats.expiryPagerTimeStats.storeTotal);
         if (evjob) {
             return evjob->storeEvictItem();
         }
@@ -196,7 +191,6 @@ public:
     }
 
     void complete() {
-        BlockTimer timer(&stats.expiryPagerTimeStats.completeHisto);
         update();
         if (stateFinalizer) {
             *stateFinalizer = true;

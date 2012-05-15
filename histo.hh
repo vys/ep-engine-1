@@ -378,20 +378,6 @@ private:
     hrtime_t             start;
 };
 
-class BlockTimerSum {
-public:
-
-    BlockTimerSum(Atomic<hrtime_t> *t) : dest(t), start(gethrtime()) {}
-
-    ~BlockTimerSum() {
-        dest->incr((gethrtime() - start) / 1000);
-    }
-
-private:
-    Atomic<hrtime_t>    *dest;
-    hrtime_t             start;
-};
-
 // How to print a bin.
 template <typename T>
 std::ostream& operator <<(std::ostream &out, const HistogramBin<T> &b) {
