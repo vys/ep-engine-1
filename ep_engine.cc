@@ -294,6 +294,14 @@ extern "C" {
                          static_cast<size_t>(MIN_SYNC_TIMEOUT),
                          static_cast<size_t>(MAX_SYNC_TIMEOUT));
                 e->setSyncCmdTimeout(vsize);
+            } else if (strcmp(keyz, "flush_completed_threshold") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         std::numeric_limits<uint64_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting flush_completed_threshold value to %ulld via flush params.", vsize);
+                e->setFlushCompletedThreshold((size_t)vsize);
             } else if (strcmp(keyz, "exp_pager_stime") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -3086,10 +3094,15 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     add_casted_stat("ep_latency_arith_cmd", epstats.arithCmdHisto.total(),
                     add_stat, cookie);
 
+    add_casted_stat("ep_bg_fetch_success", epstats.bgFetchQueueSuccess,
+                    add_stat, cookie);
+    add_casted_stat("ep_flush_completed_threshold", getFlushCompletedThreshold(),
+                    add_stat, cookie);
+
     // Eviction stats
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
                     add_stat, cookie);
-    add_casted_stat("lru_rebuild_stime", getExpiryPagerSleeptime(true),
+    add_casted_stat("ep_lru_rebuild_stime", getExpiryPagerSleeptime(true),
                     add_stat, cookie);
     add_casted_stat("ep_max_evict_entries", EvictionManager::getInstance()->getMaxSize(),
                     add_stat, cookie);

@@ -600,6 +600,14 @@ public:
         EvictionManager::getInstance()->setPruneAge(val);
     }
 
+    size_t getFlushCompletedThreshold() {
+        return epstore->getFlushCompletedThreshold();
+    }
+
+    void setFlushCompletedThreshold(size_t val) {
+        epstore->setFlushCompletedThreshold(val);
+    }
+
     size_t getExpiryPagerSleeptime(bool getLruTimer = false) {
         LockHolder lh(expiryPager.mutex);
         return getLruTimer ? expiryPager.lrusleeptime : expiryPager.sleeptime;
