@@ -56,8 +56,8 @@ public:
      * @param stime number of seconds to wait between runs
      */
     ExpiredItemPager(EventuallyPersistentStore *s, EPStats &st,
-                     size_t stime) :
-        store(s), stats(st), sleepTime(static_cast<double>(stime)),
+                     size_t stime, size_t ltime) :
+        store(s), stats(st), sleepTime(stime), lruSleepTime(ltime),
         available(true), lastRun(ep_real_time()) {}
 
     bool callback(Dispatcher &d, TaskId t);
@@ -65,7 +65,7 @@ public:
     std::string description() { return std::string("Paging expired items."); }
 
     bool pagerRunNeeded() {
-        if (lastRun + sleepTime < ep_real_time()) {
+        if (lastRun + sleepTime <= ep_real_time()) {
             stats.expiryPagerRuns++;
             return true;
         }
@@ -73,17 +73,21 @@ public:
     }
 
     uint32_t callbackFreq() {
-        if ((uint32_t)sleepTime < 10) {
-            return (uint32_t)sleepTime;
-        } else {
-            return 10;
+        time_t min = 10;
+        if (sleepTime < min) {
+            min = sleepTime;
         }
+        if (lruSleepTime < min) {
+            min = lruSleepTime;
+        }
+        return static_cast<uint32_t>(min);
     }
 
 private:
     EventuallyPersistentStore *store;
     EPStats                   &stats;
-    double                     sleepTime;
+    time_t                     sleepTime;
+    time_t                     lruSleepTime;
     bool                       available;
     time_t lastRun;
 };

@@ -67,7 +67,7 @@ public:
     virtual bool addEvictItem(StoredValue *v, RCPtr<VBucket>) = 0;
     virtual bool storeEvictItem() = 0;
     virtual void completeRebuild() = 0;
-    virtual bool evictionRunNeeded(bool timerElapsed) = 0;
+    virtual bool evictionRunNeeded(time_t lruSleepTime) = 0;
     virtual bool eligibleForEviction(StoredValue *v, EvictItem *e) {
         (void)v;
         (void)e;
@@ -141,7 +141,8 @@ public:
               list(new FixedList<LRUItem, LRUItemCompare>(maxSize)),
               templist(NULL),
               stopBuild(false),
-              count(0) {
+              count(0),
+              lastRun(ep_real_time()) {
         list->build();
         it = list->begin();
         stats.evictionStats.memSize.incr(list->memSize());
@@ -213,13 +214,18 @@ public:
         return static_cast<EvictItem *>(ent);
     }
 
-    bool evictionRunNeeded(bool timerElapsed) {
+    bool evictionRunNeeded(time_t lruSleepTime) {
+        if (lruSleepTime == 0) {
+            return false;
+        }
         size_t mem_used = stats.currentSize + stats.memOverhead;
         size_t max_size = StoredValue::getMaxDataSize(stats);
         if (mem_used < (size_t)(memThresholdPercent * max_size)) {
             return false;
         }
-        if (timerElapsed) {
+        time_t currTime = ep_real_time();
+        if (lastRun + lruSleepTime <= currTime) {
+            lastRun = currTime;
             return true;
         }
         size_t target = (size_t)(rebuildPercent * curSize);
@@ -322,6 +328,7 @@ private:
     Atomic<size_t> count;
     static double rebuildPercent;
     static double memThresholdPercent;
+    time_t lastRun;
 };
 
 class RandomPolicy : public EvictionPolicy {
@@ -444,8 +451,8 @@ public:
         return ent;
     }
 
-    bool evictionRunNeeded(bool timerElapsed) {
-        (void) timerElapsed;
+    bool evictionRunNeeded(time_t lruSleepTime) {
+        (void)lruSleepTime;
         return true;
     }
 
@@ -540,8 +547,8 @@ public:
         return NULL;
     }
 
-    bool evictionRunNeeded(bool timerElapsed) {
-        (void) timerElapsed;
+    bool evictionRunNeeded(time_t lruSleepTime) {
+        (void)lruSleepTime;
         if (evictAge() != 0) {
             return true;
         }

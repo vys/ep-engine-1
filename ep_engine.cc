@@ -302,6 +302,14 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting exp_pager_stime value to %ulld via flush params.", vsize);
                 e->setExpiryPagerSleeptime((size_t)vsize);
+            } else if (strcmp(keyz, "lru_rebuild_stime") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         std::numeric_limits<uint64_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting lru_rebuild_stime value to %ulld via flush params.", vsize);
+                e->setExpiryPagerSleeptime((size_t)vsize, true);
             } else if (strcmp(keyz, "enable_eviction_job") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -1109,6 +1117,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t txnSize = 0;
     size_t tapIdleTimeout = (size_t)-1;
     size_t expiryPagerSleeptime = 3600;
+    size_t lruRebuildSleeptime = 3600;
     size_t maxEvictEntries = 500000;
     float tapThrottleThreshold(-1);
     bool enableEvictionJob = 1;
@@ -1128,7 +1137,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         size_t maxSize = 0;
         float mutation_mem_threshold = 0;
 
-        const int max_items = 58;
+        const int max_items = 59;
         struct config_item items[max_items];
         int ii = 0;
         memset(items, 0, sizeof(items));
@@ -1270,6 +1279,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         items[ii].key = "exp_pager_stime";
         items[ii].datatype = DT_SIZE;
         items[ii].value.dt_size = &expiryPagerSleeptime;
+
+        ++ii;
+        items[ii].key = "lru_rebuild_stime";
+        items[ii].datatype = DT_SIZE;
+        items[ii].value.dt_size = &lruRebuildSleeptime;
 
         ++ii;
         items[ii].key = "enable_eviction_job";
@@ -1635,6 +1649,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
             shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
             epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::ItemPagerPriority, 10);
             setExpiryPagerSleeptime(expiryPagerSleeptime);
+            setExpiryPagerSleeptime(lruRebuildSleeptime, true);
             EvictionManager::getInstance()->setMaxSize(maxEvictEntries);
             EvictionManager::getInstance()->enableJob(enableEvictionJob);
         }
@@ -3073,6 +3088,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
 
     // Eviction stats
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
+                    add_stat, cookie);
+    add_casted_stat("lru_rebuild_stime", getExpiryPagerSleeptime(true),
                     add_stat, cookie);
     add_casted_stat("ep_max_evict_entries", EvictionManager::getInstance()->getMaxSize(),
                     add_stat, cookie);

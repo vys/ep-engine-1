@@ -274,7 +274,7 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
     if (available) {
         EvictionPolicy *policy = EvictionManager::getInstance()->evictionBGJob();
         bool expiryNeeded = pagerRunNeeded();
-        bool evictionNeeded = policy && policy->evictionRunNeeded(expiryNeeded);
+        bool evictionNeeded = policy && policy->evictionRunNeeded(lruSleepTime);
         if (expiryNeeded || evictionNeeded) {
             lastRun = ep_real_time();
             available = false;
@@ -285,7 +285,7 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
                          true, 10);
         }
     }
-    d.snooze(t, callbackFreq());
+    d.snooze(t, static_cast<double>(callbackFreq()));
     return true;
 }
 
