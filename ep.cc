@@ -1179,7 +1179,7 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
 
         // if v is locked return error
         if (v->isLocked(currentTime)) {
-			// Return the metadata associated with this lock, if any
+            // Return the metadata associated with this lock, if any
             metadata = v->getMetadata();
 
             GetValue rv;
@@ -1200,7 +1200,7 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
         }
 
         // acquire lock and increment cas value
-		// lock will also associate the metadata with the lock
+        // lock will also associate the metadata with the lock
         v->lock(currentTime + lockTimeout, metadata);
 
         Item *it = new Item(v->getKey(), v->getFlags(), v->getExptime(),
@@ -1264,7 +1264,7 @@ EventuallyPersistentStore::unlockKey(const std::string &key,
     if (v) {
         if (v->isLocked(currentTime)) {
             if (v->getCas() == cas) {
-				// Unlock will also clear the metadata associated with the lock
+                // Unlock will also clear the metadata associated with the lock
                 v->unlock();
                 return ENGINE_SUCCESS;
             }

@@ -7,11 +7,10 @@
 
 #ifdef DEBUG
 typedef uint32_t rel_time_t;
-#else 
+#else
 #include "locks.hh"
 #endif
 
-//namespace meta {
 typedef std::map<std::string, std::string> metaMap_t;
 static const int max_lock_timeout = 30;
 
@@ -50,9 +49,8 @@ public:
 #ifdef DEBUG
     pthread_mutex_t l;
 #else
-    //SpinLock l;     
     Mutex l;
-	
+
 #endif
     rel_time_t exp;
     opr<useMap> stored; 
@@ -74,10 +72,9 @@ public:
     Node *getBucket(rel_time_t t) {
         return &nodes[t%30];
     }
- 
+
 private:
     hashMetaData() {
-        //memset((void *)&nodes, 0, sizeof(Node) * max_lock_timeout);
 #ifdef DEBUG
         for (int i=0; i< max_lock_timeout; i++) {
             pthread_mutex_init(&nodes[i].l, NULL);

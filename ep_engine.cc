@@ -359,13 +359,15 @@ extern "C" {
             Item **item,
             const char **msg,
             size_t *,
-            protocol_binary_response_status *res) {
+            protocol_binary_response_status *res, 
+            bool &free_msg) {
 
         protocol_binary_request_header *request = &(grequest->message.header);
         protocol_binary_request_no_extras *req =
             (protocol_binary_request_no_extras*)request;
-        static char *ret_metadata = NULL;
-        static int ret_metadata_len = 0;
+        char *ret_metadata = NULL;
+        int ret_metadata_len = 0;
+        free_msg = false;
 
         *res = PROTOCOL_BINARY_RESPONSE_SUCCESS;
 
@@ -431,12 +433,11 @@ extern "C" {
         } else if (!gotLock){
             int out_metadata_len = metadata.length();
             if (out_metadata_len > 0) {
-                if (ret_metadata_len < out_metadata_len + (signed int) sizeof("LOCK_ERROR \r\n")) {
-                    ret_metadata_len = out_metadata_len + sizeof("LOCK_ERROR \r\n");
-                    ret_metadata = (char *)realloc(ret_metadata, ret_metadata_len);
-                }
+                ret_metadata_len = out_metadata_len + sizeof("LOCK_ERROR \r\n");
+                ret_metadata = (char *)malloc(ret_metadata_len);
                 snprintf(ret_metadata, ret_metadata_len, "LOCK_ERROR %s\r\n", metadata.c_str());  
                 *msg = ret_metadata;
+                free_msg = true;
             } else {        
                 *msg =  "LOCK_ERROR";
                 *res = PROTOCOL_BINARY_RESPONSE_ETMPFAIL;
@@ -768,6 +769,7 @@ extern "C" {
             PROTOCOL_BINARY_RESPONSE_UNKNOWN_COMMAND;
         const char *msg = NULL;
         size_t msg_size = 0;
+        bool free_msg = false;
         Item *item = NULL;
 
         EventuallyPersistentEngine *h = getHandle(handle);
@@ -822,7 +824,7 @@ extern "C" {
             res = evictKey(h, request, &msg, &msg_size);
             break;
         case CMD_GET_LOCKED:
-            rv = getLocked(h, (protocol_binary_request_getl*)request, cookie, &item, &msg, &msg_size, &res);
+            rv = getLocked(h, (protocol_binary_request_getl*)request, cookie, &item, &msg, &msg_size, &res, free_msg);
             if (rv == ENGINE_EWOULDBLOCK) {
                 // we dont have the value for the item yet
                 return rv;
@@ -874,6 +876,9 @@ extern "C" {
                     PROTOCOL_BINARY_RAW_BYTES,
                     static_cast<uint16_t>(res), 0, cookie);
 
+        }
+        if (msg != NULL && free_msg == true) {
+            free((void *)msg);
         }
         return ENGINE_SUCCESS;
     }

@@ -345,7 +345,7 @@ public:
         if (!_isSmall) {
             extra.feature.locked = true;
             extra.feature.lock_expiry = expiry;
-    
+     
             if (metadata.length() > 0) {
                 std::string key(getKeyBytes(), getKeyLen());
                 extra.feature.has_metadata = true;
@@ -388,7 +388,7 @@ public:
             return hashMetaData::getInstance()->getMetaData(key, 
                                            extra.feature.lock_expiry);
         }
-        return std::string();	 
+        return std::string();  
     }
 
 

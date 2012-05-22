@@ -63,7 +63,8 @@ extern "C" {
             Item **item,
             const char **msg,
             size_t *msg_size,
-            protocol_binary_response_status *res);
+            protocol_binary_response_status *res, 
+            bool &free_msg);
 }
 
 /* We're using notify_io_complete from ptr_fun, but that func
