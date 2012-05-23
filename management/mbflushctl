@@ -62,7 +62,6 @@ Available params for "set":
     max_size            - max memory used by the server
     mem_high_wat        - high water mark
     mem_low_wat         - low water mark
-    flush_completed_threshold - Threshold at which flush preempt will occur
     exp_pager_stime     - Expiry Pager Sleeptime
     lru_rebuild_stime   - LRU rebuild Sleeptime
     max_evict_entries   - Maximum entries used by eviction job

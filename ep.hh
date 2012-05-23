@@ -810,14 +810,6 @@ public:
      */
     void completeOnlineRestore();
 
-    size_t getFlushCompletedThreshold() {
-        return flushCompletedThreshold;
-    }
-
-    void setFlushCompletedThreshold(size_t val) {
-        flushCompletedThreshold = val;
-    }
-
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -881,13 +873,9 @@ private:
                                  int bucket_num, bool wantsDeleted=false);
 
     bool shouldPreemptFlush(size_t completed) {
-        bool res = completed > flushCompletedThreshold
-                   && bgFetchQueue > 0
-                   && !hasSeparateRODispatcher();
-        if (res) {
-            stats.bgFetchQueueSuccess.add(bgFetchQueue.get());
-        }
-        return res;
+        return (completed > 100
+                && bgFetchQueue > 0
+                && !hasSeparateRODispatcher());
     }
 
     size_t getWriteQueueSize(void);
@@ -919,7 +907,6 @@ private:
     std::queue<queued_item>    writing;
     std::vector<queued_item>  *dbShardQueues;
     pthread_t                  thread;
-    size_t                     flushCompletedThreshold;
     Atomic<size_t>             bgFetchQueue;
     Atomic<bool>               diskFlushAll;
     TransactionContext         tctx;

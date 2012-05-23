@@ -415,8 +415,6 @@ public:
     EvictionPruneStats pruneStats;
     ExpiryPagerTimeStats expiryPagerTimeStats;
 
-    Histogram<size_t> bgFetchQueueSuccess;
-
     //! Reset all stats to reasonable values.
     void reset() {
         tooYoung.set(0);
