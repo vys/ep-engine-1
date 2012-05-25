@@ -3089,7 +3089,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     // Eviction stats
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
                     add_stat, cookie);
-    add_casted_stat("lru_rebuild_stime", getExpiryPagerSleeptime(true),
+    add_casted_stat("ep_lru_rebuild_stime", getExpiryPagerSleeptime(true),
                     add_stat, cookie);
     add_casted_stat("ep_max_evict_entries", EvictionManager::getInstance()->getMaxSize(),
                     add_stat, cookie);
