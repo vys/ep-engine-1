@@ -600,25 +600,29 @@ public:
         EvictionManager::getInstance()->setPruneAge(val);
     }
 
-    size_t getExpiryPagerSleeptime(void) {
+    size_t getExpiryPagerSleeptime(bool getLruTimer = false) {
         LockHolder lh(expiryPager.mutex);
-        return expiryPager.sleeptime;
+        return getLruTimer ? expiryPager.lrusleeptime : expiryPager.sleeptime;
     }
 
-    void setExpiryPagerSleeptime(size_t val) {
+    void setExpiryPagerSleeptime(size_t val, bool setLruTimer = false) {
         LockHolder lh(expiryPager.mutex);
 
-        if (expiryPager.sleeptime != 0) {
+        size_t *sleeptime = setLruTimer ? &expiryPager.lrusleeptime : &expiryPager.sleeptime;
+
+        if (expiryPager.running) {
             epstore->getNonIODispatcher()->cancel(expiryPager.task);
+            expiryPager.running = false;
         }
 
-        expiryPager.sleeptime = val;
-        if (val != 0) {
-            ExpiredItemPager *pager = new ExpiredItemPager(epstore, stats, expiryPager.sleeptime);
+        *sleeptime = val;
+        if (expiryPager.sleeptime != 0) { // run only if exp_pager_stime is positive
+            ExpiredItemPager *pager = new ExpiredItemPager(epstore, stats, expiryPager.sleeptime, expiryPager.lrusleeptime);
             shared_ptr<DispatcherCallback> exp_cb(pager);
             epstore->getNonIODispatcher()->schedule(exp_cb, &expiryPager.task,
                                                     Priority::ItemPagerPriority,
-                                                    pager->callbackFreq());
+                                                    static_cast<double>(pager->callbackFreq()));
+            expiryPager.running = true;
         }
     }
 
@@ -830,10 +834,12 @@ private:
     size_t itemExpiryWindow;
     size_t checkpointRemoverInterval;
     struct ExpiryPagerDelta {
-        ExpiryPagerDelta() : sleeptime(0) {}
+        ExpiryPagerDelta() : sleeptime(0), lrusleeptime(0), running(false) {}
         Mutex mutex;
         size_t sleeptime;
+        size_t lrusleeptime;
         TaskId task;
+        bool running;
     } expiryPager;
 
     size_t nVBuckets;

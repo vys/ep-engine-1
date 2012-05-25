@@ -1,6 +1,7 @@
 #include <eviction.hh>
 
 double LRUPolicy::rebuildPercent = 0.5;
+double LRUPolicy::memThresholdPercent = 0.5;
 Atomic<size_t> EvictionManager::minBlobSize = 5;
 EvictionManager *EvictionManager::managerInstance = NULL;
 
@@ -116,7 +117,6 @@ void LRUPolicy::initRebuild() {
 }
 
 bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
-    BlockTimer timer(&timestats.visitHisto);
     stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
         return false;
@@ -136,7 +136,6 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
 }
 
 bool LRUPolicy::storeEvictItem() {
-    BlockTimer timer(&timestats.storeHisto);
     stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
         return false;
@@ -192,7 +191,6 @@ void RandomPolicy::initRebuild() {
 }
 
 bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
-    BlockTimer timer(&timestats.visitHisto);
     stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild || size == maxSize) {
         return false;

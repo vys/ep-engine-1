@@ -133,6 +133,7 @@ public:
             sizeHisto.reset();
             evjob->initRebuild();
         }
+        stats.expiryPagerTimeStats.reset();
     }
 
     void visit(StoredValue *v) {
@@ -209,6 +210,9 @@ public:
             }
 
         }
+        endTime = ep_real_time();
+        stats.expiryPagerTimeStats.startTime = startTime;
+        stats.expiryPagerTimeStats.endTime = endTime;
     }
     
     /**
@@ -223,11 +227,12 @@ private:
     EPStats                   &stats;
     size_t                     ejected;
     time_t                     startTime;
+    time_t                     endTime;
     bool                      *stateFinalizer;
     bool                       pauseMutations;
-    EvictionPolicy *evjob;
-    Histogram<int> ageHisto;
-    Histogram<size_t> sizeHisto;
+    EvictionPolicy            *evjob;
+    Histogram<int>             ageHisto;
+    Histogram<size_t>          sizeHisto;
 };
 
 bool ItemPager::callback(Dispatcher &d, TaskId t) {
@@ -269,7 +274,7 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
     if (available) {
         EvictionPolicy *policy = EvictionManager::getInstance()->evictionBGJob();
         bool expiryNeeded = pagerRunNeeded();
-        bool evictionNeeded = policy && policy->evictionRunNeeded(expiryNeeded);
+        bool evictionNeeded = policy && policy->evictionRunNeeded(lruSleepTime);
         if (expiryNeeded || evictionNeeded) {
             lastRun = ep_real_time();
             available = false;
@@ -280,7 +285,7 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
                          true, 10);
         }
     }
-    d.snooze(t, callbackFreq());
+    d.snooze(t, static_cast<double>(callbackFreq()));
     return true;
 }
 

@@ -302,6 +302,14 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting exp_pager_stime value to %ulld via flush params.", vsize);
                 e->setExpiryPagerSleeptime((size_t)vsize);
+            } else if (strcmp(keyz, "lru_rebuild_stime") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         std::numeric_limits<uint64_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting lru_rebuild_stime value to %ulld via flush params.", vsize);
+                e->setExpiryPagerSleeptime((size_t)vsize, true);
             } else if (strcmp(keyz, "enable_eviction_job") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -332,7 +340,11 @@ extern "C" {
             } else if (strcmp(keyz, "lru_rebuild_percent") == 0) {
                 validate(v, 0, 100);
                 LRUPolicy::setRebuildPercent(static_cast<double>(v) / 100.0);
-                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction_rebuild_percent to %f via flush params.", v);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting lru_rebuild_percent to %f via flush params.", v);
+            } else if (strcmp(keyz, "lru_mem_threshold_percent") == 0) {
+                validate(v, 0, 100);
+                LRUPolicy::setMemThresholdPercent(static_cast<double>(v) / 100.0);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting lru_mem_threshold_percent to %f via flush params.", v);
             } else if (strcmp(keyz, "evict_min_blob_size") == 0) {
                 validate((uint32_t)v, static_cast<uint32_t>(0),
                          std::numeric_limits<uint32_t>::max());
@@ -1105,6 +1117,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t txnSize = 0;
     size_t tapIdleTimeout = (size_t)-1;
     size_t expiryPagerSleeptime = 3600;
+    size_t lruRebuildSleeptime = 3600;
     size_t maxEvictEntries = 500000;
     float tapThrottleThreshold(-1);
     bool enableEvictionJob = 1;
@@ -1124,7 +1137,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         size_t maxSize = 0;
         float mutation_mem_threshold = 0;
 
-        const int max_items = 58;
+        const int max_items = 59;
         struct config_item items[max_items];
         int ii = 0;
         memset(items, 0, sizeof(items));
@@ -1266,6 +1279,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         items[ii].key = "exp_pager_stime";
         items[ii].datatype = DT_SIZE;
         items[ii].value.dt_size = &expiryPagerSleeptime;
+
+        ++ii;
+        items[ii].key = "lru_rebuild_stime";
+        items[ii].datatype = DT_SIZE;
+        items[ii].value.dt_size = &lruRebuildSleeptime;
 
         ++ii;
         items[ii].key = "enable_eviction_job";
@@ -1631,6 +1649,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
             shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
             epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::ItemPagerPriority, 10);
             setExpiryPagerSleeptime(expiryPagerSleeptime);
+            setExpiryPagerSleeptime(lruRebuildSleeptime, true);
             EvictionManager::getInstance()->setMaxSize(maxEvictEntries);
             EvictionManager::getInstance()->enableJob(enableEvictionJob);
         }
@@ -3070,6 +3089,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     // Eviction stats
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),
                     add_stat, cookie);
+    add_casted_stat("lru_rebuild_stime", getExpiryPagerSleeptime(true),
+                    add_stat, cookie);
     add_casted_stat("ep_max_evict_entries", EvictionManager::getInstance()->getMaxSize(),
                     add_stat, cookie);
     add_casted_stat("eviction_headroom", eviction.headroom, add_stat, cookie);
@@ -3582,9 +3603,13 @@ void BGTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("evpolicy_job_start_timestamp", startTime, add_stat, cookie);
     add_casted_stat("evpolicy_job_end_timestamp", endTime, add_stat, cookie);
     add_casted_stat("evpolicy_job_total_time", (endTime - startTime), add_stat, cookie);
-    add_casted_stat("evpolicy_visit_time", visitHisto, add_stat, cookie);
-    add_casted_stat("evpolicy_store_time", storeHisto, add_stat, cookie);
     add_casted_stat("evpolicy_complete_time", completeHisto, add_stat, cookie);
+}
+
+void ExpiryPagerTimeStats::getStats(const void *cookie, ADD_STAT add_stat) {
+    add_casted_stat("expiry_pager_start_timestamp", startTime, add_stat, cookie);
+    add_casted_stat("expiry_pager_end_timestamp", endTime, add_stat, cookie);
+    add_casted_stat("expiry_pager_total_time", (endTime - startTime), add_stat, cookie);
 }
 
 void BGEvictionPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
@@ -3597,6 +3622,7 @@ void LRUPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("eviction_policy", description(), add_stat, cookie);
     add_casted_stat("eviction_max_queue_size", maxSize, add_stat, cookie);
     add_casted_stat("lru_rebuild_percent", rebuildPercent, add_stat, cookie);
+    add_casted_stat("lru_mem_threshold_percent", memThresholdPercent, add_stat, cookie);
     add_casted_stat("lru_policy_evictable_items", getNumEvictableItems(), add_stat, cookie);
     add_casted_stat("lru_policy_ev_queue_size", getPrimaryQueueSize(), add_stat, cookie);
     add_casted_stat("lru_policy_secondary_ev_queue_size", getSecondaryQueueSize(), 
@@ -3654,6 +3680,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,
     add_casted_stat("item_hotness_timestamp", stats.itemAgeStartTime, add_stat, cookie);
     add_casted_stat("item_hotness_age", stats.itemAgeHisto, add_stat, cookie);
     add_casted_stat("item_sizes", stats.itemSizeHisto, add_stat, cookie);
+
+    stats.expiryPagerTimeStats.getStats(cookie, add_stat);
 
     // Regular commands
     add_casted_stat("get_cmd", stats.getCmdHisto, add_stat, cookie);

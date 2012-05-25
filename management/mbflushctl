@@ -63,6 +63,7 @@ Available params for "set":
     mem_high_wat        - high water mark
     mem_low_wat         - low water mark
     exp_pager_stime     - Expiry Pager Sleeptime
+    lru_rebuild_stime   - LRU rebuild Sleeptime
     max_evict_entries   - Maximum entries used by eviction job
     enable_eviction_job - Enable or Disable eviction job
     eviction_policy     - Change the eviction policy 
@@ -70,6 +71,7 @@ Available params for "set":
     disable_inline_eviction   - Disable inline eviction
     prune_lru_age       - Prune keys that are older than the speificed timestamp
     lru_rebuild_percent - Rebuild LRU when no. of items in the queue reaches the percent
+    lru_mem_threshold_percent - Do not rebuild LRU if mem_used has not reached the percent of max_size
     evict_min_blob_size - Only evict entries that are bigger than this size""")
 
     c.addCommand('stop', stop, 'stop')
