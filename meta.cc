@@ -2,11 +2,20 @@
 #include<map>
 #include<string>
 #include<assert.h>
-#include "meta.h"
+#include "meta.hh"
 
-hashMetaData *hashMetaData::instance = NULL;
+HashMetaData *HashMetaData::instance = NULL;
 
-bool hashMetaData::setMetaData(std::string &key, rel_time_t exp,  std::string &metaData) { 
+void HashMetaData::initialize(size_t maxGetlTimeOut)
+{
+    maxLockTimeout = maxGetlTimeOut;
+    nodes = new Node[maxLockTimeout];
+    if (!nodes) {
+        assert(0);
+    }
+}
+
+bool HashMetaData::setMetaData(std::string &key, rel_time_t exp,  std::string &metaData) { 
     Node *n = getBucket(exp);
     LockHolder lh(n->l);
     assert(n->exp <= exp); 
@@ -17,20 +26,20 @@ bool hashMetaData::setMetaData(std::string &key, rel_time_t exp,  std::string &m
     return n->stored.insert(key, metaData);       
 }
 
-std::string hashMetaData::getMetaData(std::string &key, rel_time_t exp) {
+std::string HashMetaData::getMetaData(std::string &key, rel_time_t exp) {
     Node *n = getBucket(exp);
     LockHolder lh(n->l);
     return n->stored.get(key);    
 }
 
-bool hashMetaData::freeMetaData(std::string &key, rel_time_t exp) {
+bool HashMetaData::freeMetaData(std::string &key, rel_time_t exp) {
     Node *n = getBucket(exp);
     LockHolder lh(n->l);
     return n->stored.remove(key);    
 }
 
-bool useMap::insert(std::string &key, std::string &meta) {
-    metaMap_t::iterator itr;
+bool UseMap::insert(std::string &key, std::string &meta) {
+    metamap_t::iterator itr;
     if ((itr = mapData.find(key)) != mapData.end()) {
         assert(0);
         return false;
@@ -39,8 +48,8 @@ bool useMap::insert(std::string &key, std::string &meta) {
     return true;
 }
 
-bool useMap::remove(std::string &key) {
-    metaMap_t::iterator itr;
+bool UseMap::remove(std::string &key) {
+    metamap_t::iterator itr;
     if ((itr = mapData.find(key)) == mapData.end()) {
         assert(0);
         return false;
@@ -49,16 +58,16 @@ bool useMap::remove(std::string &key) {
     return true;
 }
 
-std::string useMap::get(std::string &key) {
-    metaMap_t::iterator itr;
+std::string UseMap::get(std::string &key) {
+    metamap_t::iterator itr;
     if ((itr = mapData.find(key)) != mapData.end()) {
         return itr->second;
     }
     return "";
 }
 
-void useMap::destroy() {
-    metaMap_t::iterator itr = mapData.begin();
+void UseMap::destroy() {
+    metamap_t::iterator itr = mapData.begin();
     while (itr != mapData.end()) {
         mapData.erase(itr++); 
     }
@@ -69,8 +78,9 @@ int main() {
 rel_time_t t = 30;
 std::string key = "test";
 std::string test1 ="test123";
-hashMetaData::getInstance()->setMetaData(key, t, test1);
-std::cout << hashMetaData::getInstance()->getMetaData(key, t);
+HashMetaData::getInstance()->initialize(30);
+HashMetaData::getInstance()->setMetaData(key, t, test1);
+std::cout << HashMetaData::getInstance()->getMetaData(key, t);
 }
 #endif
 

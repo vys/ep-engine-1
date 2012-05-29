@@ -11,21 +11,20 @@ typedef uint32_t rel_time_t;
 #include "locks.hh"
 #endif
 
-typedef std::map<std::string, std::string> metaMap_t;
-static const int max_lock_timeout = 30;
+typedef std::map<std::string, std::string> metamap_t;
 
-class useMap {
+class UseMap {
 public:
     bool insert(std::string &key, std::string &meta);
     bool remove(std::string &key);
     std::string get(std::string &key);
     void destroy();
 private:
-    metaMap_t mapData ;
+    metamap_t mapData ;
 };
 
 template <typename T>
-class opr {
+class Opr {
 public:
     bool insert (std::string &key, std::string &metaData) {
         return data.insert(key, metaData);
@@ -53,37 +52,39 @@ public:
 
 #endif
     rel_time_t exp;
-    opr<useMap> stored; 
+    Opr<UseMap> stored; 
 };
 
-class hashMetaData {
+class HashMetaData {
 public:
     bool setMetaData(std::string &key, rel_time_t exp,  std::string &metaData);
     std::string getMetaData(std::string &key, rel_time_t exp);
     bool freeMetaData(std::string &key, rel_time_t exp);
+    void initialize(size_t timeout);
 
-    static hashMetaData *getInstance() {
+    static HashMetaData *getInstance() {
         if (!instance) {
-            instance = new hashMetaData();
+            instance = new HashMetaData();
         }
         return instance;
     }
 
     Node *getBucket(rel_time_t t) {
-        return &nodes[t%30];
+        return &nodes[t%maxLockTimeout];
     }
 
 private:
-    hashMetaData() {
+    HashMetaData() {
 #ifdef DEBUG
-        for (int i=0; i< max_lock_timeout; i++) {
+        for (int i=0; i< 30; i++) {
             pthread_mutex_init(&nodes[i].l, NULL);
-        }        
+        }  
 #endif
     }
 
-    static hashMetaData * instance; 
-    Node nodes[max_lock_timeout];
+    size_t maxLockTimeout;
+    static HashMetaData * instance; 
+    Node *nodes;
 };
 
 #ifdef DEBUG 

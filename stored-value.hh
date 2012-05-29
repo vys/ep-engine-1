@@ -12,7 +12,7 @@
 #include "stats.hh"
 #include "histo.hh"
 #include "queueditem.hh"
-#include "meta.h"
+#include "meta.hh"
 
 extern "C" {
     extern rel_time_t (*ep_current_time)();
@@ -349,7 +349,7 @@ public:
             if (metadata.length() > 0) {
                 std::string key(getKeyBytes(), getKeyLen());
                 extra.feature.has_metadata = true;
-                hashMetaData::getInstance()->setMetaData(key, expiry, metadata);
+                HashMetaData::getInstance()->setMetaData(key, expiry, metadata);
             }   
             else {
                 extra.feature.has_metadata = false;
@@ -375,7 +375,7 @@ public:
         if (!_isSmall && extra.feature.has_metadata == true) {
             std::string key(getKeyBytes(), getKeyLen());
             extra.feature.has_metadata = false;
-            hashMetaData::getInstance()->freeMetaData(key, extra.feature.lock_expiry);  
+            HashMetaData::getInstance()->freeMetaData(key, extra.feature.lock_expiry);  
         }
     }
 
@@ -385,7 +385,7 @@ public:
     std::string getMetadata() {
         if (!_isSmall && extra.feature.locked && (extra.feature.has_metadata == true)) {
             std::string key(getKeyBytes(), getKeyLen());
-            return hashMetaData::getInstance()->getMetaData(key, 
+            return HashMetaData::getInstance()->getMetaData(key, 
                                            extra.feature.lock_expiry);
         }
         return std::string();  
