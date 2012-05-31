@@ -1604,7 +1604,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         getlExtension->initialize();
     }
 
-    HashMetaData::initialize();
+    HashMetaData::getInstance()->initialize(getlMaxTimeout);
 
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Engine init complete.\n");
 
