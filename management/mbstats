@@ -73,12 +73,16 @@ def time_label(s):
     # 4 -> '4us'
     # 838384 -> '838ms'
     # 8283852 -> '8s'
+    neg = 1
     if s > BIG_VALUE:
         return 'inf'
     elif s < SMALL_VALUE:
         return '-inf'
     elif s == 0:
         return '0'
+    elif s < 0:
+        s = -s
+        neg = -1
     product = 1
     sizes = (('us', 1), ('ms', 1000), ('s', 1000), ('m', 60))
     sizeMap = []
@@ -86,12 +90,12 @@ def time_label(s):
         product = sz * product
         sizeMap.insert(0, (l, product))
     lbl, factor = itertools.dropwhile(lambda x: x[1] > s, sizeMap).next()
-    return "%d%s" % (s / factor, lbl)
+    return "%d%s" % (neg * s / factor, lbl)
 
 @cmd
 def stats_timings(mc):
     def seg(k, v):
-        # Parse ('some_stat_x_y', 'v') into (('some_stat', x, y), v)
+        # Parse ('some_stat_x,y', 'v') into (('some_stat', x, y), v)
         ka = k.split('_')
         k = '_'.join(ka[0:-1])
         kstart, kend = [int(x) for x in ka[-1].split(',')]
@@ -109,7 +113,7 @@ def stats_timings(mc):
             return 79
 
     # Acquire, sort, categorize, and label the timings.
-    stats = sorted([seg(*kv) for kv in mc.stats('timings').items()])
+    stats = sorted([seg(*kv) for kv in mc.stats('timings').items() if "," in kv[0]])
     dd = {}
     totals = {}
     longest = 0
