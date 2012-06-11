@@ -59,15 +59,15 @@ public:
 
     bool evictItemByAge(time_t age, StoredValue *v, RCPtr<VBucket> vb);
 
-    /* Following set of functions are needed only by policies that need a 
-       background job to build their data structures.
-     */
+    // Following set of functions are needed only by policies that need a 
+    // background job to build their data structures.
     virtual void setSize(size_t val) = 0;
     virtual void initRebuild() = 0;
     virtual bool addEvictItem(StoredValue *v, RCPtr<VBucket>) = 0;
     virtual bool storeEvictItem() = 0;
     virtual void completeRebuild() = 0;
-    virtual bool evictionRunNeeded(time_t lruSleepTime) = 0;
+
+    virtual bool evictionJobNeeded(time_t lruSleepTime) = 0;
     virtual bool eligibleForEviction(StoredValue *v, EvictItem *e) {
         (void)v;
         (void)e;
@@ -214,7 +214,7 @@ public:
         return static_cast<EvictItem *>(ent);
     }
 
-    bool evictionRunNeeded(time_t lruSleepTime) {
+    bool evictionJobNeeded(time_t lruSleepTime) {
         if (lruSleepTime == 0) {
             return false;
         }
@@ -451,7 +451,7 @@ public:
         return ent;
     }
 
-    bool evictionRunNeeded(time_t lruSleepTime) {
+    bool evictionJobNeeded(time_t lruSleepTime) {
         (void)lruSleepTime;
         return true;
     }
@@ -547,7 +547,7 @@ public:
         return NULL;
     }
 
-    bool evictionRunNeeded(time_t lruSleepTime) {
+    bool evictionJobNeeded(time_t lruSleepTime) {
         (void)lruSleepTime;
         if (evictAge() != 0) {
             return true;

@@ -1300,7 +1300,6 @@ bool EventuallyPersistentStore::getKeyStats(const std::string &key,
         kstats.data_age = v->getDataAge();
         kstats.last_modification_time = ep_abs_time(v->getDataAge());
         kstats.resident = v->isResident();
-//        kstats.in_lru = active_lru->keyInLru(v->getKeyBytes(), v->getKeyLen());
     }
     return found;
 }
