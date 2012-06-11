@@ -186,7 +186,7 @@ public:
                                    const int flags,
                                    const rel_time_t exptime)
     {
-#define METADATA_OVERHEAD 72 // Size of StoredValue strucure
+#define METADATA_OVERHEAD (sizeof(StoredValue))
 
         (void)cookie;
         if (nbytes > maxItemSize) {

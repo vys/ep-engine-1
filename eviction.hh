@@ -331,6 +331,10 @@ private:
     time_t lastRun;
 };
 
+/* 
+ * Implementation of a simple policy that does FIFO based eviction.
+ * It walks the hash table and uses the first 'n' elements for eviction.
+ */
 class RandomPolicy : public EvictionPolicy {
     class RandomList {
     private:
@@ -531,7 +535,7 @@ public:
     }
 
     bool storeEvictItem() {
-        // No stopping once started
+        // Background eviction does not stop till it has completed the hash walk 
         return true; 
     }
 

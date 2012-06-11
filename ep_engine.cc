@@ -2397,7 +2397,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
         break;
     case TAP_MUTATION:
         {
-#define METADATA_OVERHEAD 72
+#define METADATA_OVERHEAD (sizeof(StoredValue))
             bool throttled = false;
             if (tapThrottle->persistenceQueueSmallEnough()) {
                 size_t needed = nkey + ndata + METADATA_OVERHEAD + accountForNThreads();

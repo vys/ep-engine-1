@@ -158,6 +158,69 @@ For introductory information on stats within membase, start with the
 | ep_onlineupdate_revert_update | Number of reverted updated items           |
 | ep_inconsistent_slave_chk     | Flag indicating if we allow a "downstream" |
 |                               | master to receive checkpoint messages      |
+| ep_exp_pager_stime            | Sleep time for running the expiry pager    | 
+| ep_lru_rebuild_stime          | Sleep time for rebuilding the LRU list     | 
+| ep_max_evict_entries          | Maximum number of entries LRU list can hold|
+| eviction_headroom             | Amount of memory kept aside to trigger LRU |
+|                               | based eviction                             |
+| disable_inline_eviction       | Disable inline/LRU based eviction          |
+                        
+
+** Eviction stats
+
+| Stat                          | Description                                |
+|-------------------------------+--------------------------------------------|
+| eviction_total_evicts         | Number of times eviction was triggered.    |
+| eviction_keys_evicted         | Number of keys successfully evicted        |
+| eviction_failed_empty         | Number of times eviction failed because the| 
+|                               | LRU queue was empty.                       |
+| eviction_failed_key_absent    | Number of times key could not be evicted as|
+|                               | it no longer existed.                      |
+| eviction_failed_dirty         | Number of times key could not be evicted as|
+|                               | it was dirty                               |
+| eviction_failed_already_evicted| Number of times key could not be ecivted  |
+|                               | as it was already evicted                  |
+| eviction_failed_deleted       | Number of times key could not be evicted as|
+|                               | it was deleted                             |
+| eviction_failed_policy_ineligible| Number of times key could not be evicted|
+|                               | as it was considered ineligible by the     |
+|                               | policy                                     |
+| eviction_failed_in_checkpoints| Number of times key could not be evicted   |
+|                               | as it was referenced by a checkpoint       |
+| eviction_memory_size          | Amount of memory used by eviction policy   |
+| eviction_min_blob_size        | Only keys with blob size greater than this |
+|                               | will be eligible for eviction              |
+| eviction_prune_runs           | Number of times prune was run for eviction |
+| eviction_num_keys_pruned      | Number of keys that were pruned            |
+| evpolicy_job_start_timestamp  | Timestamp at which the eviction job started|
+| evpolicy_job_end_timestamp    | Timestamp at which the eviction job ended  |
+| evpolicy_job_total_time       | Time it took to complete the recent run for|
+|                               | eviction                                   |
+
+*** LRU eviction policy stats
+
+| Stat                          | Description                                |
+|-------------------------------+--------------------------------------------|
+| lru_policy_evictable_items    | Total number of evictable keys in LRU list |
+| lru_mem_threshold_percent     | Memory threshold at which LRU list starts  |
+|                               | to build                                   |
+| lru_rebuild_percent           | Percent size of LRU list at which rebuild  |
+|                               | will be triggered                          |
+| eviction_max_queue_size       | Maximum number of entries LRU list is      |
+|                               | allowed to hold                            |
+| lru_policy_ev_queue_size      | Number of entries in the LRU list currently|
+                                | used for eviction                          |
+| lru_policy_secondary_ev_queue_size| Number of entries in the standby list  |
+| lru_age_histogram             | Histogram of ages of items present in the  |
+|                               | LRU list                                   |
+
+*** BGEviction policy stats
+
+| Stat                          | Description                                |
+|-------------------------------+--------------------------------------------|
+| bg_evictions                  | Number of evictions done by background     |
+|                               | eviction policy so far                     |
+
 
 ** vBucket total stats
 
@@ -453,6 +516,12 @@ form to describe when time was spent doing various things:
 | disk_commit           | waiting for a commit after a batch of updates  |
 | disk_invalid_item_del | Waiting for disk to delete a chunk of invalid  |
 |                       | items with the old vbucket version             |
+| item_memory_age       | Amount of time an item was in memory before it |
+|                       | was evicted                                    |
+| item_disk_age         | Amount of time an item was on disk before it   |
+|                       | was fetched/mutated                            |
+| item_hotness_age      | Histogram for age of items                     |
+| item_sizes            | Histogram for sizes of all items               |
 
 ** Hash Stats
 
