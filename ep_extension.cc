@@ -126,6 +126,8 @@ ENGINE_ERROR_CODE GetlExtension::executeGetl(int argc, token_t *argv,
     std::string metadata(metadata_ptr, metadata_len);
     RememberingCallback<GetValue> getCb;
 
+    ObjectRegistry::onSwitchThread(&(backend->getEPEngine()));
+
     // TODO:  Get vbucket ID here.
     bool gotLock = backend->getLocked(k, 0, getCb,
             serverApi->core->get_current_time(),
