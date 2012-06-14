@@ -50,11 +50,9 @@ bool UseMap::insert(std::string &key, std::string &meta) {
 
 bool UseMap::remove(std::string &key) {
     metamap_t::iterator itr;
-    if ((itr = mapData.find(key)) == mapData.end()) {
-        assert(0);
-        return false;
+    if ((itr = mapData.find(key)) != mapData.end()) {
+        mapData.erase(itr);
     }
-    mapData.erase(itr);
     return true;
 }
 
