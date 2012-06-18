@@ -359,11 +359,16 @@ extern "C" {
             Item **item,
             const char **msg,
             size_t *,
-            protocol_binary_response_status *res) {
+            protocol_binary_response_status *res, 
+            bool &free_msg) {
 
         protocol_binary_request_header *request = &(grequest->message.header);
         protocol_binary_request_no_extras *req =
             (protocol_binary_request_no_extras*)request;
+        char *ret_metadata = NULL;
+        int ret_metadata_len = 0;
+        free_msg = false;
+
         *res = PROTOCOL_BINARY_RESPONSE_SUCCESS;
 
         char keyz[256];
@@ -387,11 +392,21 @@ extern "C" {
         uint32_t lockTimeout;
         uint32_t max_timeout = (unsigned int)e->getGetlMaxTimeout();
         uint32_t default_timeout = (unsigned int)e->getGetlDefaultTimeout();
+        char *in_metadata = NULL;
+        uint16_t in_metadata_len = 0;
+
         if (extlen >= 4) {
             lockTimeout = ntohl(grequest->message.body.expiration);
         } else {
             lockTimeout = default_timeout;
         }
+
+        if (extlen >= 5) {
+            in_metadata_len = ntohs(grequest->message.body.metadata_len);
+            in_metadata = (char*)request + sizeof(req->message.header) + extlen + keylen;
+        }
+
+        std::string metadata(in_metadata, in_metadata_len);
 
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Executing getl for key %s timeout %d max: %d, default: %d\n",
@@ -403,7 +418,7 @@ extern "C" {
 
         bool gotLock = e->getLocked(key, vbucket, getCb,
                                     ep_current_time(),
-                                    lockTimeout, cookie);
+                                    lockTimeout, metadata, cookie);
 
         getCb.waitForValue();
         ENGINE_ERROR_CODE rv = getCb.val.getStatus();
@@ -416,9 +431,17 @@ extern "C" {
             // need to wait for value
             return rv;
         } else if (!gotLock){
-
-            *msg =  "LOCK_ERROR";
-            *res = PROTOCOL_BINARY_RESPONSE_ETMPFAIL;
+            int out_metadata_len = metadata.length();
+            if (out_metadata_len > 0) {
+                ret_metadata_len = out_metadata_len + sizeof("LOCK_ERROR \r\n");
+                ret_metadata = (char *)malloc(ret_metadata_len);
+                snprintf(ret_metadata, ret_metadata_len, "LOCK_ERROR %s\r\n", metadata.c_str());  
+                *msg = ret_metadata;
+                free_msg = true;
+            } else {        
+                *msg =  "LOCK_ERROR";
+                *res = PROTOCOL_BINARY_RESPONSE_ETMPFAIL;
+            }
             return ENGINE_TMPFAIL;
         } else {
             RCPtr<VBucket> vb = e->getVBucket(vbucket);
@@ -746,6 +769,7 @@ extern "C" {
             PROTOCOL_BINARY_RESPONSE_UNKNOWN_COMMAND;
         const char *msg = NULL;
         size_t msg_size = 0;
+        bool free_msg = false;
         Item *item = NULL;
 
         EventuallyPersistentEngine *h = getHandle(handle);
@@ -800,7 +824,7 @@ extern "C" {
             res = evictKey(h, request, &msg, &msg_size);
             break;
         case CMD_GET_LOCKED:
-            rv = getLocked(h, (protocol_binary_request_getl*)request, cookie, &item, &msg, &msg_size, &res);
+            rv = getLocked(h, (protocol_binary_request_getl*)request, cookie, &item, &msg, &msg_size, &res, free_msg);
             if (rv == ENGINE_EWOULDBLOCK) {
                 // we dont have the value for the item yet
                 return rv;
@@ -852,6 +876,9 @@ extern "C" {
                     PROTOCOL_BINARY_RAW_BYTES,
                     static_cast<uint16_t>(res), 0, cookie);
 
+        }
+        if (msg != NULL && free_msg == true) {
+            free((void *)msg);
         }
         return ENGINE_SUCCESS;
     }
@@ -1576,6 +1603,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         getlExtension = new GetlExtension(epstore, getServerApiFunc);
         getlExtension->initialize();
     }
+
+    HashMetaData::getInstance()->initialize(getlMaxTimeout);
 
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Engine init complete.\n");
 
