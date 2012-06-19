@@ -1135,6 +1135,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         size_t htBuckets = 0;
         size_t htLocks = 0;
         size_t maxSize = 0;
+        size_t evictionHeadroom = (size_t)-1;
         float mutation_mem_threshold = 0;
 
         const int max_items = 59;
@@ -1303,7 +1304,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         ++ii;
         items[ii].key = "eviction_headroom";
         items[ii].datatype = DT_SIZE;
-        items[ii].value.dt_size = &eviction.headroom;
+        items[ii].value.dt_size = &evictionHeadroom;
 
         ++ii;
         items[ii].key = "disable_inline_eviction";
@@ -1545,6 +1546,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
             HashTable::setDefaultNumBuckets(htBuckets);
             HashTable::setDefaultNumLocks(htLocks);
             StoredValue::setMaxDataSize(stats, maxSize);
+            eviction.headroom = (evictionHeadroom == (size_t)-1) ? (maxSize / 10) : (evictionHeadroom);
             StoredValue::setMutationMemoryThreshold(mutation_mem_threshold);
 
             if (svaltype && !HashTable::setDefaultStorageValueType(svaltype)) {
