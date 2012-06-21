@@ -22,12 +22,12 @@ void BackfillDiskLoad::callback(GetValue &gv) {
     }
     ReceivedItemTapOperation tapop(true);
     // if the tap connection is closed, then free an Item instance
-    if (!connMap.performTapOp(name, tapop, gv.getValue())) {
+    if (!connMap.performTapOp(name, sessionID, tapop, gv.getValue())) {
         delete gv.getValue();
     }
 
     NotifyPausedTapOperation notifyOp;
-    connMap.performTapOp(name, notifyOp, engine);
+    connMap.performTapOp(name, sessionID, notifyOp, engine);
 }
 
 bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
@@ -44,7 +44,7 @@ bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
     }
     // Should decr the disk backfill counter regardless of the connectivity status
     CompleteDiskBackfillTapOperation op;
-    connMap.performTapOp(name, op, static_cast<void*>(NULL));
+    valid = connMap.performTapOp(name, sessionID, op, static_cast<void*>(NULL));
 
     if (valid && connMap.checkBackfillCompletion(name)) {
         engine->notifyTapNotificationThread();
@@ -60,6 +60,7 @@ std::string BackfillDiskLoad::description() {
 }
 
 bool BackFillVisitor::visitBucket(RCPtr<VBucket> vb) {
+    bool isValid;
     apply();
 
     if (vBucketFilter(vb->getId())) {
@@ -76,7 +77,10 @@ bool BackFillVisitor::visitBucket(RCPtr<VBucket> vb) {
         if (efficientVBDump && residentRatioBelowThreshold) {
             vbuckets.push_back(vb->getId());
             ScheduleDiskBackfillTapOperation tapop;
-            engine->tapConnMap.performTapOp(name, tapop, static_cast<void*>(NULL));
+            isValid = engine->tapConnMap.performTapOp(name, sessionID, tapop, static_cast<void*>(NULL));
+            if (!isValid) {
+                return false;
+            }
         }
         // When the backfill is scheduled for a given vbucket, set the TAP cursor to
         // the beginning of the open checkpoint.
@@ -111,7 +115,8 @@ void BackFillVisitor::apply(void) {
                                                                    engine->tapConnMap,
                                                                    underlying,
                                                                    *it,
-                                                                   validityToken));
+                                                                   validityToken,
+                                                                   sessionID));
             d->schedule(cb, NULL, Priority::TapBgFetcherPriority);
         }
         vbuckets.clear();
@@ -173,7 +178,7 @@ bool BackFillVisitor::pauseVisitor() {
 void BackFillVisitor::complete() {
     apply();
     CompleteBackfillTapOperation tapop;
-    engine->tapConnMap.performTapOp(name, tapop, static_cast<void*>(NULL));
+    engine->tapConnMap.performTapOp(name, sessionID, tapop, static_cast<void*>(NULL));
     if (engine->tapConnMap.checkBackfillCompletion(name)) {
         engine->notifyTapNotificationThread();
     }

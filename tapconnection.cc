@@ -802,9 +802,10 @@ class TapBGFetchCallback : public DispatcherCallback {
 public:
     TapBGFetchCallback(EventuallyPersistentEngine *e, const std::string &n,
                        const std::string &k, uint16_t vbid, uint16_t vbv,
-                       uint64_t r, const void *c) :
+                       uint64_t r, const void *c, uint64_t sid) :
         epe(e), name(n), key(k), vbucket(vbid), vbver(vbv), rowid(r), cookie(c),
         init(gethrtime()), start(0), counter(e->getEpStore()->bgFetchQueue) {
+        sessionID = sid;
         assert(epe);
         assert(cookie);
     }
@@ -824,7 +825,7 @@ public:
         if (gcb.val.getStatus() == ENGINE_SUCCESS) {
             ReceivedItemTapOperation tapop;
             // if the tap connection is closed, then free an Item instance
-            if (!epe->tapConnMap.performTapOp(name, tapop, gcb.val.getValue())) {
+            if (!epe->tapConnMap.performTapOp(name, sessionID, tapop, gcb.val.getValue())) {
                 delete gcb.val.getValue();
             }
             epe->notifyIOComplete(cookie, ENGINE_SUCCESS);
@@ -843,7 +844,7 @@ public:
         }
 
         CompletedBGFetchTapOperation tapop;
-        epe->tapConnMap.performTapOp(name, tapop, epe);
+        epe->tapConnMap.performTapOp(name, sessionID, tapop, epe);
 
         hrtime_t stop = gethrtime();
 
@@ -875,6 +876,7 @@ public:
 private:
     EventuallyPersistentEngine *epe;
     const std::string           name;
+    uint64_t                    sessionID;
     std::string                 key;
     uint16_t                    vbucket;
     uint16_t                    vbver;
@@ -885,6 +887,7 @@ private:
     hrtime_t start;
 
     BGFetchCounter counter;
+
 };
 
 void TapProducer::queueBGFetch(const std::string &key, uint64_t id,
@@ -893,7 +896,7 @@ void TapProducer::queueBGFetch(const std::string &key, uint64_t id,
     shared_ptr<TapBGFetchCallback> dcb(new TapBGFetchCallback(&engine,
                                                               getName(), key,
                                                               vb, vbv,
-                                                              id, c));
+                                                              id, c, sessionID));
     engine.getEpStore()->getRODispatcher()->schedule(dcb, NULL, Priority::TapBgFetcherPriority);
     ++bgQueued;
     ++bgJobIssued;
