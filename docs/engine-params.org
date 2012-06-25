@@ -66,7 +66,15 @@ memcached like this:
 |                        |        | that is expired (or will be soon)          |
 | exp_pager_stime        | int    | Sleep time for the pager that purges       |
 |                        |        | expired objects from memory and disk       |
-| max_evict_entries      | int    | Maximum entries used by the eviction queues|
+| eviction_policy        | string | Eviction policy. Options to choose from    |
+                         |        | ("lru", "bgeviction")                      |
+| lru_rebuild_stime      | int    | Sleep time for rebuilding the lru list for |
+|                        |        | eviction                                   |
+| eviction_headroom      | int    | Watermark to be used by lru policy before  |
+|                        |        | triggering eviction.                       |
+| max_evict_entries      | int    | Maximum entries used by the LRU queues     |
+| enable_eviction_job    | bool   | Enable/disable the eviction job exection   |
+| disable_inline_eviction| bool   | Enable/disable inline eviction             |
 | failpartialwarmup      | bool   | If false, continue running after failing   |
 |                        |        | to load some records.                      |
 | max_vbuckets           | int    | Maximum number of vbuckets expected (1024) |

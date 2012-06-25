@@ -1126,7 +1126,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     resetStats();
 
     stats.tapThrottleThreshold = 0.9;
-    eviction.headroom = 2000000;
+    eviction.headroom = 2 * 1024 * 1024;
     eviction.disableInlineEviction = 0;
 
     if (config != NULL) {
@@ -1138,7 +1138,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         size_t evictionHeadroom = (size_t)-1;
         float mutation_mem_threshold = 0;
 
-        const int max_items = 59;
+        const int max_items = 60;
         struct config_item items[max_items];
         int ii = 0;
         memset(items, 0, sizeof(items));
@@ -2399,7 +2399,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
         break;
     case TAP_MUTATION:
         {
-#define METADATA_OVERHEAD 72
+#define METADATA_OVERHEAD (sizeof(StoredValue))
             bool throttled = false;
             if (tapThrottle->persistenceQueueSmallEnough()) {
                 size_t needed = nkey + ndata + METADATA_OVERHEAD + accountForNThreads();
@@ -3589,7 +3589,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKeyStats(const void *cookie,
         add_casted_stat("key_last_modification_time", kstats.last_modification_time,
                         add_stat, cookie);
         add_casted_stat("key_resident", kstats.resident, add_stat, cookie);
-        add_casted_stat("key_in_lru", kstats.in_lru, add_stat, cookie);
         if (validate) {
             add_casted_stat("key_valid", valid.c_str(), add_stat, cookie);
         }
@@ -4406,12 +4405,15 @@ EventuallyPersistentEngine::resetReplicationChain(const void *cookie,
     return ENGINE_FAILED;
 }
 
-size_t EventuallyPersistentEngine::accountForNThreads() {
-/* Account for all threads that could be doing the memory check right now
+/* 
+ * Account for all threads that could be doing the memory check right now
+ * CAUTION: PARALLELISM is defined as 4 to account for the 4 memcache threads.
+ * If that ever changes, fix this as well.
  * Total accounting: No. of threads * Max per thread + Configured headroom
  */
+size_t EventuallyPersistentEngine::accountForNThreads() {
 #define PARALLELISM 4
-#define MAX_PER_THREAD 2000000
+#define MAX_PER_THREAD (2 * 1024 * 1024)
 
     return eviction.headroom + MAX_PER_THREAD * (PARALLELISM - 1);
 }

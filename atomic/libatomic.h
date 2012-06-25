@@ -194,4 +194,5 @@ inline bool ep_sync_bool_compare_and_swap(IntQueue * volatile *dest, IntQueue *p
     return ep_sync_bool_compare_and_swap((size_t*)dest, (size_t)prev, (size_t)next);
 }
 
+
 #endif
