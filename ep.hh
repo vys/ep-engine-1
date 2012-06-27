@@ -734,7 +734,7 @@ public:
     bool getLocked(const std::string &key, uint16_t vbucket,
                    Callback<GetValue> &cb,
                    rel_time_t currentTime, uint32_t lockTimeout,
-                   const void *cookie);
+                   std::string &metadata, const void *cookie);
 
     /**
      * Retrieve the StoredValue associated with a key/vbucket pair.

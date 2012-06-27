@@ -84,7 +84,8 @@ ep_la_SOURCES = \
                  tapconnection.cc tapconnection.hh \
                  tapconnmap.cc tapconnmap.hh \
                  tapthrottle.cc tapthrottle.hh \
-                 vbucket.cc vbucket.hh
+                 vbucket.cc vbucket.hh \
+                 meta.cc meta.hh
 
 if BUILD_BYTEORDER
 ep_la_SOURCES += byteorder.c
