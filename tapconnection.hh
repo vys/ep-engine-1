@@ -181,6 +181,12 @@ protected:
      * The cookie representing this connection (provided by the memcached code)
      */
     const void *cookie;
+
+    /**
+     * The session ID for tapconnection
+     */
+    uint64_t sessionID;
+
     /**
      * The name for this connection
      */
@@ -263,6 +269,16 @@ public:
     //! cookie used by this connection
     void setCookie(const void *c) {
         cookie = c;
+    }
+
+    //get Session ID
+    uint64_t getSessionID() {
+        return sessionID;
+    }
+
+    //set Session ID
+    void setSessionID(uint64_t sid) {
+        sessionID = sid;
     }
 
     static uint64_t nextTapId() {

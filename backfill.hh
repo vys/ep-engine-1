@@ -25,8 +25,8 @@ class BackfillDiskLoad : public DispatcherCallback, public Callback<GetValue> {
 public:
 
     BackfillDiskLoad(const std::string &n, EventuallyPersistentEngine* e,
-                     TapConnMap &tcm, KVStore *s, uint16_t vbid, const void *token)
-        : name(n), engine(e), connMap(tcm), store(s), vbucket(vbid), validityToken(token) {
+                     TapConnMap &tcm, KVStore *s, uint16_t vbid, const void *token, uint64_t sid)
+        : name(n), engine(e), connMap(tcm), store(s), vbucket(vbid), validityToken(token), sessionID(sid) {
 
         vbucket_version = engine->getEpStore()->getVBucketVersion(vbucket);
     }
@@ -45,6 +45,7 @@ private:
     uint16_t                    vbucket;
     uint16_t                    vbucket_version;
     const void                 *validityToken;
+    uint64_t                    sessionID;
 };
 
 /**
@@ -55,13 +56,13 @@ private:
 class BackFillVisitor : public VBucketVisitor {
 public:
     BackFillVisitor(EventuallyPersistentEngine *e, TapProducer *tc,
-                    const void *token, const VBucketFilter &backfillVBfilter):
+                    const void *token, const VBucketFilter &backfillVBfilter, uint64_t sid):
         VBucketVisitor(backfillVBfilter), engine(e), name(tc->getName()),
         queue(new std::list<queued_item>),
         found(), validityToken(token),
         maxBackfillSize(e->tapBacklogLimit), valid(true),
         efficientVBDump(e->epstore->getStorageProperties().hasEfficientVBDump()),
-        residentRatioBelowThreshold(false) {
+        residentRatioBelowThreshold(false), sessionID(sid) {
         found.reserve(e->tapBacklogLimit);
     }
 
@@ -105,6 +106,7 @@ private:
     bool valid;
     bool efficientVBDump;
     bool residentRatioBelowThreshold;
+    uint64_t sessionID;
 
     static double backfillResidentThreshold;
 };
@@ -121,7 +123,7 @@ public:
     BackfillTask(EventuallyPersistentEngine *e, TapProducer *tc,
                  EventuallyPersistentStore *s, const void *tok,
                  const VBucketFilter &backfillVBFilter):
-      bfv(new BackFillVisitor(e, tc, tok, backfillVBFilter)), engine(e), epstore(s) {}
+      bfv(new BackFillVisitor(e, tc, tok, backfillVBFilter, tc->getSessionID())), engine(e), epstore(s) {}
 
     virtual ~BackfillTask() {}
 
