@@ -369,7 +369,7 @@ public:
      * be pushed into the flusher's outgoing queue where the further IO optimization is performed.
      * @return the last closed checkpoint Id.
      */
-    uint64_t getAllItemsForPersistence(std::vector<queued_item> &items);
+    uint64_t getAllItemsForPersistence(std::vector<queued_item> &items, size_t upperThreshold = 0);
     /**
      * Return the list of items, which needs to be updated from backgrond fetcher.
      * @param items the array that will contain the list of items to be fetched and
@@ -509,7 +509,8 @@ private:
 
     uint64_t getAllItemsFromCurrentPosition(CheckpointCursor &cursor,
                                             uint64_t barrier,
-                                            std::vector<queued_item> &items);
+                                            std::vector<queued_item> &items,
+                                            size_t upperThreshold = 0);
 
     bool moveCursorToNextCheckpoint(CheckpointCursor &cursor);
 

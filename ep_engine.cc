@@ -1122,6 +1122,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     float tapThrottleThreshold(-1);
     bool enableEvictionJob = 1;
     char *policy = "lru";
+    size_t getItemsUpperThreshold = 50000;
+    size_t getItemsLowerThreshold = 1000;
+    size_t maxGetItemsChecks = 10;
 
     resetStats();
 
@@ -1138,7 +1141,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         size_t evictionHeadroom = (size_t)-1;
         float mutation_mem_threshold = 0;
 
-        const int max_items = 60;
+        const int max_items = 63;
         struct config_item items[max_items];
         int ii = 0;
         memset(items, 0, sizeof(items));
@@ -1458,6 +1461,21 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         items[ii].value.dt_float = &tapThrottleThreshold;
 
         ++ii;
+        items[ii].key = "get_items_upper_threshold";
+        items[ii].datatype = DT_SIZE;
+        items[ii].value.dt_size = &getItemsUpperThreshold;
+
+        ++ii;
+        items[ii].key = "get_items_lower_threshold";
+        items[ii].datatype = DT_SIZE;
+        items[ii].value.dt_size = &getItemsLowerThreshold;
+
+        ++ii;
+        items[ii].key = "max_get_items_checks";
+        items[ii].datatype = DT_SIZE;
+        items[ii].value.dt_size = &maxGetItemsChecks;
+
+        ++ii;
         items[ii].key = NULL;
 
         assert(ii < max_items);
@@ -1598,6 +1616,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
             return ret;
         }
 
+        epstore->setGetItemsThresholds(getItemsUpperThreshold, getItemsLowerThreshold, maxGetItemsChecks);
         setMinDataAge(minDataAge);
         setQueueAgeCap(queueAgeCap);
         if (txnSize > 0) {

@@ -553,6 +553,8 @@ public:
 
     void reset();
 
+    void setGetItemsThresholds(size_t upper, size_t lower, size_t maxChecks);
+
     void setMinDataAge(int to);
 
     /**
@@ -913,6 +915,10 @@ private:
     Mutex                      vbsetMutex;
     uint32_t                   bgFetchDelay;
     uint64_t                  *persistenceCheckpointIds;
+    size_t                     getItemsUpperThreshold;
+    size_t                     getItemsLowerThreshold;
+    size_t                     maxGetItemsChecks;
+    Atomic<size_t>             getItemsThresholdChecks;
     // During restore we're bypassing the checkpoint lists with the
     // objects we're restoring, but we need them to be persisted.
     // This is solved by using a separate list for those objects.

@@ -732,7 +732,9 @@ bool CheckpointManager::queueDirty(const queued_item &item, const RCPtr<VBucket>
 
 uint64_t CheckpointManager::getAllItemsFromCurrentPosition(CheckpointCursor &cursor,
                                                            uint64_t barrier,
-                                                           std::vector<queued_item> &items) {
+                                                           std::vector<queued_item> &items,
+                                                           size_t upperThreshold) {
+    size_t count = 0;
     while (true) {
         if ( barrier > 0 )  {
             if ((*(cursor.currentCheckpoint))->getId() >= barrier) {
@@ -741,6 +743,15 @@ uint64_t CheckpointManager::getAllItemsFromCurrentPosition(CheckpointCursor &cur
         }
         while (++(cursor.currentPos) != (*(cursor.currentCheckpoint))->end()) {
             items.push_back(*(cursor.currentPos));
+            count++;
+            if (upperThreshold && count == upperThreshold) {
+                break;
+            }
+        }
+        if (upperThreshold && count == upperThreshold) {
+            // No decrement on cursor.currentPos since this condition is always met through the 'break' in the
+            // while loop above, hence not performing the increment in the while condition
+            break;
         }
         if ((*(cursor.currentCheckpoint))->getState() == closed) {
             if (!moveCursorToNextCheckpoint(cursor)) {
@@ -764,19 +775,14 @@ uint64_t CheckpointManager::getAllItemsFromCurrentPosition(CheckpointCursor &cur
     return checkpointId;
 }
 
-uint64_t CheckpointManager::getAllItemsForPersistence(std::vector<queued_item> &items) {
+uint64_t CheckpointManager::getAllItemsForPersistence(std::vector<queued_item> &items, size_t upperThreshold) {
     LockHolder lh(queueLock);
-    uint64_t checkpointId;
-    if (doOnlineUpdate) {
-        // Get all the items up to the start of the onlineUpdate cursor.
-        uint64_t barrier = (*(onlineUpdateCursor.currentCheckpoint))->getId();
-        checkpointId = getAllItemsFromCurrentPosition(persistenceCursor, barrier, items);
-        persistenceCursor.offset += items.size();
-    } else {
-        // Get all the items up to the end of the current open checkpoint.
-        checkpointId = getAllItemsFromCurrentPosition(persistenceCursor, 0, items);
-        persistenceCursor.offset = numItems;
-    }
+    // If doOnlineUpdate is true, get all the items up to the start of the onlineUpdate cursor,
+    // otherwise get all the items up to the end of the current open checkpoint, honoring upperThreshold
+    // in either case.
+    uint64_t barrier = doOnlineUpdate ? (*(onlineUpdateCursor.currentCheckpoint))->getId() : 0;
+    uint64_t checkpointId = getAllItemsFromCurrentPosition(persistenceCursor, barrier, items, upperThreshold);
+    persistenceCursor.offset += items.size();
     return checkpointId;
 }
 

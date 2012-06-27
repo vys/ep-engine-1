@@ -1304,6 +1304,13 @@ bool EventuallyPersistentStore::getKeyStats(const std::string &key,
     return found;
 }
 
+void EventuallyPersistentStore::setGetItemsThresholds(size_t upper, size_t lower, size_t maxChecks) {
+    getItemsUpperThreshold = upper;
+    getItemsLowerThreshold = lower;
+    maxGetItemsChecks = maxChecks;
+    getItemsThresholdChecks = 0;
+}
+
 void EventuallyPersistentStore::setMinDataAge(int to) {
     stats.min_data_age.set(to);
 }
@@ -1456,8 +1463,18 @@ std::queue<queued_item>* EventuallyPersistentStore::beginFlush() {
             vb->getBackfillItems(item_list);
 
             // Get all dirty items from the checkpoint.
-            uint64_t checkpointId = vb->checkpointManager.getAllItemsForPersistence(item_list);
-            persistenceCheckpointIds[vbid] = checkpointId;
+            size_t upperThreshold = (size_t)-1;
+            if (engine.shutdown) {
+                upperThreshold = 0;
+            } else if (vb->checkpointManager.getNumItemsForPersistence() >= getItemsLowerThreshold
+                       || (++getItemsThresholdChecks >= maxGetItemsChecks)) {
+                upperThreshold = getItemsUpperThreshold;
+            }
+            if (upperThreshold != (size_t)-1) {
+                uint64_t checkpointId = vb->checkpointManager.getAllItemsForPersistence(item_list, upperThreshold);
+                persistenceCheckpointIds[vbid] = checkpointId;
+                getItemsThresholdChecks = 0;
+            }
 
             std::vector<queued_item>::reverse_iterator reverse_it = item_list.rbegin();
             // Perform further deduplication here by removing duplicate mutations for each key.
