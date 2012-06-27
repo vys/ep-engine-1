@@ -180,14 +180,14 @@ public:
     bool pauseVisitor() {
         size_t queueSize = stats.queue_size.get() + stats.flusher_todo.get();
         pauseMutations = queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
-        return (pauseMutations && !evjob);
+        return false;
     }
 
     bool shouldContinue() {
         if (evjob) {
             return evjob->storeEvictItem();
         }
-        return true;
+        return !pauseMutations;
     }
 
     void complete() {
