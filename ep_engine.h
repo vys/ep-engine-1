@@ -803,6 +803,7 @@ private:
     const char *shardPattern;
     const char *initFile;
     const char *postInitFile;
+    const char *evictionPolicy;
     enum db_type dbStrategy;
     bool warmup;
     bool wait_for_warmup;

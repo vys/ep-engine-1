@@ -1089,7 +1089,7 @@ EXTENSION_LOGGER_DESCRIPTOR *getLogger(void) {
 
 EventuallyPersistentEngine::EventuallyPersistentEngine(GET_SERVER_API get_server_api) :
     dbname("/tmp/test.db"), shardPattern(DEFAULT_SHARD_PATTERN),
-    initFile(NULL), postInitFile(NULL), dbStrategy(multi_db),
+    initFile(NULL), postInitFile(NULL), evictionPolicy("lru"), dbStrategy(multi_db),
     warmup(true), wait_for_warmup(true), fail_on_partial_warmup(true),
     startVb0(true), concurrentDB(true), forceShutdown(false), kvstore(NULL),
     epstore(NULL), tapThrottle(new TapThrottle(stats)), databaseInitTime(0), tapKeepAlive(0),
@@ -1148,7 +1148,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t maxEvictEntries = 500000;
     float tapThrottleThreshold(-1);
     bool enableEvictionJob = 1;
-    char *policy = "lru";
     size_t getItemsUpperThreshold = 50000;
     size_t getItemsLowerThreshold = 1000;
     size_t maxGetItemsChecks = 10;
@@ -1161,7 +1160,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
 
     if (config != NULL) {
         char *dbn = NULL, *shardPat = NULL, *initf = NULL, *pinitf = NULL,
-            *svaltype = NULL, *dbs=NULL;
+            *svaltype = NULL, *dbs=NULL, *evPolicy = NULL;
         size_t htBuckets = 0;
         size_t htLocks = 0;
         size_t maxSize = 0;
@@ -1329,7 +1328,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         ++ii;
         items[ii].key = "eviction_policy";
         items[ii].datatype = DT_STRING;
-        items[ii].value.dt_string = &policy;
+        items[ii].value.dt_string = &evPolicy;
 
         ++ii;
         items[ii].key = "eviction_headroom";
@@ -1516,6 +1515,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
             if (shardPat != NULL) {
                 shardPattern = shardPat;
             }
+            if (evPolicy != NULL) {
+                evictionPolicy = evPolicy;
+            }
             if (initf != NULL) {
                 initFile = initf;
             }
@@ -1691,7 +1693,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         epstore->scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
 
         // Initialize the eviction manager
-        EvictionManager::createInstance(epstore, stats, policy);
+        EvictionManager::createInstance(epstore, stats, evictionPolicy);
 
         if (HashTable::getDefaultStorageValueType() != small) {
             shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
