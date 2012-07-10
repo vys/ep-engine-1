@@ -1,12 +1,10 @@
 #! /bin/sh
-prefix=@prefix@
-exec_prefix=@exec_prefix@
-root=@libdir@/python
 
+root="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd ..&& pwd )"/lib/python
 if test -z "${PYTHONPATH}"; then
-   PYTHONPATH=$root
+    PYTHONPATH=$root
 else
-   PYTHONPATH=$root:${PYTHONPATH}
+    PYTHONPATH=$root:${PYTHONPATH}
 fi
 export PYTHONPATH
-exec $root/`basename $0` "$@"
+exec python26 $root/`basename $0` "$@"

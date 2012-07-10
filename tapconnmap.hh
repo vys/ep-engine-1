@@ -108,14 +108,14 @@ public:
      *         was performed
      */
     template <typename V>
-    bool performTapOp(const std::string &name, TapOperation<V> &tapop, V arg) {
+    bool performTapOp(const std::string &name, uint64_t sessionID, TapOperation<V> &tapop, V arg) {
         bool shouldNotify(true);
         bool clear(true);
         bool ret(true);
         LockHolder lh(notifySync);
 
         TapConnection *tc = findByName_UNLOCKED(name);
-        if (tc) {
+        if (tc && checkSessionValid(name, sessionID)) {
             TapProducer *tp = dynamic_cast<TapProducer*>(tc);
             assert(tp != NULL);
             tapop.perform(tp, arg);
@@ -152,9 +152,24 @@ public:
     bool checkValidity(const std::string &name, const void* token);
 
     /**
+     * Add sessionID to the sessions map
+     */
+    void addSession(const std::string &name, uint64_t sessionID);
+
+    /**
+     * Remove sessionID from the sessions map
+     */
+    void removeSession(const std::string &name);
+
+    /**
      * Return true if the TAP connection with the given name is still alive
      */
     bool checkConnectivity(const std::string &name);
+
+    /**
+    * Return true if sessionID match
+    */
+    bool checkSessionValid(const std::string &name, uint64_t sessionID);
 
     /**
      * Increments reference count of validity token (cookie in
@@ -295,6 +310,7 @@ private:
     SyncObject                               notifySync;
     std::map<const void*, TapConnection*>    map;
     std::map<const std::string, const void*> validity;
+    std::map<const std::string, uint64_t> sessions;
     std::list<TapConnection*>                all;
 
     /* Handle to the engine who owns us */

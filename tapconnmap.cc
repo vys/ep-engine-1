@@ -143,6 +143,7 @@ void TapConnMap::getExpiredConnections_UNLOCKED(std::list<TapConnection*> &deadC
             } else {
                 deadClients.push_back(tc);
             }
+            removeSession(tc->getName());
         } else if (tc->isReserved()) {
             if (tp == NULL || !tp->suspended) {
                 // to avoid others to release it as well ;)
@@ -256,6 +257,7 @@ TapProducer *TapConnMap::newProducer(const void* cookie,
                 n->setDisconnect(true);
                 n->setConnected(false);
                 n->paused = true;
+                n->setSessionID((uint64_t) cookie);
                 all.push_back(n);
                 map[miter->first] = n;
             }
@@ -265,6 +267,8 @@ TapProducer *TapConnMap::newProducer(const void* cookie,
     bool reconnect = false;
     if (tap == NULL) {
         tap = new TapProducer(engine, cookie, name, flags);
+        tap->setSessionID((uint64_t) cookie);
+        addSession(name, (uint64_t) cookie);
         all.push_back(tap);
     } else {
         if (tap->isReserved()) {
@@ -287,6 +291,14 @@ TapProducer *TapConnMap::newProducer(const void* cookie,
     return tap;
 }
 
+void TapConnMap::addSession(const std::string &name, uint64_t sessionID) {
+    sessions[name] = sessionID;
+}
+
+void TapConnMap::removeSession(const std::string &name) {
+    sessions.erase(name);
+}
+
 // These two methods are always called with a lock.
 void TapConnMap::setValidity(const std::string &name,
                              const void* token) {
@@ -303,6 +315,12 @@ bool TapConnMap::checkValidity(const std::string &name,
     std::map<const std::string, const void*>::iterator viter =
         validity.find(name);
     return viter != validity.end() && viter->second == token;
+}
+
+bool TapConnMap::checkSessionValid(const std::string &name, uint64_t sessionID) {
+    std::map<const std::string, uint64_t>::iterator viter =
+        sessions.find(name);
+    return viter != sessions.end() && viter->second == sessionID;
 }
 
 bool TapConnMap::checkConnectivity(const std::string &name) {
@@ -546,6 +564,7 @@ bool TapConnMap::closeTapConnectionByName(const std::string &name) {
             removeTapCursors_UNLOCKED(tp);
 
             tp->setExpiryTime(ep_current_time() - 1);
+            removeSession(name);
             tp->setName(TapConnection::getAnonName());
             tp->setDisconnect(true);
             tp->paused = true;
