@@ -513,9 +513,9 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(const RCPtr<VBucket> &vbu
     if (vbucket->getState() == vbucket_state_active && !inconsistentSlaveCheckpoint &&
         canCreateNewCheckpoint) {
 
-        bool forceCreation = isCheckpointCreationForHighMemUsage(vbucket);
         // Check if this master active vbucket needs to create a new open checkpoint.
-        oldCheckpointId = checkOpenCheckpoint_UNLOCKED(forceCreation, true);
+        // Use false for forceCreation to avoid creation of small checkpoints when above high-watermark
+        oldCheckpointId = checkOpenCheckpoint_UNLOCKED(false, true);
     }
     newOpenCheckpointCreated = oldCheckpointId > 0 ? true : false;
     if (oldCheckpointId > 0) {
