@@ -43,6 +43,12 @@
 #define MIN_SYNC_TIMEOUT 10
 #endif
 
+#ifndef MAX_METADATA_LEN
+#define MAX_METADATA_LEN       1024
+#endif
+
+
+
 extern "C" {
     EXPORT_FUNCTION
     ENGINE_ERROR_CODE create_instance(uint64_t interface,
@@ -57,7 +63,8 @@ extern "C" {
             Item **item,
             const char **msg,
             size_t *msg_size,
-            protocol_binary_response_status *res);
+            protocol_binary_response_status *res, 
+            bool &free_msg);
 }
 
 /* We're using notify_io_complete from ptr_fun, but that func
@@ -483,8 +490,9 @@ public:
                    Callback<GetValue> &cb,
                    rel_time_t currentTime,
                    uint32_t lockTimeout,
+                   std::string &metadata,
                    const void *cookie) {
-        return epstore->getLocked(key, vbucket, cb, currentTime, lockTimeout, cookie);
+        return epstore->getLocked(key, vbucket, cb, currentTime, lockTimeout, metadata, cookie);
     }
 
     ENGINE_ERROR_CODE sync(std::set<key_spec_t> *keys,
