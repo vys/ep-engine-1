@@ -1161,6 +1161,7 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
                                           Callback<GetValue> &cb,
                                           rel_time_t currentTime,
                                           uint32_t lockTimeout,
+                                          std::string &metadata,
                                           const void *cookie) {
     RCPtr<VBucket> vb = getVBucket(vbucket, vbucket_state_active);
     if (!vb) {
@@ -1178,6 +1179,9 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
 
         // if v is locked return error
         if (v->isLocked(currentTime)) {
+            // Return the metadata associated with this lock, if any
+            metadata = v->getMetadata();
+
             GetValue rv;
             cb.callback(rv);
             return false;
@@ -1196,7 +1200,8 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
         }
 
         // acquire lock and increment cas value
-        v->lock(currentTime + lockTimeout);
+        // lock will also associate the metadata with the lock
+        v->lock(currentTime + lockTimeout, metadata);
 
         Item *it = new Item(v->getKey(), v->getFlags(), v->getExptime(),
                             v->getValue(), v->getCas());
@@ -1259,6 +1264,7 @@ EventuallyPersistentStore::unlockKey(const std::string &key,
     if (v) {
         if (v->isLocked(currentTime)) {
             if (v->getCas() == cas) {
+                // Unlock will also clear the metadata associated with the lock
                 v->unlock();
                 return ENGINE_SUCCESS;
             }
@@ -1343,6 +1349,12 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
             LockHolder rlh(restore.mutex);
             restore.itemsDeleted.insert(key);
         } else {
+            if (CheckpointManager::isInconsistentSlaveCheckpoint()) {
+                queueDirty(key, vbucket, queue_op_del, value_t(NULL), 0, 0, cas, rowid);
+
+                getLogger()->log(EXTENSION_LOG_INFO, NULL, "Forward del %s to checkpoint "
+                                                "(not-found in hash table)", key.c_str());
+            }
             return ENGINE_KEY_ENOENT;
         }
     } else {
