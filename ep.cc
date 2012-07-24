@@ -955,7 +955,7 @@ void EventuallyPersistentStore::completeBGFetch(const std::string &key,
     lh.unlock();
 
     if (!engine.eviction.disableInlineEviction) {
-        int64_t deficit = StoredValue::getMemoryDeficit(0, stats);
+        int64_t deficit = StoredValue::getMemoryDeficit(engine.accountForNThreads(), stats);
         if (deficit > 0) {
             EvictionManager::getInstance()->evictSize(deficit);
         }
