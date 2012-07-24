@@ -70,7 +70,7 @@ bool EvictionManager::evictSize(size_t size)
             } else if (v->isClean() == false) {
                 stats.evictionStats.failedTotal.numDirties++;
             } else if (v->isDeleted() == false) {
-                stats.evictionStats.failedTotal.numDeleted++;
+                // this never occurs
             }
         } else if (!evpolicy->eligibleForEviction(v, ent)) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
