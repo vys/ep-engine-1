@@ -642,6 +642,10 @@ public:
         return EvictionManager::getInstance()->setPolicy(name);
     }
 
+    std::set<std::string>& getEvictionPolicyNames() {
+        return EvictionManager::getInstance()->getPolicyNames();
+    }
+
     void setEvictionHeadroom(size_t room) {
         eviction.headroom = room;
     }

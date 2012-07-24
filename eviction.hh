@@ -622,6 +622,10 @@ public:
         }
     }
 
+    std::set<std::string>& getPolicyNames() {
+        return policies;
+    }
+
     EvictionPolicy *getCurrentPolicy() {
         return evpolicy;
     }

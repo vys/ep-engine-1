@@ -8,6 +8,8 @@ import time
 
 import clitool
 
+import mc_bin_client
+
 def auth(mc, username, password):
     if username:
         mc.sasl_auth_plain(username, password)
@@ -79,4 +81,7 @@ Available params for "set":
     c.addCommand('set', set_param, 'set param value')
     c.addCommand('evict', evict, "evict key")
 
-    c.execute()
+    try:
+        c.execute()
+    except mc_bin_client.MemcachedError, e:
+        print "Failed: ", e.msg

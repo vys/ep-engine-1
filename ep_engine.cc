@@ -320,7 +320,17 @@ extern "C" {
             } else if (strcmp(keyz, "eviction_policy") == 0) {
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction policy to %s via flush params.", valz);
                 if (!e->setEvictionPolicy(valz)) {
-                    getLogger()->log(EXTENSION_LOG_WARNING, "Setting eviction policy to %s failed.", valz);
+                    getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Setting eviction policy to %s failed.", valz);
+                    std::set<std::string> &policies = e->getEvictionPolicyNames();
+                    std::string m("Invalid eviction policy name. Valid names are: ");
+                    for (std::set<std::string>::iterator it = policies.begin(); it != policies.end(); it++) {
+                        if (it != policies.begin()) {
+                            m.append(", ");
+                        }
+                        m.append(*it);
+                    }
+                    *msg = m.c_str();
+                    rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
                 }
             } else if (strcmp(keyz, "eviction_headroom") == 0) {
                 char *ptr = NULL;
