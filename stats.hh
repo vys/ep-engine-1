@@ -194,6 +194,9 @@ public:
     //! Histogram of background wait loads.
     Histogram<hrtime_t> bgLoadHisto;
 
+    //! The total number of successful flush_all calls
+    Atomic<size_t> flushHits;
+
     /* TAP related stats */
     //! The total number of tap events sent (not including noops)
     Atomic<size_t> numTapFetched;

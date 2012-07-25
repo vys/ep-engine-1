@@ -550,6 +550,14 @@ public:
         return forceShutdown;
     }
 
+    void flushAllMode(bool mode) {
+        flushAllEnabled = mode;
+    }
+
+    bool flushAllMode() {
+        return flushAllEnabled;
+    }
+
     SERVER_HANDLE_V1* getServerApi() { return serverApi; }
 
     SyncRegistry &getSyncRegistry() {
@@ -807,6 +815,7 @@ private:
         size_t sleeptime;
         TaskId task;
     } expiryPager;
+    bool flushAllEnabled;
 
     size_t nVBuckets;
     size_t dbShards;
