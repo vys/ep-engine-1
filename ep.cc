@@ -1166,6 +1166,7 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
     RCPtr<VBucket> vb = getVBucket(vbucket, vbucket_state_active);
     if (!vb) {
         ++stats.numNotMyVBuckets;
+        ++stats.getl_misses_notmyvbuckets;
         GetValue rv(NULL, ENGINE_NOT_MY_VBUCKET);
         cb.callback(rv);
         return false;
@@ -1182,6 +1183,7 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
             // Return the metadata associated with this lock, if any
             metadata = v->getMetadata();
 
+            ++stats.getl_misses_locked;
             GetValue rv;
             cb.callback(rv);
             return false;
@@ -1199,6 +1201,8 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
             return false;
         }
 
+        ++stats.getl_hits;
+
         // acquire lock and increment cas value
         // lock will also associate the metadata with the lock
         v->lock(currentTime + lockTimeout, metadata);
@@ -1213,6 +1217,7 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
         cb.callback(rv);
 
     } else {
+        ++stats.getl_misses_notfound;
         GetValue rv;
         if (isRestoreEnabled()) {
             rv.setStatus(ENGINE_TMPFAIL);
@@ -1258,6 +1263,7 @@ EventuallyPersistentStore::unlockKey(const std::string &key,
     }
 
     int bucket_num(0);
+    ++stats.num_unlocks;
     LockHolder lh = vb->ht.getLockedBucket(key, &bucket_num);
     StoredValue *v = fetchValidValue(vb, key, bucket_num);
 

@@ -2742,6 +2742,23 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstore->isFlushAllScheduled() ? "true" : "false", add_stat, cookie);
     add_casted_stat("flush_hits",
                     epstats.flushHits, add_stat, cookie);
+    size_t getl_misses = epstats.getl_misses_notmyvbuckets
+                         + epstats.getl_misses_locked
+                         + epstats.getl_misses_notfound;
+    add_casted_stat("cmd_getl",
+                    epstats.getl_hits + getl_misses, add_stat, cookie);
+    add_casted_stat("getl_hits",
+                    epstats.getl_hits, add_stat, cookie);
+    add_casted_stat("getl_misses",
+                    getl_misses, add_stat, cookie);
+    add_casted_stat("getl_misses_notmyvbuckets",
+                    epstats.getl_misses_notmyvbuckets, add_stat, cookie);
+    add_casted_stat("getl_misses_locked",
+                    epstats.getl_misses_locked, add_stat, cookie);
+    add_casted_stat("getl_misses_notfound",
+                    epstats.getl_misses_notfound, add_stat, cookie);
+    add_casted_stat("num_unlocks",
+                    epstats.num_unlocks, add_stat, cookie);
     add_casted_stat("curr_items", activeCountVisitor.getNumItems(), add_stat, cookie);
     add_casted_stat("curr_items_tot",
                    activeCountVisitor.getNumItems() +
