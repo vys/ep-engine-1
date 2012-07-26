@@ -336,8 +336,9 @@ private:
 class TransactionContext {
 public:
 
-    TransactionContext(EPStats &st, KVStore *ks, SyncRegistry &syncReg)
-        : stats(st), underlying(ks), _remaining(0), intxn(false), syncRegistry(syncReg) {}
+    TransactionContext(EPStats &st, KVStore *ks, SyncRegistry &syncReg, int _id)
+        : stats(st), underlying(ks), _remaining(0), intxn(false), 
+        syncRegistry(syncReg), id(_id) {}
 
     /**
      * Call this whenever entering a transaction.
@@ -410,6 +411,7 @@ private:
     bool         intxn;
     std::list<queued_item>     uncommittedItems;
     SyncRegistry              &syncRegistry;
+    int id;
 };
 
 /**
@@ -449,8 +451,8 @@ class EventuallyPersistentStore {
 public:
 
     EventuallyPersistentStore(EventuallyPersistentEngine &theEngine,
-                              KVStore *t, bool startVb0,
-                              bool concurrentDB);
+                              KVStore **t, bool startVb0,
+                              bool concurrentDB, int numKV);
 
     ~EventuallyPersistentStore();
 
@@ -712,15 +714,21 @@ public:
     void warmup(Atomic<bool> &vbStateLoaded);
 
     int getTxnSize() {
-        return tctx.getTxnSize();
+        return tctx[0]->getTxnSize();
     }
 
     void setTxnSize(int to) {
-        tctx.setTxnSize(to);
+        for (int i = 0; i < numKVStores; ++i) {
+            tctx[i]->setTxnSize(to);
+        }
     }
 
     size_t getNumUncommittedItems() {
-        return tctx.getNumUncommittedItems();
+        size_t ret = 0;
+        for (int i = 0; i < numKVStores; ++i) {
+            ret += tctx[i]->getNumUncommittedItems();
+        }
+        return ret;
     }
 
     const Flusher* getFlusher();
@@ -809,6 +817,8 @@ public:
      */
     void completeOnlineRestore();
 
+    int getKvstoreId(const std::string &key, uint16_t vbid);
+
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -855,16 +865,19 @@ private:
         return v != NULL;
     }
 
-    std::queue<queued_item> *beginFlush();
-    void pushToOutgoingQueue();
-    void requeueRejectedItems(std::queue<queued_item> *rejects);
+    std::queue<queued_item> *beginFlush(int id);
+    void pushToOutgoingQueue(std::queue<queued_item> *flushQueue);
+    void requeueRejectedItems(std::queue<queued_item> *rejects,
+                              std::queue<queued_item> *flushQueue);
     void completeFlush(rel_time_t flush_start);
 
     void enqueueCommit();
     int flushSome(std::queue<queued_item> *q,
-                  std::queue<queued_item> *rejectQueue);
+                  std::queue<queued_item> *rejectQueue,
+                  int id);
     int flushOne(std::queue<queued_item> *q,
-                 std::queue<queued_item> *rejectQueue);
+                 std::queue<queued_item> *rejectQueue,
+                 int id);
     int flushOneDeleteAll(void);
     int flushOneDelOrSet(const queued_item &qi, std::queue<queued_item> *rejectQueue);
 
@@ -893,13 +906,16 @@ private:
     EventuallyPersistentEngine &engine;
     EPStats                    &stats;
     bool                        doPersistence;
+    KVStore                     ** allRwUnderlying;
     KVStore                    *rwUnderlying;
     KVStore                    *roUnderlying;
     StorageProperties          storageProperties;
     Dispatcher                *dispatcher;
+    Dispatcher                **allDispatcher;
     Dispatcher                *roDispatcher;
     Dispatcher                *nonIODispatcher;
     Flusher                   *flusher;
+    Flusher                   **allFlusher;
     InvalidItemDbPager        *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;
@@ -908,10 +924,12 @@ private:
     pthread_t                  thread;
     Atomic<size_t>             bgFetchQueue;
     Atomic<bool>               diskFlushAll;
-    TransactionContext         tctx;
+    TransactionContext         **tctx;
     Mutex                      vbsetMutex;
     uint32_t                   bgFetchDelay;
     uint64_t                  *persistenceCheckpointIds;
+    bool                       vb0_mode;
+    int                        numKVStores;
     // During restore we're bypassing the checkpoint lists with the
     // objects we're restoring, but we need them to be persisted.
     // This is solved by using a separate list for those objects.

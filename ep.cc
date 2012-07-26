@@ -347,22 +347,54 @@ private:
 };
 
 EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine &theEngine,
-                                                     KVStore *t,
+                                                     KVStore **t,
                                                      bool startVb0,
-                                                     bool concurrentDB) :
-    engine(theEngine), stats(engine.getEpStats()), rwUnderlying(t),
-    storageProperties(t->getStorageProperties()), diskFlushAll(false),
-    tctx(stats, t, theEngine.syncRegistry),
-    bgFetchDelay(0)
+                                                     bool concurrentDB,
+                                                     int numKV) :
+    engine(theEngine), stats(engine.getEpStats()),
+    storageProperties(t[0]->getStorageProperties()),
+    diskFlushAll(false), tctx(NULL), bgFetchDelay(0), numKVStores(numKV)
 {
+    (void)concurrentDB;
+#if 0
     getLogger()->log(EXTENSION_LOG_INFO, NULL,
                      "Storage props:  c=%d/r=%d/rw=%d\n",
                      storageProperties.maxConcurrency(),
                      storageProperties.maxReaders(),
                      storageProperties.maxWriters());
 
+#endif
     doPersistence = getenv("EP_NO_PERSISTENCE") == NULL;
-    dispatcher = new Dispatcher(theEngine);
+
+    allDispatcher = new Dispatcher *[numKVStores];
+    allRwUnderlying = new KVStore *[numKVStores];
+    allFlusher = new Flusher *[numKVStores];
+    tctx = new TransactionContext *[numKVStores];
+
+    for (int i = 0; i < numKVStores; ++i) {
+        allRwUnderlying[i] = t[i];
+        allDispatcher[i] = new Dispatcher(theEngine);
+        allFlusher[i] = new Flusher(this, allDispatcher[i], i);
+        tctx[i] = new TransactionContext(stats, t[i], 
+                                         theEngine.syncRegistry, i);
+#if 0
+        if (storageProperties.maxConcurrency() > 1
+            && storageProperties.maxReaders() > 1
+            && concurrentDB) {
+            roUnderlying[i] = engine.newKVStore("dummy");
+            roDispatcher = new Dispatcher(theEngine);
+            roDispatcher->start();
+        } else {
+            roUnderlying = rwUnderlying;
+            roDispatcher = dispatcher;
+        }
+#endif
+    }
+    rwUnderlying = allRwUnderlying[0];
+    roUnderlying = rwUnderlying;
+    flusher = allFlusher[0];
+    roDispatcher = dispatcher = allDispatcher[0];
+#if 0
     if (storageProperties.maxConcurrency() > 1
         && storageProperties.maxReaders() > 1
         && concurrentDB) {
@@ -373,16 +405,17 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
         roUnderlying = rwUnderlying;
         roDispatcher = dispatcher;
     }
+#endif
     nonIODispatcher = new Dispatcher(theEngine);
-    flusher = new Flusher(this, dispatcher);
     invalidItemDbPager = new InvalidItemDbPager(this, stats, engine.getVbDelChunkSize());
 
     stats.memOverhead = sizeof(EventuallyPersistentStore);
 
     setTxnSize(DEFAULT_TXN_SIZE);
 
+    vb0_mode = startVb0;
     if (startVb0) {
-        RCPtr<VBucket> vb(new VBucket(0, vbucket_state_active, stats));
+        RCPtr<VBucket> vb(new VBucket(0, vbucket_state_active, stats, numKVStores));
         vbuckets.addBucket(vb);
         vbuckets.setBucketVersion(0, 0);
     }
@@ -418,22 +451,31 @@ public:
 EventuallyPersistentStore::~EventuallyPersistentStore() {
     bool forceShutdown = engine.isForceShutdown();
     stopFlusher();
-    dispatcher->stop(forceShutdown);
+    for (int i = 0; i < numKVStores; ++i) {
+        allDispatcher[i]->stop(forceShutdown);
+        delete []allFlusher[i];
+        delete []allDispatcher[i];
+        delete []tctx[i];
+    }
     if (hasSeparateRODispatcher()) {
         roDispatcher->stop(forceShutdown);
         delete roUnderlying;
     }
     nonIODispatcher->stop(forceShutdown);
 
-    delete flusher;
-    delete dispatcher;
+    delete []allFlusher;
+    delete []allDispatcher;
+    delete []tctx;
+
     delete nonIODispatcher;
     delete []persistenceCheckpointIds;
     delete []dbShardQueues;
 }
 
 void EventuallyPersistentStore::startDispatcher() {
-    dispatcher->start();
+    for (int i = 0 ; i < numKVStores; ++i) {
+        allDispatcher[i]->start();
+    }
 }
 
 void EventuallyPersistentStore::startNonIODispatcher() {
@@ -445,24 +487,32 @@ const Flusher* EventuallyPersistentStore::getFlusher() {
 }
 
 void EventuallyPersistentStore::startFlusher() {
-    flusher->start();
+    for (int i = 0 ; i < numKVStores; ++i) {
+        allFlusher[i]->start();
+    }
 }
 
 void EventuallyPersistentStore::stopFlusher() {
-    bool rv = flusher->stop(engine.isForceShutdown());
-    if (rv && !engine.isForceShutdown()) {
-        flusher->wait();
+    for (int i = 0 ; i < numKVStores; ++i) {
+        bool rv = allFlusher[i]->stop(engine.isForceShutdown());
+        if (rv && !engine.isForceShutdown()) {
+            allFlusher[i]->wait();
+        }
     }
 }
 
 bool EventuallyPersistentStore::pauseFlusher() {
-    tctx.commitSoon();
-    flusher->pause();
+    for (int i = 0 ; i < numKVStores; ++i) {
+        tctx[i]->commitSoon();
+        allFlusher[i]->pause();
+    }
     return true;
 }
 
 bool EventuallyPersistentStore::resumeFlusher() {
-    flusher->resume();
+    for (int i = 0 ; i < numKVStores; ++i) {
+        allFlusher[i]->resume();
+    }
     return true;
 }
 
@@ -1406,16 +1456,17 @@ void EventuallyPersistentStore::reset() {
     }
 }
 
+#if 0
 void EventuallyPersistentStore::enqueueCommit() {
     queued_item qi(new QueuedItem("", 0, queue_op_commit));
     writing.push(qi);
     ++stats.totalEnqueued;
 }
+#endif
 
-std::queue<queued_item>* EventuallyPersistentStore::beginFlush() {
-    std::queue<queued_item> *rv(NULL);
+std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
 
-    if (!hasItemsForPersistence() && writing.empty() && !diskFlushAll) {
+    if (!hasItemsForPersistence() && !diskFlushAll) {
         stats.dirtyAge = 0;
         // If the persistence queue is empty, reset queue-related stats for each vbucket.
         size_t numOfVBuckets = vbuckets.getSize();
@@ -1431,10 +1482,11 @@ std::queue<queued_item>* EventuallyPersistentStore::beginFlush() {
             }
         }
     } else {
+        std::queue<queued_item> *flushQueue = new std::queue<queued_item>();
         assert(rwUnderlying);
         if (diskFlushAll) {
             queued_item qi(new QueuedItem("", 0xffff, queue_op_flush));
-            writing.push(qi);
+            flushQueue->push(qi);
         }
 
         std::vector<queued_item> item_list;
@@ -1455,6 +1507,8 @@ std::queue<queued_item>* EventuallyPersistentStore::beginFlush() {
 
             // Grab all the items from online restore.
             LockHolder rlh(restore.mutex);
+            // VANDANA: FIXME: get items for my kvstore only and remove them from
+            // the restore.items list
             std::map<uint16_t, std::vector<queued_item> >::iterator rit = restore.items.find(vbid);
             if (rit != restore.items.end()) {
                 item_list.insert(item_list.end(), rit->second.begin(), rit->second.end());
@@ -1466,13 +1520,16 @@ std::queue<queued_item>* EventuallyPersistentStore::beginFlush() {
             vb->getBackfillItems(item_list);
 
             // Get all dirty items from the checkpoint.
-            uint64_t checkpointId = vb->checkpointManager.getAllItemsForPersistence(item_list);
+            uint64_t checkpointId = vb->checkpointManager.getAllItemsForPersistence(item_list, id);
             persistenceCheckpointIds[vbid] = checkpointId;
 
             std::vector<queued_item>::reverse_iterator reverse_it = item_list.rbegin();
             // Perform further deduplication here by removing duplicate mutations for each key.
             for (; reverse_it != item_list.rend(); ++reverse_it) {
                 queued_item qi = *reverse_it;
+                if (getKvstoreId(qi->getKey(), vb) != id) {
+                    continue;
+                }
                 switch (qi->getOperation()) {
                 case queue_op_set:
                 case queue_op_del:
@@ -1499,21 +1556,21 @@ std::queue<queued_item>* EventuallyPersistentStore::beginFlush() {
         }
 
         if (num_items > 0) {
-            pushToOutgoingQueue();
+            pushToOutgoingQueue(flushQueue);
         }
         size_t queue_size = getWriteQueueSize();
         stats.flusherDedup += dedup;
-        stats.flusher_todo.set(writing.size());
+        stats.flusher_todo.set(flushQueue->size());
         stats.queue_size.set(queue_size);
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Flushing %d items with %d still in queue\n",
-                         writing.size(), queue_size);
-        rv = &writing;
+                         flushQueue->size(), queue_size);
+        return flushQueue;
     }
-    return rv;
+    return NULL;
 }
 
-void EventuallyPersistentStore::pushToOutgoingQueue() {
+void EventuallyPersistentStore::pushToOutgoingQueue(std::queue<queued_item>* flushQ) {
     size_t num_shards = rwUnderlying->getNumShards();
     for (size_t i = 0; i < num_shards; ++i) {
         if (dbShardQueues[i].empty()) {
@@ -1522,20 +1579,20 @@ void EventuallyPersistentStore::pushToOutgoingQueue() {
         rwUnderlying->optimizeWrites(dbShardQueues[i]);
         std::vector<queued_item>::iterator it = dbShardQueues[i].begin();
         for(; it != dbShardQueues[i].end(); ++it) {
-            writing.push(*it);
+            flushQ->push(*it);
         }
         dbShardQueues[i].clear();
     }
 }
 
-void EventuallyPersistentStore::requeueRejectedItems(std::queue<queued_item> *rej) {
+void EventuallyPersistentStore::requeueRejectedItems(std::queue<queued_item> *rej, std::queue<queued_item> *flushQ) {
     // Requeue the rejects.
     while (!rej->empty()) {
-        writing.push(rej->front());
+        flushQ->push(rej->front());
         rej->pop();
     }
     stats.queue_size.set(getWriteQueueSize());
-    stats.flusher_todo.set(writing.size());
+    stats.flusher_todo.set(flushQ->size());
 }
 
 void EventuallyPersistentStore::completeFlush(rel_time_t flush_start) {
@@ -1568,8 +1625,9 @@ void EventuallyPersistentStore::completeFlush(rel_time_t flush_start) {
 }
 
 int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
-                                         std::queue<queued_item> *rejectQueue) {
-    if (!tctx.enter()) {
+                                         std::queue<queued_item> *rejectQueue,
+                                         int id) {
+    if (!tctx[id]->enter()) {
         ++stats.beginFailed;
         getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                          "Failed to start a transaction.\n");
@@ -1580,14 +1638,14 @@ int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
         }
         return 1; // This will cause us to jump out and delay a second
     }
-    int tsz = tctx.remaining();
+    int tsz = tctx[id]->remaining();
     int oldest = stats.min_data_age;
     int completed(0);
     for (completed = 0;
          completed < tsz && !q->empty() && !shouldPreemptFlush(completed);
          ++completed) {
 
-        int n = flushOne(q, rejectQueue);
+        int n = flushOne(q, rejectQueue, id);
         if (n != 0 && n < oldest) {
             oldest = n;
         }
@@ -1595,9 +1653,9 @@ int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
     if (shouldPreemptFlush(completed)) {
         ++stats.flusherPreempts;
     } else {
-        tctx.commit();
+        tctx[id]->commit();
     }
-    tctx.leave(completed);
+    tctx[id]->leave(completed);
     return oldest;
 }
 
@@ -2003,7 +2061,8 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
 }
 
 int EventuallyPersistentStore::flushOne(std::queue<queued_item> *q,
-                                        std::queue<queued_item> *rejectQueue) {
+                                        std::queue<queued_item> *rejectQueue,
+                                        int id) {
 
     queued_item qi = q->front();
     q->pop();
@@ -2020,7 +2079,7 @@ int EventuallyPersistentStore::flushOne(std::queue<queued_item> *q,
             rv = flushOneDelOrSet(qi, rejectQueue);
             if (rejectQueue->size() == prevRejectCount) {
                 // flush operation was not rejected
-                tctx.addUncommittedItem(qi);
+                tctx[id]->addUncommittedItem(qi);
             }
         }
         break;
@@ -2028,8 +2087,8 @@ int EventuallyPersistentStore::flushOne(std::queue<queued_item> *q,
         rv = flushOneDelOrSet(qi, rejectQueue);
         break;
     case queue_op_commit:
-        tctx.commit();
-        tctx.enter();
+        tctx[id]->commit();
+        tctx[id]->enter();
         break;
     case queue_op_empty:
         assert(false);
@@ -2344,4 +2403,17 @@ bool VBCBAdaptor::callback(Dispatcher & d, TaskId t) {
         visitor->complete();
     }
     return !isdone;
+}
+
+int EventuallyPersistentStore::getKvstoreId(const std::string &key, uint16_t vbid)
+{
+    (void) vbid;
+    int h=5381;
+    int i=0;
+    const char *str = key.c_str();
+
+    for(i=0; str[i] != 0x00; i++) {
+        h = ((h << 5) + h) ^ str[i];
+    }
+    return std::abs(h) % (int)numKVStores;
 }

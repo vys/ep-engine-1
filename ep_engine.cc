@@ -1489,7 +1489,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     if (ret == ENGINE_SUCCESS) {
         time_t start = ep_real_time();
         try {
-            kvstore = newKVStore();
+            createKVStores();
         } catch (std::exception& e) {
             std::stringstream ss;
             ss << "Failed to create database: " << e.what() << std::endl;
@@ -1514,8 +1514,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         stats.mem_high_wat = memHighWat;
 
         databaseInitTime = ep_real_time() - start;
+        // VANDANA: FIXME Get it from config
         epstore = new EventuallyPersistentStore(*this, kvstore, startVb0,
-                                                concurrentDB);
+                                                concurrentDB, numKVStores);
         if (epstore == NULL) {
             ret = ENGINE_ENOMEM;
             return ret;
@@ -1591,12 +1592,15 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         epstore->getDispatcher()->schedule(sscb, NULL, Priority::StatSnapPriority,
                                            STATSNAP_FREQ);
 
+#if 0
+        //VANDANA: FIXME
         if (kvstore->getStorageProperties().hasEfficientVBDeletion()) {
             shared_ptr<DispatcherCallback> invalidVBTableRemover(new InvalidVBTableRemover(this));
             epstore->getDispatcher()->schedule(invalidVBTableRemover, NULL,
                                                Priority::VBucketDeletionPriority,
                                                INVALID_VBTABLE_DEL_FREQ);
         }
+#endif
     }
 
     if (ret == ENGINE_SUCCESS) {
@@ -1611,8 +1615,32 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     return ret;
 }
 
-KVStore* EventuallyPersistentEngine::newKVStore() {
-    KVStoreConfig conf(dbname, shardPattern, initFile,
+void EventuallyPersistentEngine::createKVStores() {
+    //Read the config and create kvstore for each path
+    char p1[256] = "/tmp/kv1";
+    char p2[256] = "/tmp/kv2";
+    char p3[256] = "/tmp/kv3";
+    char p4[256] = "/tmp/kv4";
+
+    numKVStores = 4;
+    kvstore = new KVStore * [numKVStores];
+    
+    strcat(p1, dbname);
+    kvstore[0] = newKVStore(p1);
+
+    strcat(p2, dbname);
+    kvstore[1] = newKVStore(p2);
+
+    strcat(p3, dbname);
+    kvstore[2] = newKVStore(p3);
+
+    strcat(p4, dbname);
+    kvstore[3] = newKVStore(p4);
+
+}
+
+KVStore* EventuallyPersistentEngine::newKVStore(char *dbpath) {
+    KVStoreConfig conf(dbpath, shardPattern, initFile,
                        postInitFile, nVBuckets, dbShards);
     return KVStore::create(dbStrategy, stats, conf);
 }

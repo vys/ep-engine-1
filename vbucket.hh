@@ -104,10 +104,10 @@ class VBucket : public RCValue {
 public:
 
     VBucket(int i, vbucket_state_t newState, EPStats &st,
-            vbucket_state_t initState = vbucket_state_dead, uint64_t checkpointId = 1) :
-        ht(st), checkpointManager(st, i, checkpointId), id(i), state(newState),
-        initialState(initState), stats(st) {
-
+            int numPersistenceCursors = 1,
+            vbucket_state_t initState = vbucket_state_dead, uint64_t checkpointId = 1):
+        ht(st), checkpointManager(st, i, checkpointId, numPersistenceCursors),
+        id(i), state(newState), initialState(initState), stats(st) {
         backfill.isBackfillPhase = false;
         pendingOpsStart = 0;
         stats.memOverhead.incr(sizeof(VBucket)

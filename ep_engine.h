@@ -518,7 +518,10 @@ public:
 
     ~EventuallyPersistentEngine() {
         delete epstore;
-        delete kvstore;
+        for (int i = 0; i < numKVStores; ++i) {
+            delete []kvstore[i];
+        }
+        delete []kvstore;
         delete getlExtension;
     }
 
@@ -753,7 +756,8 @@ private:
         }
     }
 
-    KVStore *newKVStore();
+    void createKVStores();
+    KVStore *newKVStore(char *dbpath);
 
     // Get the current tap connection for this cookie.
     // If this method returns NULL, you should return TAP_DISCONNECT
@@ -771,7 +775,7 @@ private:
     bool concurrentDB;
     bool forceShutdown;
     SERVER_HANDLE_V1 *serverApi;
-    KVStore *kvstore;
+    KVStore **kvstore;
     EventuallyPersistentStore *epstore;
     TapThrottle *tapThrottle;
     std::map<const void*, Item*> lookups;
@@ -818,6 +822,7 @@ private:
     size_t syncTimeout;
     EPStats stats;
     SyncRegistry syncRegistry;
+    int numKVStores;
     struct {
         Mutex mutex;
         RestoreManager *manager;

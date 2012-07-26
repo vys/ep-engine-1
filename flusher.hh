@@ -47,8 +47,8 @@ private:
 class Flusher {
 public:
 
-    Flusher(EventuallyPersistentStore *st, Dispatcher *d) :
-        store(st), _state(initializing), dispatcher(d),
+    Flusher(EventuallyPersistentStore *st, Dispatcher *d, int i) :
+        store(st), _state(initializing), dispatcher(d), flusherId(i),
         flushRv(0), prevFlushRv(0), minSleepTime(0.1),
         flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false), forceShutdownReceived(false) {
     }
@@ -98,6 +98,7 @@ private:
     TaskId task;
     Dispatcher *dispatcher;
     const char * stateName(enum flusher_state st) const;
+    int flusherId;
 
     // Current flush cycle state.
     int                      flushRv;

@@ -227,8 +227,8 @@ int Flusher::doFlush() {
     // On a fresh entry, flushQueue is null and we need to build one.
     if (!flushQueue) {
         flushRv = store->stats.min_data_age;
-        flushQueue = store->beginFlush();
-        if (flushQueue) {
+        flushQueue = store->beginFlush(flusherId);
+        if (flushQueue && !flushQueue->empty()) {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                              "Beginning a write queue flush.\n");
             rejectQueue = new std::queue<queued_item>();
@@ -239,7 +239,7 @@ int Flusher::doFlush() {
     // Now do the every pass thing.
     if (flushQueue) {
         if (!flushQueue->empty()) {
-            int n = store->flushSome(flushQueue, rejectQueue);
+            int n = store->flushSome(flushQueue, rejectQueue, flusherId);
             if (_state == pausing) {
                 transition_state(paused);
             }
@@ -247,9 +247,9 @@ int Flusher::doFlush() {
         }
 
         if (flushQueue->empty()) {
-            if (!rejectQueue->empty()) {
+            if (rejectQueue && !rejectQueue->empty()) {
                 // Requeue the rejects.
-                store->requeueRejectedItems(rejectQueue);
+                store->requeueRejectedItems(rejectQueue, flushQueue);
             } else {
                 store->completeFlush(flushStart);
                 getLogger()->log(EXTENSION_LOG_INFO, NULL,

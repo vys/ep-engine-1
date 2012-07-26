@@ -35,25 +35,28 @@ queue_dirty_t Checkpoint::queueDirty(const queued_item &item, CheckpointManager 
         std::list<queued_item>::iterator currPos = it->second.position;
         uint64_t currMutationId = it->second.mutation_id;
 
-        if (*(checkpointManager->persistenceCursor.currentCheckpoint) == this) {
-            // If the existing item is in the left-hand side of the item pointed by the
-            // persistence cursor, decrease the persistence cursor's offset by 1.
-            std::string key = (*(checkpointManager->persistenceCursor.currentPos))->getKey();
-            checkpoint_index::iterator ita = keyIndex.find(key);
-            if (ita != keyIndex.end()) {
-                uint64_t mutationId = ita->second.mutation_id;
-                if (currMutationId <= mutationId) {
-                    checkpointManager->decrPersistenceCursorOffset(1);
+        std::map<const std::string, CheckpointCursor>::iterator map_it;
+        for (map_it = checkpointManager->persistenceCursors.begin();
+             map_it != checkpointManager->persistenceCursors.end(); map_it++) {
+            if (*(map_it->second.currentCheckpoint) == this) {
+                // If the existing item is in the left-hand side of the item pointed by the
+                // persistence cursor, decrease the persistence cursor's offset by 1.
+                std::string key = (*(map_it->second.currentPos))->getKey();
+                checkpoint_index::iterator ita = keyIndex.find(key);
+                if (ita != keyIndex.end()) {
+                    uint64_t mutationId = ita->second.mutation_id;
+                    if (currMutationId <= mutationId) {
+                        checkpointManager->decrPersistenceCursorOffset(map_it->second, 1);
+                    }
                 }
-            }
-            // If the persistence cursor points to the existing item for the same key,
-            // shift the cursor left by 1.
-            if (checkpointManager->persistenceCursor.currentPos == currPos) {
-                checkpointManager->decrPersistenceCursorPos_UNLOCKED();
+                // If the persistence cursor points to the existing item for the same key,
+                // shift the cursor left by 1.
+                if (map_it->second.currentPos == currPos) {
+                    checkpointManager->decrPersistenceCursorPos_UNLOCKED(map_it->second);
+                }
             }
         }
 
-        std::map<const std::string, CheckpointCursor>::iterator map_it;
         for (map_it = checkpointManager->tapCursors.begin();
              map_it != checkpointManager->tapCursors.end(); map_it++) {
 
@@ -243,12 +246,17 @@ bool CheckpointManager::closeOpenCheckpoint(uint64_t id) {
     return closeOpenCheckpoint_UNLOCKED(id);
 }
 
-void CheckpointManager::registerPersistenceCursor() {
+void CheckpointManager::registerPersistenceCursor(int i) {
     LockHolder lh(queueLock);
+    char n[256];
+    snprintf (n, 256, "PersistenceCursor-%d", i);
+    std::string name(n);
     assert(checkpointList.size() > 0);
-    persistenceCursor.currentCheckpoint = checkpointList.begin();
-    persistenceCursor.currentPos = checkpointList.front()->begin();
-    checkpointList.front()->registerCursorName(persistenceCursor.name);
+    CheckpointCursor cursor(name, checkpointList.begin(),
+                        checkpointList.front()->begin());
+    checkpointList.front()->registerCursorName(name);
+    persistenceCursors[name] = cursor;
+    persistenceVector.push_back(cursor);
 }
 
 protocol_binary_response_status CheckpointManager::startOnlineUpdate() {
@@ -296,9 +304,12 @@ protocol_binary_response_status CheckpointManager::stopOnlineUpdate() {
 
     // Adjust for onlineupdate start and end items
     numItems -= 2;
-    decrPersistenceCursorOffset(2);
-    std::map<const std::string, CheckpointCursor>::iterator map_it = tapCursors.begin();
-    for (; map_it != tapCursors.end(); ++map_it) {
+    std::map<const std::string, CheckpointCursor>::iterator map_it;
+    for (map_it = persistenceCursors.begin(); 
+         map_it != persistenceCursors.end(); ++map_it) {
+        decrPersistenceCursorOffset(map_it->second, 2);
+    }
+    for (map_it = tapCursors.begin(); map_it != tapCursors.end(); ++map_it) {
         map_it->second.offset -= 2;
     }
 
@@ -322,7 +333,8 @@ protocol_binary_response_status CheckpointManager::beginHotReload() {
 
     doHotReload = true;
 
-    assert(persistenceCursor.currentCheckpoint == onlineUpdateCursor.currentCheckpoint);
+    //VANDANA: FIXME
+//    assert(persistenceCursor.currentCheckpoint == onlineUpdateCursor.currentCheckpoint);
 
     // This item represents the end of online update and is also sent to the slave node..
     queued_item dummyItem(new QueuedItem("", vbucketId, queue_op_online_update_revert));
@@ -333,11 +345,15 @@ protocol_binary_response_status CheckpointManager::beginHotReload() {
     checkOpenCheckpoint_UNLOCKED(true, true);
 
     //Update persistence cursor due to hotReload
-    (*(persistenceCursor.currentCheckpoint))->removeCursorName(persistenceCursor.name);
-    persistenceCursor.currentCheckpoint = --(checkpointList.end());
-    persistenceCursor.currentPos = checkpointList.back()->begin();
+    std::map<const std::string, CheckpointCursor>::iterator map_it;
+    for (map_it = persistenceCursors.begin();
+         map_it != persistenceCursors.end(); map_it++) {
+        (*(map_it->second.currentCheckpoint))->removeCursorName(map_it->second.name);
+        map_it->second.currentCheckpoint = --(checkpointList.end());
+        map_it->second.currentPos = checkpointList.back()->begin();
 
-    (*(persistenceCursor.currentCheckpoint))->registerCursorName(persistenceCursor.name);
+        (*(map_it->second.currentCheckpoint))->registerCursorName(map_it->second.name);
+    }
 
     return PROTOCOL_BINARY_RESPONSE_SUCCESS;
 }
@@ -349,7 +365,11 @@ protocol_binary_response_status CheckpointManager::endHotReload(uint64_t total) 
         return PROTOCOL_BINARY_RESPONSE_NOT_SUPPORTED;
     }
 
-    persistenceCursor.offset += total-1;    // Should ignore the first dummy item
+    std::map<const std::string, CheckpointCursor>::iterator map_it;
+    map_it = persistenceCursors.begin();
+    for (; map_it != persistenceCursors.end(); map_it++) {
+        map_it->second.offset += total-1;    // Should ignore the first dummy item
+    }
 
     (*(onlineUpdateCursor.currentCheckpoint))->removeCursorName(onlineUpdateCursor.name);
     doHotReload = false;
@@ -357,8 +377,11 @@ protocol_binary_response_status CheckpointManager::endHotReload(uint64_t total) 
 
     // Adjust for onlineupdate start and end items
     numItems -= 2;
-    decrPersistenceCursorOffset(2);
-    std::map<const std::string, CheckpointCursor>::iterator map_it = tapCursors.begin();
+    map_it = persistenceCursors.begin();
+    for (; map_it != persistenceCursors.end(); ++map_it) {
+        decrPersistenceCursorOffset(map_it->second, 2);
+    }
+    map_it = tapCursors.begin();
     for (; map_it != tapCursors.end(); ++map_it) {
         map_it->second.offset -= 2;
     }
@@ -521,12 +544,15 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(const RCPtr<VBucket> &vbu
     if (oldCheckpointId > 0) {
         // If the persistence cursor reached to the end of the old open checkpoint, move it to
         // the new open checkpoint.
-        if ((*(persistenceCursor.currentCheckpoint))->getId() == oldCheckpointId) {
-            if (++(persistenceCursor.currentPos) ==
-                (*(persistenceCursor.currentCheckpoint))->end()) {
-                moveCursorToNextCheckpoint(persistenceCursor);
-            } else {
-                --(persistenceCursor.currentPos);
+        std::map<const std::string, CheckpointCursor>::iterator it = persistenceCursors.begin();
+        for (; it != persistenceCursors.end(); ++it) {
+            if ((*(it->second.currentCheckpoint))->getId() == oldCheckpointId) {
+                if (++(it->second.currentPos) ==
+                    (*(it->second.currentCheckpoint))->end()) {
+                    moveCursorToNextCheckpoint(it->second);
+                } else {
+                    --(it->second.currentPos);
+                }
             }
         }
         // If any of TAP cursors reached to the end of the old open checkpoint, move them to
@@ -573,8 +599,11 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(const RCPtr<VBucket> &vbu
     }
     if (numUnrefItems > 0) {
         numItems -= numUnrefItems;
-        decrPersistenceCursorOffset(numUnrefItems);
-        std::map<const std::string, CheckpointCursor>::iterator map_it = tapCursors.begin();
+        std::map<const std::string, CheckpointCursor>::iterator map_it = persistenceCursors.begin();
+        for (; map_it != persistenceCursors.end(); ++map_it) {
+            decrPersistenceCursorOffset(map_it->second, numUnrefItems);
+        }
+        map_it = tapCursors.begin();
         for (; map_it != tapCursors.end(); ++map_it) {
             map_it->second.offset -= numUnrefItems;
         }
@@ -603,18 +632,18 @@ void CheckpointManager::removeInvalidCursorsOnCheckpoint(Checkpoint *pCheckpoint
     std::list<std::string> invalidCursorNames;
     const std::set<std::string> &cursors = pCheckpoint->getCursorNameList();
     std::set<std::string>::const_iterator cit = cursors.begin();
+    std::map<const std::string, CheckpointCursor>::iterator mit;
     for (; cit != cursors.end(); ++cit) {
         // Check it with persistence cursor
-        if ((*cit).compare(persistenceCursor.name) == 0) {
-            if (pCheckpoint != *(persistenceCursor.currentCheckpoint)) {
-                invalidCursorNames.push_back(*cit);
-            }
+        mit = persistenceCursors.find(*cit);
+        if (mit == persistenceCursors.end() || pCheckpoint != *(mit->second.currentCheckpoint)) {
+            invalidCursorNames.push_back(*cit);
         } else if ((*cit).compare(onlineUpdateCursor.name) == 0) { // OnlineUpdate cursor
             if (pCheckpoint != *(onlineUpdateCursor.currentCheckpoint)) {
                 invalidCursorNames.push_back(*cit);
             }
         } else { // Check it with tap cursors
-            std::map<const std::string, CheckpointCursor>::iterator mit = tapCursors.find(*cit);
+            mit = tapCursors.find(*cit);
             if (mit == tapCursors.end() || pCheckpoint != *(mit->second.currentCheckpoint)) {
                 invalidCursorNames.push_back(*cit);
             }
@@ -650,18 +679,20 @@ void CheckpointManager::collapseClosedCheckpoints(std::list<Checkpoint*> &collap
         // Reposition the slow cursors to the beginning of the last closed checkpoint.
         std::set<std::string>::iterator sit = slowCursors.begin();
         for (; sit != slowCursors.end(); ++sit) {
-            if ((*sit).compare(persistenceCursor.name) == 0) { // Reposition persistence cursor
-                persistenceCursor.currentCheckpoint = lastClosedChk;
-                persistenceCursor.currentPos =  (*lastClosedChk)->begin();
-                persistenceCursor.offset = 0;
-                (*lastClosedChk)->registerCursorName(persistenceCursor.name);
+            std::map<const std::string, CheckpointCursor>::iterator mit;
+            mit = persistenceCursors.find(*sit);
+            if (mit != persistenceCursors.end()) { // Reposition persistence cursor
+                mit->second.currentCheckpoint = lastClosedChk;
+                mit->second.currentPos =  (*lastClosedChk)->begin();
+                mit->second.offset = 0;
+                (*lastClosedChk)->registerCursorName(mit->second.name);
             } else if ((*sit).compare(onlineUpdateCursor.name) == 0) { // onlineUpdate cursor
                 onlineUpdateCursor.currentCheckpoint = lastClosedChk;
                 onlineUpdateCursor.currentPos =  (*lastClosedChk)->begin();
                 onlineUpdateCursor.offset = 0;
                 (*lastClosedChk)->registerCursorName(onlineUpdateCursor.name);
             } else { // Reposition tap cursors
-                std::map<const std::string, CheckpointCursor>::iterator mit = tapCursors.find(*sit);
+                mit = tapCursors.find(*sit);
                 if (mit != tapCursors.end()) {
                     mit->second.currentCheckpoint = lastClosedChk;
                     mit->second.currentPos =  (*lastClosedChk)->begin();
@@ -678,12 +709,13 @@ void CheckpointManager::collapseClosedCheckpoints(std::list<Checkpoint*> &collap
         std::set<std::string>::const_iterator cit = fastCursors.begin();
         // Update the offset of each fast cursor.
         for (; cit != fastCursors.end(); ++cit) {
-            if ((*cit).compare(persistenceCursor.name) == 0) {
-                decrPersistenceCursorOffset(numDuplicatedItems + numMetaItems);
+            std::map<const std::string, CheckpointCursor>::iterator mit = persistenceCursors.find(*cit);
+            if (mit != persistenceCursors.end()) {
+                decrPersistenceCursorOffset(mit->second, numDuplicatedItems + numMetaItems);
             } else if ((*cit).compare(onlineUpdateCursor.name) == 0) {
                 onlineUpdateCursor.offset -= (numDuplicatedItems + numMetaItems);
             } else {
-                std::map<const std::string, CheckpointCursor>::iterator mit = tapCursors.find(*cit);
+                mit = tapCursors.find(*cit);
                 if (mit != tapCursors.end()) {
                     mit->second.offset -= (numDuplicatedItems + numMetaItems);
                 }
@@ -764,18 +796,19 @@ uint64_t CheckpointManager::getAllItemsFromCurrentPosition(CheckpointCursor &cur
     return checkpointId;
 }
 
-uint64_t CheckpointManager::getAllItemsForPersistence(std::vector<queued_item> &items) {
+//FIXME: VANDANA handle this case as well
+uint64_t CheckpointManager::getAllItemsForPersistence(std::vector<queued_item> &items, int id) {
     LockHolder lh(queueLock);
     uint64_t checkpointId;
     if (doOnlineUpdate) {
         // Get all the items up to the start of the onlineUpdate cursor.
         uint64_t barrier = (*(onlineUpdateCursor.currentCheckpoint))->getId();
-        checkpointId = getAllItemsFromCurrentPosition(persistenceCursor, barrier, items);
-        persistenceCursor.offset += items.size();
+        checkpointId = getAllItemsFromCurrentPosition(persistenceVector.at(id), barrier, items);
+        persistenceVector.at(id).offset += items.size();
     } else {
         // Get all the items up to the end of the current open checkpoint.
-        checkpointId = getAllItemsFromCurrentPosition(persistenceCursor, 0, items);
-        persistenceCursor.offset = numItems;
+        checkpointId = getAllItemsFromCurrentPosition(persistenceVector.at(id), 0, items);
+        persistenceVector.at(id).offset = numItems;
     }
     return checkpointId;
 }
@@ -902,14 +935,17 @@ void CheckpointManager::clear(vbucket_state_t vbState) {
     // Add a new open checkpoint.
     addNewCheckpoint_UNLOCKED(checkpointId);
 
-    // Reset the persistence cursor.
-    persistenceCursor.currentCheckpoint = checkpointList.begin();
-    persistenceCursor.currentPos = checkpointList.front()->begin();
-    persistenceCursor.offset = 0;
-    checkpointList.front()->registerCursorName(persistenceCursor.name);
+    // Reset all persistence cursors.
+    std::map<const std::string, CheckpointCursor>::iterator cit = persistenceCursors.begin();
+    for (; cit != persistenceCursors.end(); ++cit) {
+        cit->second.currentCheckpoint = checkpointList.begin();
+        cit->second.currentPos = checkpointList.front()->begin();
+        cit->second.offset = 0;
+        checkpointList.front()->registerCursorName(cit->second.name);
+    }
 
     // Reset all the TAP cursors.
-    std::map<const std::string, CheckpointCursor>::iterator cit = tapCursors.begin();
+    cit = tapCursors.begin();
     for (; cit != tapCursors.end(); ++cit) {
         cit->second.currentCheckpoint = checkpointList.begin();
         cit->second.currentPos = checkpointList.front()->begin();
@@ -1060,13 +1096,14 @@ bool CheckpointManager::checkAndAddNewCheckpoint(uint64_t id, bool &pCursorRepos
             const std::set<std::string> &cursors = checkpointList.back()->getCursorNameList();
             std::set<std::string>::const_iterator cit = cursors.begin();
             for (; cit != cursors.end(); ++cit) {
-                if ((*cit).compare(persistenceCursor.name) == 0) { // Persistence cursor
-                    persistenceCursor.currentPos = checkpointList.back()->begin();
+                std::map<const std::string, CheckpointCursor>::iterator mit =
+                    persistenceCursors.find(*cit);
+                if (mit != persistenceCursors.end()) {
+                    mit->second.currentPos = checkpointList.back()->begin();
                 } else if ((*cit).compare(onlineUpdateCursor.name) == 0) { // OnlineUpdate cursor
                     onlineUpdateCursor.currentPos = checkpointList.back()->begin();
                 } else { // TAP cursors
-                    std::map<const std::string, CheckpointCursor>::iterator mit =
-                        tapCursors.find(*cit);
+                    mit = tapCursors.find(*cit);
                     mit->second.currentPos = checkpointList.back()->begin();
                 }
             }
@@ -1078,13 +1115,18 @@ bool CheckpointManager::checkAndAddNewCheckpoint(uint64_t id, bool &pCursorRepos
     } else {
         bool ret = true;
         bool persistenceCursorReposition = false;
+        std::set<std::string> persistenceList;
         std::set<std::string> tapClients;
         std::list<Checkpoint*>::iterator curr = it;
         for (; curr != checkpointList.end(); ++curr) {
-            if (*(persistenceCursor.currentCheckpoint) == *curr) {
-                persistenceCursorReposition = true;
+            std::map<const std::string, CheckpointCursor>::iterator map_it = persistenceCursors.begin();
+            for (; map_it != persistenceCursors.end(); ++map_it) {
+                if (*(map_it->second.currentCheckpoint) == *curr) {
+                    persistenceList.insert(map_it->first);
+                    persistenceCursorReposition = true;
+                }
             }
-            std::map<const std::string, CheckpointCursor>::iterator map_it = tapCursors.begin();
+            map_it = tapCursors.begin();
             for (; map_it != tapCursors.end(); ++map_it) {
                 if (*(map_it->second.currentCheckpoint) == *curr) {
                     tapClients.insert(map_it->first);
@@ -1105,13 +1147,16 @@ bool CheckpointManager::checkAndAddNewCheckpoint(uint64_t id, bool &pCursorRepos
                 checkpointList.back()->popBackCheckpointEndItem();
                 checkpointList.back()->setState(opened);
             }
-            if (persistenceCursorReposition) {
-                persistenceCursor.currentCheckpoint = --(checkpointList.end());
-                persistenceCursor.currentPos = checkpointList.back()->begin();
-                persistenceCursor.offset = numItems - 1;
-                checkpointList.back()->registerCursorName(persistenceCursor.name);
+            std::set<std::string>::iterator set_it = persistenceList.begin();
+            for (; set_it != persistenceList.end(); ++set_it) {
+                std::map<const std::string, CheckpointCursor>::iterator map_it =
+                    persistenceCursors.find(*set_it);
+                map_it->second.currentCheckpoint = --(checkpointList.end());
+                map_it->second.currentPos = checkpointList.back()->begin();
+                map_it->second.offset = numItems - 1;
+                checkpointList.back()->registerCursorName(map_it->second.name);
             }
-            std::set<std::string>::iterator set_it = tapClients.begin();
+            set_it = tapClients.begin();
             for (; set_it != tapClients.end(); ++set_it) {
                 std::map<const std::string, CheckpointCursor>::iterator map_it =
                     tapCursors.find(*set_it);
@@ -1144,14 +1189,19 @@ bool CheckpointManager::hasNext(const std::string &name) {
     return hasMore;
 }
 
+//FIXME: VANDANA: Handle persistence items on a per flusher basis?
 bool CheckpointManager::hasNextForPersistence() {
     LockHolder lh(queueLock);
-    bool hasMore = true;
-    std::list<queued_item>::iterator curr = persistenceCursor.currentPos;
-    ++curr;
-    if (curr == (*(persistenceCursor.currentCheckpoint))->end() &&
-        (*(persistenceCursor.currentCheckpoint))->getState() == opened) {
-        hasMore = false;
+    bool hasMore = false;
+    std::map<const std::string, CheckpointCursor>::iterator it = persistenceCursors.begin();
+    for (; it != persistenceCursors.end(); it++) {
+        std::list<queued_item>::iterator curr = it->second.currentPos;
+        ++curr;
+        if (curr != (*(it->second.currentCheckpoint))->end() ||
+            (*(it->second.currentCheckpoint))->getState() != opened) {
+            hasMore = true;
+            break;
+        }
     }
     return hasMore;
 }
