@@ -1075,6 +1075,7 @@ EventuallyPersistentEngine::EventuallyPersistentEngine(GET_SERVER_API get_server
 ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
 
+    size_t dummysizet;
     size_t txnSize = 0;
     size_t tapIdleTimeout = (size_t)-1;
     size_t expiryPagerSleeptime = 3600;
@@ -1243,7 +1244,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         ++ii;
         items[ii].key = "max_vbuckets";
         items[ii].datatype = DT_SIZE;
-        items[ii].value.dt_size = &nVBuckets;
+        items[ii].value.dt_size = &dummysizet;
 
         ++ii;
         items[ii].key = "vb_del_chunk_size";
@@ -1478,6 +1479,10 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
                                  svaltype);
             }
         }
+        if (!configuration.parseConfiguration(config, serverApi)) {
+            return ENGINE_FAILED;
+        }
+        nVBuckets = configuration.getMaxVbuckets();
     }
 
     if (tapNoopInterval == 0 || tapIdleTimeout == 0) {

@@ -24,6 +24,7 @@
 #include "tapconnmap.hh"
 #include "tapconnection.hh"
 #include "restore.hh"
+#include "configuration.hh"
 
 #define DEFAULT_TAP_NOOP_INTERVAL 200
 #define DEFAULT_BACKFILL_RESIDENT_THRESHOLD 0.9
@@ -818,6 +819,7 @@ private:
     size_t syncTimeout;
     EPStats stats;
     SyncRegistry syncRegistry;
+    Configuration configuration;
     struct {
         Mutex mutex;
         RestoreManager *manager;
