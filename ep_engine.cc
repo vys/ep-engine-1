@@ -1578,29 +1578,28 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         epstore->getNonIODispatcher()->schedule(htr, NULL, Priority::HTResizePriority,
                                                 10);
 
-        shared_ptr<DispatcherCallback> item_db_cb(epstore->getInvalidItemDbPager());
-        epstore->getDispatcher()->schedule(item_db_cb, NULL,
-                                           Priority::InvalidItemDbPagerPriority, 0);
-
-        shared_ptr<DispatcherCallback> chk_cb(new ClosedUnrefCheckpointRemover(epstore, stats,
-                                                                       checkpointRemoverInterval));
+        shared_ptr<DispatcherCallback> chk_cb(new ClosedUnrefCheckpointRemover(
+                                                     epstore, stats,
+                                                     checkpointRemoverInterval));
         epstore->getNonIODispatcher()->schedule(chk_cb, NULL,
                                                 Priority::CheckpointRemoverPriority,
                                                 checkpointRemoverInterval);
+        shared_ptr<DispatcherCallback> item_db_cb(epstore->getInvalidItemDbPager());
+        epstore->getDispatcher(0)->schedule(item_db_cb, NULL,
+                                            Priority::InvalidItemDbPagerPriority, 0);
 
-        shared_ptr<StatSnap> sscb(new StatSnap(this));
-        epstore->getDispatcher()->schedule(sscb, NULL, Priority::StatSnapPriority,
-                                           STATSNAP_FREQ);
+        for (int i = 0 ; i < numKVStores; ++i) {
+            shared_ptr<StatSnap> sscb(new StatSnap(this, i));
+            epstore->getDispatcher(i)->schedule(sscb, NULL, Priority::StatSnapPriority,
+                                               STATSNAP_FREQ);
 
-#if 0
-        //VANDANA: FIXME
-        if (kvstore->getStorageProperties().hasEfficientVBDeletion()) {
-            shared_ptr<DispatcherCallback> invalidVBTableRemover(new InvalidVBTableRemover(this));
-            epstore->getDispatcher()->schedule(invalidVBTableRemover, NULL,
-                                               Priority::VBucketDeletionPriority,
-                                               INVALID_VBTABLE_DEL_FREQ);
+            if (kvstore[i]->getStorageProperties().hasEfficientVBDeletion()) {
+                shared_ptr<DispatcherCallback> invalidVBTableRemover(new InvalidVBTableRemover(this));
+                epstore->getDispatcher(i)->schedule(invalidVBTableRemover, NULL,
+                                                    Priority::VBucketDeletionPriority,
+                                                    INVALID_VBTABLE_DEL_FREQ);
+            }
         }
-#endif
     }
 
     if (ret == ENGINE_SUCCESS) {
@@ -3611,14 +3610,14 @@ static void doDispatcherStat(const char *prefix, const DispatcherState &ds,
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doDispatcherStats(const void *cookie,
                                                                 ADD_STAT add_stat) {
-    DispatcherState ds(epstore->getDispatcher()->getDispatcherState());
-    doDispatcherStat("dispatcher", ds, cookie, add_stat);
-
-    if (epstore->hasSeparateRODispatcher()) {
-        DispatcherState rods(epstore->getRODispatcher()->getDispatcherState());
-        doDispatcherStat("ro_dispatcher", rods, cookie, add_stat);
+    for (int i = 0; i < numKVStores; ++i) {
+        DispatcherState ds(epstore->getDispatcher(i)->getDispatcherState());
+        doDispatcherStat("dispatcher", ds, cookie, add_stat);
+        if (epstore->hasSeparateRODispatcher(i)) {
+            DispatcherState rods(epstore->getRODispatcher(i)->getDispatcherState());
+            doDispatcherStat("ro_dispatcher", rods, cookie, add_stat);
+        }
     }
-
     DispatcherState nds(epstore->getNonIODispatcher()->getDispatcherState());
     doDispatcherStat("nio_dispatcher", nds, cookie, add_stat);
 

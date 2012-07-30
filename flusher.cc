@@ -114,7 +114,7 @@ void Flusher::initialize(TaskId tid) {
 
     hrtime_t startTime = gethrtime();
     vbStateLoaded = false;
-    store->warmup(vbStateLoaded);
+    store->warmup(vbStateLoaded, flusherId);
     store->stats.warmupTime.set((gethrtime() - startTime) / 1000);
     store->stats.warmupComplete.set(true);
 

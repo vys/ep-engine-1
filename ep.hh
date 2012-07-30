@@ -582,24 +582,24 @@ public:
      * You can use this to queue io related jobs.  Don't do stupid things with
      * it.
      */
-    Dispatcher* getDispatcher(void) {
+    Dispatcher* getDispatcher(int i) {
         assert(dispatcher);
-        return dispatcher;
+        return dispatcher[i];
     }
 
     /**
      * Get the current read-only IO dispatcher.
      */
-    Dispatcher* getRODispatcher(void) {
+    Dispatcher* getRODispatcher(int i) {
         assert(roDispatcher);
-        return roDispatcher;
+        return roDispatcher[i];
     }
 
     /**
      * True if the RW dispatcher and RO dispatcher are distinct.
      */
-    bool hasSeparateRODispatcher() {
-        return dispatcher != roDispatcher;
+    bool hasSeparateRODispatcher(int i) {
+        return dispatcher[i] != roDispatcher[i];
     }
 
     /**
@@ -711,7 +711,7 @@ public:
                     NULL, prio, 0, isDaemon);
     }
 
-    void warmup(Atomic<bool> &vbStateLoaded);
+    void warmup(Atomic<bool> &vbStateLoaded, int id);
 
     int getTxnSize() {
         return tctx[0]->getTxnSize();
@@ -761,14 +761,14 @@ public:
                                 rel_time_t currentTime);
 
 
-    KVStore* getRWUnderlying() {
+    KVStore* getRWUnderlying(int id) {
         // This method might also be called leakAbstraction()
-        return rwUnderlying;
+        return rwUnderlying[id];
     }
 
-    KVStore* getROUnderlying() {
+    KVStore* getROUnderlying(int id) {
         // This method might also be called leakAbstraction()
-        return roUnderlying;
+        return roUnderlying[id];
     }
 
     InvalidItemDbPager* getInvalidItemDbPager() {
@@ -817,8 +817,13 @@ public:
      */
     void completeOnlineRestore();
 
-    int getKvstoreId(const std::string &key, uint16_t vbid);
+    int getKVStoreId(const std::string &key, uint16_t vbid);
 
+    //FIXME:: when it supports multiple vbuckets
+    int getVBucketToKVId(int vbid) {
+        (void) vbid;
+        return 0;
+    }
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -866,7 +871,8 @@ private:
     }
 
     std::queue<queued_item> *beginFlush(int id);
-    void pushToOutgoingQueue(std::queue<queued_item> *flushQueue);
+    void pushToOutgoingQueue(std::vector<queued_item> *dbShardQueues,
+                             std::queue<queued_item> *flushQueue, int id);
     void requeueRejectedItems(std::queue<queued_item> *rejects,
                               std::queue<queued_item> *flushQueue);
     void completeFlush(rel_time_t flush_start);
@@ -879,20 +885,20 @@ private:
                  std::queue<queued_item> *rejectQueue,
                  int id);
     int flushOneDeleteAll(void);
-    int flushOneDelOrSet(const queued_item &qi, std::queue<queued_item> *rejectQueue);
+    int flushOneDelOrSet(const queued_item &qi, std::queue<queued_item> *rejectQueue, int id);
 
     StoredValue *fetchValidValue(RCPtr<VBucket> vb, const std::string &key,
                                  int bucket_num, bool wantsDeleted=false);
 
-    bool shouldPreemptFlush(size_t completed) {
+    bool shouldPreemptFlush(size_t completed, int i) {
         return (completed > 100
                 && bgFetchQueue > 0
-                && !hasSeparateRODispatcher());
+                && !hasSeparateRODispatcher(i));
     }
 
     size_t getWriteQueueSize(void);
 
-    bool hasItemsForPersistence(void);
+    bool hasItemsForPersistence(int id);
 
     friend class Flusher;
     friend class BGFetchCallback;
@@ -906,13 +912,11 @@ private:
     EventuallyPersistentEngine &engine;
     EPStats                    &stats;
     bool                        doPersistence;
-    KVStore                     ** allRwUnderlying;
-    KVStore                    *rwUnderlying;
-    KVStore                    *roUnderlying;
+    KVStore                    **rwUnderlying;
+    KVStore                    **roUnderlying;
     StorageProperties          storageProperties;
-    Dispatcher                *dispatcher;
-    Dispatcher                **allDispatcher;
-    Dispatcher                *roDispatcher;
+    Dispatcher                **dispatcher;
+    Dispatcher                **roDispatcher;
     Dispatcher                *nonIODispatcher;
     Flusher                   *flusher;
     Flusher                   **allFlusher;
@@ -920,7 +924,7 @@ private:
     VBucketMap                 vbuckets;
     SyncObject                 mutex;
     std::queue<queued_item>    writing;
-    std::vector<queued_item>  *dbShardQueues;
+//    std::vector<queued_item>  *dbShardQueues;
     pthread_t                  thread;
     Atomic<size_t>             bgFetchQueue;
     Atomic<bool>               diskFlushAll;

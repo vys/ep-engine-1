@@ -113,7 +113,8 @@ public:
     bool callback(Dispatcher &, TaskId) {
         RememberingCallback<GetValue> gcb;
 
-        ep->getROUnderlying()->get(key, rowid, vbucket, vbver, gcb);
+        int id = ep->getKVStoreId(key, vbucket);
+        ep->getROUnderlying(id)->get(key, rowid, vbucket, vbver, gcb);
         gcb.waitForValue();
         assert(gcb.fired);
         lookup_cb->callback(gcb.val);
@@ -366,46 +367,32 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
 #endif
     doPersistence = getenv("EP_NO_PERSISTENCE") == NULL;
 
-    allDispatcher = new Dispatcher *[numKVStores];
-    allRwUnderlying = new KVStore *[numKVStores];
+    dispatcher = new Dispatcher *[numKVStores];
+    roDispatcher = new Dispatcher *[numKVStores];
+    rwUnderlying = new KVStore *[numKVStores];
+    roUnderlying = new KVStore *[numKVStores];
     allFlusher = new Flusher *[numKVStores];
     tctx = new TransactionContext *[numKVStores];
 
     for (int i = 0; i < numKVStores; ++i) {
-        allRwUnderlying[i] = t[i];
-        allDispatcher[i] = new Dispatcher(theEngine);
-        allFlusher[i] = new Flusher(this, allDispatcher[i], i);
+        rwUnderlying[i] = t[i];
+        dispatcher[i] = new Dispatcher(theEngine);
+        allFlusher[i] = new Flusher(this, dispatcher[i], i);
         tctx[i] = new TransactionContext(stats, t[i], 
                                          theEngine.syncRegistry, i);
-#if 0
-        if (storageProperties.maxConcurrency() > 1
-            && storageProperties.maxReaders() > 1
+        if (t[i]->getStorageProperties().maxConcurrency() > 1
+            && t[i]->getStorageProperties().maxReaders() > 1
             && concurrentDB) {
             roUnderlying[i] = engine.newKVStore("dummy");
-            roDispatcher = new Dispatcher(theEngine);
-            roDispatcher->start();
+            roDispatcher[i] = new Dispatcher(theEngine);
+            roDispatcher[i]->start();
         } else {
-            roUnderlying = rwUnderlying;
-            roDispatcher = dispatcher;
+            roUnderlying[i] = rwUnderlying[i];
+            roDispatcher[i]= dispatcher[i];
         }
-#endif
     }
-    rwUnderlying = allRwUnderlying[0];
-    roUnderlying = rwUnderlying;
     flusher = allFlusher[0];
-    roDispatcher = dispatcher = allDispatcher[0];
-#if 0
-    if (storageProperties.maxConcurrency() > 1
-        && storageProperties.maxReaders() > 1
-        && concurrentDB) {
-        roUnderlying = engine.newKVStore();
-        roDispatcher = new Dispatcher(theEngine);
-        roDispatcher->start();
-    } else {
-        roUnderlying = rwUnderlying;
-        roDispatcher = dispatcher;
-    }
-#endif
+
     nonIODispatcher = new Dispatcher(theEngine);
     invalidItemDbPager = new InvalidItemDbPager(this, stats, engine.getVbDelChunkSize());
 
@@ -424,9 +411,6 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     for (size_t i = 0; i < BASE_VBUCKET_SIZE; ++i) {
         persistenceCheckpointIds[i] = 0;
     }
-
-    size_t num_shards = rwUnderlying->getNumShards();
-    dbShardQueues = new std::vector<queued_item>[num_shards];
 
     startDispatcher();
     startFlusher();
@@ -452,29 +436,30 @@ EventuallyPersistentStore::~EventuallyPersistentStore() {
     bool forceShutdown = engine.isForceShutdown();
     stopFlusher();
     for (int i = 0; i < numKVStores; ++i) {
-        allDispatcher[i]->stop(forceShutdown);
+        dispatcher[i]->stop(forceShutdown);
+        if (hasSeparateRODispatcher(i)) {
+            roDispatcher[i]->stop(forceShutdown);
+            delete []roUnderlying[i];
+        }
         delete []allFlusher[i];
-        delete []allDispatcher[i];
+        delete []dispatcher[i];
         delete []tctx[i];
-    }
-    if (hasSeparateRODispatcher()) {
-        roDispatcher->stop(forceShutdown);
         delete roUnderlying;
     }
+
     nonIODispatcher->stop(forceShutdown);
 
     delete []allFlusher;
-    delete []allDispatcher;
+    delete []dispatcher;
     delete []tctx;
 
     delete nonIODispatcher;
     delete []persistenceCheckpointIds;
-    delete []dbShardQueues;
 }
 
 void EventuallyPersistentStore::startDispatcher() {
     for (int i = 0 ; i < numKVStores; ++i) {
-        allDispatcher[i]->start();
+        dispatcher[i]->start();
     }
 }
 
@@ -799,7 +784,7 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority) {
 
     VBucketStateVisitor v(vbuckets);
     visit(v);
-    if (!rwUnderlying->snapshotVBuckets(v.states)) {
+    if (!rwUnderlying[0]->snapshotVBuckets(v.states)) {
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Rescheduling a task to snapshot vbuckets\n");
         scheduleVBSnapshot(priority);
@@ -844,7 +829,8 @@ void EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p) {
             return;
         }
     }
-    dispatcher->schedule(shared_ptr<DispatcherCallback>(new SnapshotVBucketsCallback(this, p)),
+    // FIXME:: VANDANA
+    dispatcher[0]->schedule(shared_ptr<DispatcherCallback>(new SnapshotVBucketsCallback(this, p)),
                          NULL, p, 0, false);
 }
 
@@ -858,7 +844,7 @@ EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vb_ve
     if (!vb || vb->getState() == vbucket_state_dead || vbuckets.isBucketDeletion(vbid)) {
         lh.unlock();
         if (row_range.first < 0 || row_range.second < 0 ||
-            rwUnderlying->delVBucket(vbid, vb_version, row_range)) {
+            rwUnderlying[0]->delVBucket(vbid, vb_version, row_range)) {
             if (isLastChunk) {
                 vbuckets.setBucketDeletion(vbid, false);
                 ++stats.vbucketDeletions;
@@ -879,7 +865,7 @@ EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vbver
     RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
     if (!vb || vb->getState() == vbucket_state_dead || vbuckets.isBucketDeletion(vbid)) {
         lh.unlock();
-        if (rwUnderlying->delVBucket(vbid, vbver)) {
+        if (rwUnderlying[0]->delVBucket(vbid, vbver)) {
             vbuckets.setBucketDeletion(vbid, false);
             ++stats.vbucketDeletions;
             return vbucket_del_success;
@@ -893,12 +879,13 @@ EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vbver
 
 void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version,
                                                    double delay=0) {
+    int i = getVBucketToKVId(vb->getId());
     if (vbuckets.setBucketDeletion(vb->getId(), true)) {
         if (storageProperties.hasEfficientVBDeletion()) {
             shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
                                                                               vb_version,
                                                                               stats));
-            dispatcher->schedule(cb,
+            dispatcher[i]->schedule(cb,
                                  NULL, Priority::FastVBucketDeletionPriority,
                                  delay, false);
         } else {
@@ -907,7 +894,7 @@ void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t v
             shared_ptr<DispatcherCallback> cb(new VBucketDeletionCallback(this, vb, vb_version,
                                                                           stats, chunk_size,
                                                                           vb_chunk_del_time));
-            dispatcher->schedule(cb,
+            dispatcher[i]->schedule(cb,
                                  NULL, Priority::VBucketDeletionPriority,
                                  delay, false);
         }
@@ -981,7 +968,8 @@ void EventuallyPersistentStore::completeBGFetch(const std::string &key,
     // Go find the data
     RememberingCallback<GetValue> gcb;
 
-    roUnderlying->get(key, rowid, vbucket, vbver, gcb);
+    int id = getKVStoreId(key, vbucket);
+    roUnderlying[id]->get(key, rowid, vbucket, vbver, gcb);
     gcb.waitForValue();
     assert(gcb.fired);
 
@@ -1038,7 +1026,8 @@ void EventuallyPersistentStore::bgFetch(const std::string &key,
     ss << "Queued a background fetch, now at " << bgFetchQueue.get()
        << std::endl;
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, ss.str().c_str());
-    roDispatcher->schedule(dcb, NULL, Priority::BgFetcherPriority, bgFetchDelay);
+    int i = getKVStoreId(key, vbucket);
+    roDispatcher[i]->schedule(dcb, NULL, Priority::BgFetcherPriority, bgFetchDelay);
 }
 
 GetValue EventuallyPersistentStore::get(const std::string &key,
@@ -1197,7 +1186,8 @@ EventuallyPersistentStore::getFromUnderlying(const std::string &key,
                                                                             v->getId(),
                                                                             cookie, cb));
         assert(bgFetchQueue > 0);
-        roDispatcher->schedule(dcb, NULL, Priority::VKeyStatBgFetcherPriority, bgFetchDelay);
+        int i = getKVStoreId(key, vbucket);
+        roDispatcher[i]->schedule(dcb, NULL, Priority::VKeyStatBgFetcherPriority, bgFetchDelay);
         return ENGINE_EWOULDBLOCK;
     } else if (isRestoreEnabled()) {
         return ENGINE_TMPFAIL;
@@ -1466,7 +1456,7 @@ void EventuallyPersistentStore::enqueueCommit() {
 
 std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
 
-    if (!hasItemsForPersistence() && !diskFlushAll) {
+    if (!hasItemsForPersistence(id) && !diskFlushAll) {
         stats.dirtyAge = 0;
         // If the persistence queue is empty, reset queue-related stats for each vbucket.
         size_t numOfVBuckets = vbuckets.getSize();
@@ -1483,6 +1473,10 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
         }
     } else {
         std::queue<queued_item> *flushQueue = new std::queue<queued_item>();
+        size_t num_shards = rwUnderlying[id]->getNumShards();
+        std::vector<queued_item>  *dbShardQueues;
+        dbShardQueues = new std::vector<queued_item>[num_shards];
+
         assert(rwUnderlying);
         if (diskFlushAll) {
             queued_item qi(new QueuedItem("", 0xffff, queue_op_flush));
@@ -1527,7 +1521,7 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
             // Perform further deduplication here by removing duplicate mutations for each key.
             for (; reverse_it != item_list.rend(); ++reverse_it) {
                 queued_item qi = *reverse_it;
-                if (getKvstoreId(qi->getKey(), vb) != id) {
+                if (getKVStoreId(qi->getKey(), vb) != id) {
                     continue;
                 }
                 switch (qi->getOperation()) {
@@ -1547,7 +1541,7 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
             std::set<queued_item, CompareQueuedItemsByKey>::iterator sit = item_set.begin();
             for (; sit != item_set.end(); ++sit) {
                 const queued_item &qitem = *sit;
-                shard_id = rwUnderlying->getShardId(*qitem);
+                shard_id = rwUnderlying[id]->getShardId(*qitem);
                 dbShardQueues[shard_id].push_back(*sit);
             }
             num_items += item_set.size();
@@ -1556,7 +1550,7 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
         }
 
         if (num_items > 0) {
-            pushToOutgoingQueue(flushQueue);
+            pushToOutgoingQueue(dbShardQueues, flushQueue, id);
         }
         size_t queue_size = getWriteQueueSize();
         stats.flusherDedup += dedup;
@@ -1565,18 +1559,21 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Flushing %d items with %d still in queue\n",
                          flushQueue->size(), queue_size);
+        delete []dbShardQueues;
         return flushQueue;
     }
     return NULL;
 }
 
-void EventuallyPersistentStore::pushToOutgoingQueue(std::queue<queued_item>* flushQ) {
-    size_t num_shards = rwUnderlying->getNumShards();
+void EventuallyPersistentStore::pushToOutgoingQueue(
+                                std::vector<queued_item> *dbShardQueues,
+                                std::queue<queued_item>* flushQ, int id) {
+    size_t num_shards = rwUnderlying[id]->getNumShards();
     for (size_t i = 0; i < num_shards; ++i) {
         if (dbShardQueues[i].empty()) {
             continue;
         }
-        rwUnderlying->optimizeWrites(dbShardQueues[i]);
+        rwUnderlying[id]->optimizeWrites(dbShardQueues[i]);
         std::vector<queued_item>::iterator it = dbShardQueues[i].begin();
         for(; it != dbShardQueues[i].end(); ++it) {
             flushQ->push(*it);
@@ -1642,7 +1639,7 @@ int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
     int oldest = stats.min_data_age;
     int completed(0);
     for (completed = 0;
-         completed < tsz && !q->empty() && !shouldPreemptFlush(completed);
+         completed < tsz && !q->empty() && !shouldPreemptFlush(completed, id);
          ++completed) {
 
         int n = flushOne(q, rejectQueue, id);
@@ -1650,7 +1647,7 @@ int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
             oldest = n;
         }
     }
-    if (shouldPreemptFlush(completed)) {
+    if (shouldPreemptFlush(completed, id)) {
         ++stats.flusherPreempts;
     } else {
         tctx[id]->commit();
@@ -1673,7 +1670,7 @@ size_t EventuallyPersistentStore::getWriteQueueSize(void) {
     return size;
 }
 
-bool EventuallyPersistentStore::hasItemsForPersistence(void) {
+bool EventuallyPersistentStore::hasItemsForPersistence(int kvid) {
     bool hasItems = false;
     size_t numOfVBuckets = vbuckets.getSize();
     for (size_t i = 0; i < numOfVBuckets; ++i) {
@@ -1683,7 +1680,7 @@ bool EventuallyPersistentStore::hasItemsForPersistence(void) {
         if (vb && (vb->getState() != vbucket_state_dead)) {
             LockHolder rlh(restore.mutex);
             std::map<uint16_t, std::vector<queued_item> >::iterator it = restore.items.find(vbid);
-            if (vb->checkpointManager.hasNextForPersistence() ||
+            if (vb->checkpointManager.hasNextForPersistence(kvid) ||
                 vb->getBackfillSize() > 0 ||
                 (it != restore.items.end() && !it->second.empty())) {
                 hasItems = true;
@@ -1919,7 +1916,9 @@ private:
 };
 
 int EventuallyPersistentStore::flushOneDeleteAll() {
-    rwUnderlying->reset();
+    for (int i = 0; i < numKVStores; ++i) {
+        rwUnderlying[i]->reset();
+    }
     diskFlushAll.cas(true, false);
     return 1;
 }
@@ -1928,7 +1927,8 @@ int EventuallyPersistentStore::flushOneDeleteAll() {
 // still a bit better off running the older code that figures it out
 // based on what's in memory.
 int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
-                                           std::queue<queued_item> *rejectQueue) {
+                                           std::queue<queued_item> *rejectQueue,
+                                           int id) {
 
     RCPtr<VBucket> vb = getVBucket(qi->getVBucketId());
     if (!vb) {
@@ -2032,7 +2032,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
                 BlockTimer timer(rowid == -1 ?
                                  &stats.diskInsertHisto : &stats.diskUpdateHisto);
                 PersistenceCallback cb(qi, rejectQueue, this, queued, dirtied, &stats);
-                rwUnderlying->set(qi->getItem(), qi->getVBucketVersion(), cb);
+                rwUnderlying[id]->set(qi->getItem(), qi->getVBucketVersion(), cb);
                 if (rowid == -1)  {
                     ++vb->opsCreate;
                 } else {
@@ -2047,7 +2047,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
         if (rowid > 0) {
             uint16_t vbid(qi->getVBucketId());
             uint16_t vbver(vbuckets.getBucketVersion(vbid));
-            rwUnderlying->del(qi->getKey(), rowid, vbid, vbver, cb);
+            rwUnderlying[id]->del(qi->getKey(), rowid, vbid, vbver, cb);
             ++vb->opsDelete;
         } else {
             // bypass deletion if missing items, but still call the
@@ -2076,7 +2076,7 @@ int EventuallyPersistentStore::flushOne(std::queue<queued_item> *q,
         if (qi->getVBucketVersion() == vbuckets.getBucketVersion(qi->getVBucketId())) {
             size_t prevRejectCount = rejectQueue->size();
 
-            rv = flushOneDelOrSet(qi, rejectQueue);
+            rv = flushOneDelOrSet(qi, rejectQueue, id);
             if (rejectQueue->size() == prevRejectCount) {
                 // flush operation was not rejected
                 tctx[id]->addUncommittedItem(qi);
@@ -2084,7 +2084,7 @@ int EventuallyPersistentStore::flushOne(std::queue<queued_item> *q,
         }
         break;
     case queue_op_del:
-        rv = flushOneDelOrSet(qi, rejectQueue);
+        rv = flushOneDelOrSet(qi, rejectQueue, id);
         break;
     case queue_op_commit:
         tctx[id]->commit();
@@ -2179,10 +2179,11 @@ void EventuallyPersistentStore::completeOnlineRestore() {
     restore.itemsDeleted.clear();
 }
 
-void EventuallyPersistentStore::warmup(Atomic<bool> &vbStateLoaded) {
+void EventuallyPersistentStore::warmup(Atomic<bool> &vbStateLoaded, int id) {
     LoadStorageKVPairCallback cb(vbuckets, stats, this);
+    if (id == 0) {
     std::map<std::pair<uint16_t, uint16_t>, vbucket_state> state =
-        roUnderlying->listPersistedVbuckets();
+        roUnderlying[0]->listPersistedVbuckets();
     std::map<std::pair<uint16_t, uint16_t>, vbucket_state>::iterator it;
     for (it = state.begin(); it != state.end(); ++it) {
         std::pair<uint16_t, uint16_t> vbp = it->first;
@@ -2194,8 +2195,9 @@ void EventuallyPersistentStore::warmup(Atomic<bool> &vbStateLoaded) {
                        VBucket::fromString(vbs.state.c_str()));
     }
     vbStateLoaded.set(true);
+    }
 
-    roUnderlying->dump(cb);
+    roUnderlying[id]->dump(cb);
     invalidItemDbPager->createRangeList();
 }
 
@@ -2405,15 +2407,15 @@ bool VBCBAdaptor::callback(Dispatcher & d, TaskId t) {
     return !isdone;
 }
 
-int EventuallyPersistentStore::getKvstoreId(const std::string &key, uint16_t vbid)
+int EventuallyPersistentStore::getKVStoreId(const std::string &key, uint16_t vbid)
 {
     (void) vbid;
-    int h=5381;
+    int h = 0;
     int i=0;
     const char *str = key.c_str();
 
     for(i=0; str[i] != 0x00; i++) {
-        h = ((h << 5) + h) ^ str[i];
+        h = ( h << 4 ) ^ ( h >> 28 ) ^ str[i];
     }
     return std::abs(h) % (int)numKVStores;
 }

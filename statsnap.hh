@@ -21,7 +21,7 @@ class EventuallyPersistentEngine;
  */
 class StatSnap : public DispatcherCallback {
 public:
-    StatSnap(EventuallyPersistentEngine *e) : engine(e) { }
+    StatSnap(EventuallyPersistentEngine *e, int _kvid) : engine(e), kvid(_kvid) { }
 
     bool callback(Dispatcher &d, TaskId t);
 
@@ -49,6 +49,7 @@ public:
 private:
     EventuallyPersistentEngine         *engine;
     std::map<std::string, std::string>  map;
+    int kvid;
 };
 
 #endif /* STATSNAP_HH */

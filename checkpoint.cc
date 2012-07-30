@@ -256,7 +256,7 @@ void CheckpointManager::registerPersistenceCursor(int i) {
                         checkpointList.front()->begin());
     checkpointList.front()->registerCursorName(name);
     persistenceCursors[name] = cursor;
-    persistenceVector.push_back(cursor);
+    persistenceVector.push_back(&persistenceCursors[name]);
 }
 
 protocol_binary_response_status CheckpointManager::startOnlineUpdate() {
@@ -803,12 +803,12 @@ uint64_t CheckpointManager::getAllItemsForPersistence(std::vector<queued_item> &
     if (doOnlineUpdate) {
         // Get all the items up to the start of the onlineUpdate cursor.
         uint64_t barrier = (*(onlineUpdateCursor.currentCheckpoint))->getId();
-        checkpointId = getAllItemsFromCurrentPosition(persistenceVector.at(id), barrier, items);
-        persistenceVector.at(id).offset += items.size();
+        checkpointId = getAllItemsFromCurrentPosition(*(persistenceVector.at(id)), barrier, items);
+        persistenceVector.at(id)->offset += items.size();
     } else {
         // Get all the items up to the end of the current open checkpoint.
-        checkpointId = getAllItemsFromCurrentPosition(persistenceVector.at(id), 0, items);
-        persistenceVector.at(id).offset = numItems;
+        checkpointId = getAllItemsFromCurrentPosition(*(persistenceVector.at(id)), 0, items);
+        persistenceVector.at(id)->offset = numItems;
     }
     return checkpointId;
 }
@@ -1190,18 +1190,15 @@ bool CheckpointManager::hasNext(const std::string &name) {
 }
 
 //FIXME: VANDANA: Handle persistence items on a per flusher basis?
-bool CheckpointManager::hasNextForPersistence() {
+bool CheckpointManager::hasNextForPersistence(int id) {
     LockHolder lh(queueLock);
-    bool hasMore = false;
-    std::map<const std::string, CheckpointCursor>::iterator it = persistenceCursors.begin();
-    for (; it != persistenceCursors.end(); it++) {
-        std::list<queued_item>::iterator curr = it->second.currentPos;
-        ++curr;
-        if (curr != (*(it->second.currentCheckpoint))->end() ||
-            (*(it->second.currentCheckpoint))->getState() != opened) {
-            hasMore = true;
-            break;
-        }
+    bool hasMore = true;
+    CheckpointCursor cursor = *(persistenceVector.at(id));
+    std::list<queued_item>::iterator curr = cursor.currentPos;
+    ++curr;
+    if (curr == (*(cursor.currentCheckpoint))->end() &&
+        (*(cursor.currentCheckpoint))->getState() == opened) {
+        hasMore = false;
     }
     return hasMore;
 }

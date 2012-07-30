@@ -15,7 +15,7 @@ bool InvalidVBTableRemover::callback(Dispatcher &d, TaskId t) {
         // dynamic configuration manager in ns_server, which adjusts this threshold dynamically
         // based on various monitoring stats from each node.
         hrtime_t start_time(gethrtime());
-        engine->getEpStore()->getRWUnderlying()->destroyInvalidVBuckets(true);
+        engine->getEpStore()->getRWUnderlying(0)->destroyInvalidVBuckets(true);
         hrtime_t wall_time = (gethrtime() - start_time) / 1000;
         engine->getEpStats().diskInvalidVBTableDelHisto.add(wall_time);
     }

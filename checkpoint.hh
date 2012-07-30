@@ -448,7 +448,7 @@ public:
 
     bool hasNext(const std::string &name);
 
-    bool hasNextForPersistence();
+    bool hasNextForPersistence(int id);
 
     static void initializeCheckpointConfig(size_t checkpoint_period,
                                            size_t checkpoint_max_items,
@@ -593,7 +593,7 @@ private:
     uint64_t                 mutationCounter;
     std::list<Checkpoint*>   checkpointList;
     std::map<const std::string, CheckpointCursor> persistenceCursors;
-    std::vector<CheckpointCursor> persistenceVector;
+    std::vector<CheckpointCursor *> persistenceVector;
     CheckpointCursor         onlineUpdateCursor;
     bool                     isCollapsedCheckpoint;
     uint64_t                 lastClosedCheckpointId;

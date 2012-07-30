@@ -98,7 +98,7 @@ void BackFillVisitor::visit(StoredValue *v) {
     }
     std::string k = v->getKey();
     queued_item qi(new QueuedItem(k, currentBucket->getId(), queue_op_set, -1, v->getId()));
-    uint16_t shardId = engine->kvstore[(engine->epstore->getKvstoreId(k, currentBucket->getId()))]->getShardId(*qi);
+    uint16_t shardId = engine->kvstore[(engine->epstore->getKVStoreId(k, currentBucket->getId()))]->getShardId(*qi);
     found.push_back(std::make_pair(shardId, qi));
 }
 
@@ -107,8 +107,9 @@ void BackFillVisitor::apply(void) {
     if (efficientVBDump) {
         std::vector<uint16_t>::iterator it = vbuckets.begin();
         for (; it != vbuckets.end(); it++) {
-            Dispatcher *d(engine->epstore->getRODispatcher());
-            KVStore *underlying(engine->epstore->getROUnderlying());
+            //VANDANA FIXME:: when multiple vbuckets are supported
+            Dispatcher *d(engine->epstore->getRODispatcher(0));
+            KVStore *underlying(engine->epstore->getROUnderlying(0));
             assert(d);
             shared_ptr<DispatcherCallback> cb(new BackfillDiskLoad(name,
                                                                    engine,
