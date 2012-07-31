@@ -253,7 +253,7 @@ void CheckpointManager::registerPersistenceCursor(int i) {
     std::string name(n);
     assert(checkpointList.size() > 0);
     CheckpointCursor cursor(name, checkpointList.begin(),
-                        checkpointList.front()->begin());
+                            checkpointList.front()->begin());
     checkpointList.front()->registerCursorName(name);
     persistenceCursors[name] = cursor;
     persistenceVector.push_back(&persistenceCursors[name]);
@@ -634,7 +634,7 @@ void CheckpointManager::removeInvalidCursorsOnCheckpoint(Checkpoint *pCheckpoint
     std::set<std::string>::const_iterator cit = cursors.begin();
     std::map<const std::string, CheckpointCursor>::iterator mit;
     for (; cit != cursors.end(); ++cit) {
-        // Check it with persistence cursor
+        // Check it with persistence cursors
         mit = persistenceCursors.find(*cit);
         if (mit == persistenceCursors.end() || pCheckpoint != *(mit->second.currentCheckpoint)) {
             invalidCursorNames.push_back(*cit);
@@ -796,7 +796,6 @@ uint64_t CheckpointManager::getAllItemsFromCurrentPosition(CheckpointCursor &cur
     return checkpointId;
 }
 
-//FIXME: VANDANA handle this case as well
 uint64_t CheckpointManager::getAllItemsForPersistence(std::vector<queued_item> &items, int id) {
     LockHolder lh(queueLock);
     uint64_t checkpointId;
@@ -1189,7 +1188,6 @@ bool CheckpointManager::hasNext(const std::string &name) {
     return hasMore;
 }
 
-//FIXME: VANDANA: Handle persistence items on a per flusher basis?
 bool CheckpointManager::hasNextForPersistence(int id) {
     LockHolder lh(queueLock);
     bool hasMore = true;

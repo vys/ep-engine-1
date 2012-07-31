@@ -777,13 +777,6 @@ public:
 
     void deleteExpiredItems(std::list<std::pair<uint16_t, std::string> > &);
 
-    /**
-     * Get the memoized storage properties from the DB.kv
-     */
-    const StorageProperties getStorageProperties() const {
-        return storageProperties;
-    }
-
     void scheduleVBSnapshot(const Priority &priority);
 
     const VBucketMap &getVBuckets() {
@@ -819,11 +812,8 @@ public:
 
     int getKVStoreId(const std::string &key, uint16_t vbid);
 
-    //FIXME:: when it supports multiple vbuckets
-    int getVBucketToKVId(int vbid) {
-        (void) vbid;
-        return 0;
-    }
+    int getVBucketToKVId(uint16_t vbid);
+
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -914,7 +904,6 @@ private:
     bool                        doPersistence;
     KVStore                    **rwUnderlying;
     KVStore                    **roUnderlying;
-    StorageProperties          storageProperties;
     Dispatcher                **dispatcher;
     Dispatcher                **roDispatcher;
     Dispatcher                *nonIODispatcher;

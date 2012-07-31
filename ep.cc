@@ -353,18 +353,8 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
                                                      bool concurrentDB,
                                                      int numKV) :
     engine(theEngine), stats(engine.getEpStats()),
-    storageProperties(t[0]->getStorageProperties()),
     diskFlushAll(false), tctx(NULL), bgFetchDelay(0), numKVStores(numKV)
 {
-    (void)concurrentDB;
-#if 0
-    getLogger()->log(EXTENSION_LOG_INFO, NULL,
-                     "Storage props:  c=%d/r=%d/rw=%d\n",
-                     storageProperties.maxConcurrency(),
-                     storageProperties.maxReaders(),
-                     storageProperties.maxWriters());
-
-#endif
     doPersistence = getenv("EP_NO_PERSISTENCE") == NULL;
 
     dispatcher = new Dispatcher *[numKVStores];
@@ -390,6 +380,13 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
             roUnderlying[i] = rwUnderlying[i];
             roDispatcher[i]= dispatcher[i];
         }
+
+        getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                         "Storage props:  c=%d/r=%d/rw=%d\n",
+                         t[i]->getStorageProperties().maxConcurrency(),
+                         t[i]->getStorageProperties().maxReaders(),
+                         t[i]->getStorageProperties().maxWriters());
+
     }
     flusher = allFlusher[0];
 
@@ -439,12 +436,12 @@ EventuallyPersistentStore::~EventuallyPersistentStore() {
         dispatcher[i]->stop(forceShutdown);
         if (hasSeparateRODispatcher(i)) {
             roDispatcher[i]->stop(forceShutdown);
+            delete []roDispatcher[i];
             delete []roUnderlying[i];
         }
         delete []allFlusher[i];
         delete []dispatcher[i];
         delete []tctx[i];
-        delete roUnderlying;
     }
 
     nonIODispatcher->stop(forceShutdown);
@@ -452,6 +449,8 @@ EventuallyPersistentStore::~EventuallyPersistentStore() {
     delete []allFlusher;
     delete []dispatcher;
     delete []tctx;
+    delete []roUnderlying;
+    delete []roDispatcher;
 
     delete nonIODispatcher;
     delete []persistenceCheckpointIds;
@@ -879,13 +878,13 @@ EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vbver
 
 void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version,
                                                    double delay=0) {
-    int i = getVBucketToKVId(vb->getId());
+    int id = getVBucketToKVId(vb->getId());
     if (vbuckets.setBucketDeletion(vb->getId(), true)) {
-        if (storageProperties.hasEfficientVBDeletion()) {
+        if (rwUnderlying[id]->getStorageProperties().hasEfficientVBDeletion()) {
             shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
                                                                               vb_version,
                                                                               stats));
-            dispatcher[i]->schedule(cb,
+            dispatcher[id]->schedule(cb,
                                  NULL, Priority::FastVBucketDeletionPriority,
                                  delay, false);
         } else {
@@ -894,7 +893,7 @@ void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t v
             shared_ptr<DispatcherCallback> cb(new VBucketDeletionCallback(this, vb, vb_version,
                                                                           stats, chunk_size,
                                                                           vb_chunk_del_time));
-            dispatcher[i]->schedule(cb,
+            dispatcher[id]->schedule(cb,
                                  NULL, Priority::VBucketDeletionPriority,
                                  delay, false);
         }
@@ -1445,14 +1444,6 @@ void EventuallyPersistentStore::reset() {
         stats.queue_size.set(getWriteQueueSize() + 1);
     }
 }
-
-#if 0
-void EventuallyPersistentStore::enqueueCommit() {
-    queued_item qi(new QueuedItem("", 0, queue_op_commit));
-    writing.push(qi);
-    ++stats.totalEnqueued;
-}
-#endif
 
 std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
 
@@ -2418,4 +2409,10 @@ int EventuallyPersistentStore::getKVStoreId(const std::string &key, uint16_t vbi
         h = ( h << 4 ) ^ ( h >> 28 ) ^ str[i];
     }
     return std::abs(h) % (int)numKVStores;
+}
+
+// FIXME for a better distribution
+int EventuallyPersistentStore::getVBucketToKVId(uint16_t vbid)
+{
+    return vbid % numKVStores;
 }

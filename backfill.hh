@@ -61,7 +61,7 @@ public:
         queue(new std::list<queued_item>),
         found(), validityToken(token),
         maxBackfillSize(e->tapBacklogLimit), valid(true),
-        efficientVBDump(e->epstore->getStorageProperties().hasEfficientVBDump()),
+        efficientVBDump(false), //FIXME Fix effecient vbdump to work with multiple kvstores
         residentRatioBelowThreshold(false), sessionID(sid) {
         found.reserve(e->tapBacklogLimit);
     }

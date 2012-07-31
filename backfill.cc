@@ -107,9 +107,9 @@ void BackFillVisitor::apply(void) {
     if (efficientVBDump) {
         std::vector<uint16_t>::iterator it = vbuckets.begin();
         for (; it != vbuckets.end(); it++) {
-            //VANDANA FIXME:: when multiple vbuckets are supported
-            Dispatcher *d(engine->epstore->getRODispatcher(0));
-            KVStore *underlying(engine->epstore->getROUnderlying(0));
+            int kvid = engine->epstore->getVBucketToKVId(*it);
+            Dispatcher *d(engine->epstore->getRODispatcher(kvid));
+            KVStore *underlying(engine->epstore->getROUnderlying(kvid));
             assert(d);
             shared_ptr<DispatcherCallback> cb(new BackfillDiskLoad(name,
                                                                    engine,
