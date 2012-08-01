@@ -5,50 +5,68 @@
 #include <map>
 
 #include "common.hh"
+#include "ep_engine.h"
 #include "stats.hh"
 #include "kvstore.hh"
 #include "sqlite-kvstore.hh"
 
-KVStore *KVStore::create(db_type type, EPStats &stats,
-                         const KVStoreConfig &conf) {
+static const char *stringToCharPtr(std::string str) {
+    if (!str.empty()) {
+        return strdup(str.c_str());
+    }
+    return NULL;
+}
+
+KVStore *KVStore::create(EventuallyPersistentEngine &theEngine) {
+    Configuration &c = theEngine.getConfiguration();
     SqliteStrategy *sqliteInstance = NULL;
+    enum db_type type = multi_db;
+
+    if (!KVStore::stringToType(c.getDbStrategy().c_str(), type)) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                         "Unhandled db type: %s", c.getDbStrategy().c_str());
+        return NULL;
+    }
+
     switch (type) {
     case multi_db:
-        sqliteInstance = new MultiDBSingleTableSqliteStrategy(conf.location,
-                                                              conf.shardPattern,
-                                                              conf.initFile,
-                                                              conf.postInitFile,
-                                                              conf.shards);
+        sqliteInstance = new MultiDBSingleTableSqliteStrategy(
+                 stringToCharPtr(c.getDbname()),
+                 stringToCharPtr(c.getShardpattern()),
+                 stringToCharPtr(c.getInitfile()),
+                 stringToCharPtr(c.getPostInitfile()), c.getDbShards());
         break;
     case single_db:
-        sqliteInstance = new SingleTableSqliteStrategy(conf.location,
-                                                       conf.initFile,
-                                                       conf.postInitFile);
+        sqliteInstance = new SingleTableSqliteStrategy(
+                 stringToCharPtr(c.getDbname()),
+                 stringToCharPtr(c.getInitfile()),
+                 stringToCharPtr(c.getPostInitfile()));
         break;
     case single_mt_db:
-        sqliteInstance = new MultiTableSqliteStrategy(conf.location,
-                                                      conf.initFile,
-                                                      conf.postInitFile,
-                                                      conf.numVBuckets);
+        sqliteInstance = new MultiTableSqliteStrategy(
+                 stringToCharPtr(c.getDbname()),
+                 stringToCharPtr(c.getInitfile()),
+                 stringToCharPtr(c.getPostInitfile()), c.getMaxVbuckets());
         break;
     case multi_mt_db:
-        sqliteInstance = new ShardedMultiTableSqliteStrategy(conf.location,
-                                                             conf.shardPattern,
-                                                             conf.initFile,
-                                                             conf.postInitFile,
-                                                             conf.numVBuckets,
-                                                             conf.shards);
+        sqliteInstance = new ShardedMultiTableSqliteStrategy(
+                 stringToCharPtr(c.getDbname()),
+                 stringToCharPtr(c.getShardpattern()),
+                 stringToCharPtr(c.getInitfile()),
+                 stringToCharPtr(c.getPostInitfile()), c.getMaxVbuckets(),
+                 c.getDbShards());
         break;
     case multi_mt_vb_db:
-        sqliteInstance = new ShardedByVBucketSqliteStrategy(conf.location,
-                                                            conf.shardPattern,
-                                                            conf.initFile,
-                                                            conf.postInitFile,
-                                                            conf.numVBuckets,
-                                                            conf.shards);
+        sqliteInstance = new ShardedByVBucketSqliteStrategy(
+                 stringToCharPtr(c.getDbname()),
+                 stringToCharPtr(c.getShardpattern()),
+                 stringToCharPtr(c.getInitfile()),
+                 stringToCharPtr(c.getPostInitfile()), c.getMaxVbuckets(),
+                 c.getDbShards());
         break;
     }
-    return new StrategicSqlite3(stats,
+
+    return new StrategicSqlite3(theEngine.getEpStats(),
                                 shared_ptr<SqliteStrategy>(sqliteInstance));
 }
 

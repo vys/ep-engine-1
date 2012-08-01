@@ -30,14 +30,6 @@
 #define DEFAULT_BACKFILL_RESIDENT_THRESHOLD 0.9
 #define MINIMUM_BACKFILL_RESIDENT_THRESHOLD 0.7
 
-#ifndef DEFAULT_MIN_DATA_AGE
-#define DEFAULT_MIN_DATA_AGE 0
-#endif
-
-#ifndef DEFAULT_QUEUE_AGE_CAP
-#define DEFAULT_QUEUE_AGE_CAP 900
-#endif
-
 #ifndef DEFAULT_SYNC_TIMEOUT
 #define DEFAULT_SYNC_TIMEOUT 2500
 #define MAX_SYNC_TIMEOUT 60000
@@ -468,7 +460,9 @@ public:
     }
 
     void setTxnSize(int to) {
-        epstore->setTxnSize(to);
+        if (to > 0) {
+            epstore->setTxnSize(to);
+        }
     }
 
     void setBGFetchDelay(uint32_t to) {
@@ -555,6 +549,10 @@ public:
 
     SyncRegistry &getSyncRegistry() {
         return syncRegistry;
+    }
+
+    Configuration &getConfiguration() {
+        return configuration;
     }
 
     void notifyTapNotificationThread(void);
@@ -692,16 +690,17 @@ private:
 
     bool dbAccess(void) {
         bool ret = true;
-        if (access(dbname, F_OK) == -1) {
+        std::string dbname = configuration.getDbname();
+        if (access(dbname.c_str(), F_OK) == -1) {
             // file does not exist.. let's try to create it..
-            FILE *fp = fopen(dbname, "w");
+            FILE *fp = fopen(dbname.c_str(), "w");
             if (fp == NULL) {
                 ret= false;
             } else {
                 fclose(fp);
-                std::remove(dbname);
+                std::remove(dbname.c_str());
             }
-        } else if (access(dbname, R_OK) == -1 || access(dbname, W_OK) == -1) {
+        } else if (access(dbname.c_str(), R_OK) == -1 || access(dbname.c_str(), W_OK) == -1) {
             ret = false;
         }
 
@@ -760,16 +759,7 @@ private:
     // If this method returns NULL, you should return TAP_DISCONNECT
     TapProducer* getTapProducer(const void *cookie);
 
-    const char *dbname;
-    const char *shardPattern;
-    const char *initFile;
-    const char *postInitFile;
     enum db_type dbStrategy;
-    bool warmup;
-    bool wait_for_warmup;
-    bool fail_on_partial_warmup;
-    bool startVb0;
-    bool concurrentDB;
     bool forceShutdown;
     SERVER_HANDLE_V1 *serverApi;
     KVStore *kvstore;
@@ -795,13 +785,9 @@ private:
     TapConnMap tapConnMap;
     Mutex tapMutex;
     size_t maxItemSize;
-    size_t tapBacklogLimit;
     size_t memLowWat;
     size_t memHighWat;
-    size_t minDataAge;
-    size_t queueAgeCap;
     size_t itemExpiryWindow;
-    size_t checkpointRemoverInterval;
     struct ExpiryPagerDelta {
         ExpiryPagerDelta() : sleeptime(0) {}
         Mutex mutex;
@@ -809,8 +795,6 @@ private:
         TaskId task;
     } expiryPager;
 
-    size_t nVBuckets;
-    size_t dbShards;
     size_t vb_del_chunk_size;
     size_t vb_chunk_del_threshold_time;
     Atomic<uint64_t> mutation_count;

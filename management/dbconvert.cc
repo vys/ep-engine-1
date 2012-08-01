@@ -19,6 +19,7 @@
 #include <item.hh>
 #include <callbacks.hh>
 #include <sqlite-strategies.hh>
+#include <sqlite-kvstore.hh>
 
 #ifndef EX_USAGE
 #define EX_USAGE 64
@@ -42,20 +43,52 @@ static KVStore *getStore(EPStats &st,
                          const char *strategyName,
                          const char *shardPattern,
                          const char *initFile = NULL) {
-    db_type dbStrategy;
+    db_type dbStrategy = multi_db;
 
     if (!KVStore::stringToType(strategyName, dbStrategy)) {
         cerr << "Unable to parse strategy type:  " << strategyName << endl;
         exit(EX_USAGE);
     }
 
-    const char *postInitFile(NULL);
     size_t nVBuckets(1024);
     size_t dbShards(4);
+    SqliteStrategy *sqliteInstance = NULL;
 
-    KVStoreConfig conf(path, shardPattern, initFile,
-                       postInitFile, nVBuckets, dbShards);
-    return KVStore::create(dbStrategy, st, conf);
+    switch (dbStrategy) {
+    case multi_db:
+        sqliteInstance = new MultiDBSingleTableSqliteStrategy(path,
+                                                              shardPattern,
+                                                              initFile,
+                                                              NULL, dbShards);
+        break;
+    case single_db:
+        sqliteInstance = new SingleTableSqliteStrategy(path,
+                                                       initFile,
+                                                       NULL);
+        break;
+    case single_mt_db:
+        sqliteInstance = new MultiTableSqliteStrategy(path,
+                                                      initFile,
+                                                      NULL, nVBuckets);
+        break;
+    case multi_mt_db:
+        sqliteInstance = new ShardedMultiTableSqliteStrategy(path,
+                                                             shardPattern,
+                                                             initFile,
+                                                             NULL, nVBuckets,
+                                                             dbShards);
+        break;
+    case multi_mt_vb_db:
+        sqliteInstance = new ShardedByVBucketSqliteStrategy(path,
+                                                            shardPattern,
+                                                            initFile,
+                                                            NULL, nVBuckets,
+                                                            dbShards);
+        break;
+    }
+
+    return new StrategicSqlite3(st,
+                                shared_ptr<SqliteStrategy>(sqliteInstance));
 }
 
 class MutationVerifier : public Callback<mutation_result> {
