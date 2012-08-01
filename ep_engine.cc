@@ -1621,20 +1621,20 @@ void EventuallyPersistentEngine::createKVStores() {
     char p3[256] = "/tmp/kv3";
     char p4[256] = "/tmp/kv4";
 
-    numKVStores = 4;
+    numKVStores = 1;
     kvstore = new KVStore * [numKVStores];
     
     strcat(p1, dbname);
     kvstore[0] = newKVStore(p1);
 
     strcat(p2, dbname);
-    kvstore[1] = newKVStore(p2);
+ //   kvstore[1] = newKVStore(p2);
 
     strcat(p3, dbname);
-    kvstore[2] = newKVStore(p3);
+  //  kvstore[2] = newKVStore(p3);
 
     strcat(p4, dbname);
-    kvstore[3] = newKVStore(p4);
+   // kvstore[3] = newKVStore(p4);
 
 }
 
@@ -2723,8 +2723,15 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.flushExpired, add_stat, cookie);
     add_casted_stat("ep_queue_size",
                     epstats.queue_size, add_stat, cookie);
+    if (epstats.flusher_todos.size() > 1) {
+        for (size_t i = 0; i < epstats.flusher_todos.size(); i++) {
+            char buf[20];
+            sprintf(buf, "ep_flusher_todo_%d", int(i));
+            add_casted_stat(buf, epstats.flusher_todos[i], add_stat, cookie);
+        }
+    }
     add_casted_stat("ep_flusher_todo",
-                    epstats.flusher_todo, add_stat, cookie);
+                    epstats.flusher_todo_get(), add_stat, cookie);
     add_casted_stat("ep_flusher_deduplication",
                     epstats.flusherDedup, add_stat, cookie);
     add_casted_stat("ep_uncommitted_items",
@@ -2997,12 +3004,12 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     }
 
     for (int i = 0; i < numKVStores; ++i) {
-        StorageProperties sprop(kvstore[i]->getStorageProperties());
-        add_casted_stat("ep_store_max_concurrency", sprop.maxConcurrency(),
+        StorageProperties *sprop(epstore->getStorageProperties(i));
+        add_casted_stat("ep_store_max_concurrency", sprop->maxConcurrency(),
                         add_stat, cookie);
-        add_casted_stat("ep_store_max_readers", sprop.maxReaders(),
+        add_casted_stat("ep_store_max_readers", sprop->maxReaders(),
                         add_stat, cookie);
-        add_casted_stat("ep_store_max_readwrite", sprop.maxWriters(),
+        add_casted_stat("ep_store_max_readwrite", sprop->maxWriters(),
                         add_stat, cookie);
     }
 

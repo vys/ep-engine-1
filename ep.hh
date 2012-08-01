@@ -814,6 +814,10 @@ public:
 
     int getVBucketToKVId(uint16_t vbid);
 
+    StorageProperties *getStorageProperties(int kvid) { 
+        return storageProperties[kvid];
+    }
+
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -901,6 +905,7 @@ private:
 
     EventuallyPersistentEngine &engine;
     EPStats                    &stats;
+    StorageProperties           **storageProperties;
     bool                        doPersistence;
     KVStore                    **rwUnderlying;
     KVStore                    **roUnderlying;
@@ -912,8 +917,6 @@ private:
     InvalidItemDbPager        *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;
-    std::queue<queued_item>    writing;
-//    std::vector<queued_item>  *dbShardQueues;
     pthread_t                  thread;
     Atomic<size_t>             bgFetchQueue;
     Atomic<bool>               diskFlushAll;

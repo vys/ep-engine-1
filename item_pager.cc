@@ -89,7 +89,7 @@ public:
     }
 
     bool pauseVisitor() {
-        size_t queueSize = stats.queue_size.get() + stats.flusher_todo.get();
+        size_t queueSize = stats.queue_size.get() + stats.flusher_todo_get();
         return canPause && queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
     }
 

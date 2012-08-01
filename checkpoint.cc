@@ -568,6 +568,8 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(const RCPtr<VBucket> &vbu
                 }
             }
         }
+    } else if (checkpointList.size() == 1) { // Only one checkpoint. Nothing to cleanup
+        return 0;
     }
 
     if (keepClosedCheckpoints) {

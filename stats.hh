@@ -40,8 +40,8 @@ public:
 
     //! size of the input queue
     Atomic<size_t> queue_size;
-    //! Size of the in-process (output) queue.
-    Atomic<size_t> flusher_todo;
+    //! Size of the in-process (output) queue for each flusher
+    std::vector<Atomic<size_t> > flusher_todos;
     //! Number of deduplications fixed by the flusher
     Atomic<size_t> flusherDedup;
     //! Number of transaction commits.
@@ -371,6 +371,15 @@ public:
 
         dataAgeHisto.reset();
         dirtyAgeHisto.reset();
+    }
+    
+    size_t flusher_todo_get() {
+        size_t l = flusher_todos.size();
+        size_t sum = 0;
+        for (size_t i = 0; i < l; i++) {
+            sum += flusher_todos[i];
+        }
+        return sum;
     }
 
 private:

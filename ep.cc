@@ -363,6 +363,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     roUnderlying = new KVStore *[numKVStores];
     allFlusher = new Flusher *[numKVStores];
     tctx = new TransactionContext *[numKVStores];
+    storageProperties = new StorageProperties *[numKVStores];
 
     for (int i = 0; i < numKVStores; ++i) {
         rwUnderlying[i] = t[i];
@@ -370,8 +371,10 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
         allFlusher[i] = new Flusher(this, dispatcher[i], i);
         tctx[i] = new TransactionContext(stats, t[i], 
                                          theEngine.syncRegistry, i);
-        if (t[i]->getStorageProperties().maxConcurrency() > 1
-            && t[i]->getStorageProperties().maxReaders() > 1
+
+        storageProperties[i] = new StorageProperties(t[i]->getStorageProperties());
+        if (storageProperties[i]->maxConcurrency() > 1
+            && storageProperties[i]->maxReaders() > 1
             && concurrentDB) {
             roUnderlying[i] = engine.newKVStore("dummy");
             roDispatcher[i] = new Dispatcher(theEngine);
@@ -383,9 +386,9 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
 
         getLogger()->log(EXTENSION_LOG_INFO, NULL,
                          "Storage props:  c=%d/r=%d/rw=%d\n",
-                         t[i]->getStorageProperties().maxConcurrency(),
-                         t[i]->getStorageProperties().maxReaders(),
-                         t[i]->getStorageProperties().maxWriters());
+                         storageProperties[i]->maxConcurrency(),
+                         storageProperties[i]->maxReaders(),
+                         storageProperties[i]->maxWriters());
 
     }
     flusher = allFlusher[0];
@@ -408,6 +411,8 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     for (size_t i = 0; i < BASE_VBUCKET_SIZE; ++i) {
         persistenceCheckpointIds[i] = 0;
     }
+
+    stats.flusher_todos.resize(numKVStores);
 
     startDispatcher();
     startFlusher();
@@ -1545,7 +1550,7 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
         }
         size_t queue_size = getWriteQueueSize();
         stats.flusherDedup += dedup;
-        stats.flusher_todo.set(flushQueue->size());
+        stats.flusher_todos[id].set(flushQueue->size());
         stats.queue_size.set(queue_size);
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Flushing %d items with %d still in queue\n",
@@ -1580,7 +1585,6 @@ void EventuallyPersistentStore::requeueRejectedItems(std::queue<queued_item> *re
         rej->pop();
     }
     stats.queue_size.set(getWriteQueueSize());
-    stats.flusher_todo.set(flushQ->size());
 }
 
 void EventuallyPersistentStore::completeFlush(rel_time_t flush_start) {
@@ -1603,7 +1607,8 @@ void EventuallyPersistentStore::completeFlush(rel_time_t flush_start) {
     // that was successfully persisted for each vbucket.
     scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
 
-    stats.flusher_todo.set(writing.size());
+    //FIXME:: Why is it needed?
+//    stats.flusher_todo.set(writing.size());
     stats.queue_size.set(getWriteQueueSize());
     rel_time_t complete_time = ep_current_time();
     stats.flushDuration.set(complete_time - flush_start);
@@ -2087,7 +2092,7 @@ int EventuallyPersistentStore::flushOne(std::queue<queued_item> *q,
     default:
         break;
     }
-    stats.flusher_todo--;
+    stats.flusher_todos[id]--;
 
     return rv;
 
