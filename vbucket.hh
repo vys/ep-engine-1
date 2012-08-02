@@ -175,7 +175,7 @@ public:
     }
     bool queueBackfillItem(const queued_item &qi) {
         LockHolder lh(backfill.mutex);
-        backfill.items.push(qi);
+        backfill.items.push_back(qi);
         return true;
     }
     void getBackfillItems(std::vector<queued_item> &items) {

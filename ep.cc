@@ -400,7 +400,6 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
 
     setTxnSize(DEFAULT_TXN_SIZE);
 
-    vb0_mode = startVb0;
     if (startVb0) {
         RCPtr<VBucket> vb(new VBucket(0, vbucket_state_active, stats, numKVStores));
         vbuckets.addBucket(vb);
@@ -1493,6 +1492,10 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
                 continue;
             }
 
+            // Not my vbucket
+            if (getVBucketToKVId(vbid) != id) {
+                continue;
+            }
             // Grab all the items from online restore.
             LockHolder rlh(restore.mutex);
             // VANDANA: FIXME: get items for my kvstore only and remove them from
@@ -2403,7 +2406,10 @@ bool VBCBAdaptor::callback(Dispatcher & d, TaskId t) {
 
 int EventuallyPersistentStore::getKVStoreId(const std::string &key, uint16_t vbid)
 {
-    (void) vbid;
+    if (stats.kvstoreMapVbuckets) {
+        return getVBucketToKVId(vbid);
+    }
+
     int h = 0;
     int i=0;
     const char *str = key.c_str();

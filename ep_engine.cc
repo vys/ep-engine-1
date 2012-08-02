@@ -1079,6 +1079,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     size_t tapIdleTimeout = (size_t)-1;
     size_t expiryPagerSleeptime = 3600;
     float tapThrottleThreshold(-1);
+    bool kvstoreMapVbuckets = false;
 
     resetStats();
 
@@ -1092,7 +1093,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         size_t maxSize = 0;
         float mutation_mem_threshold = 0;
 
-        const int max_items = 54;
+        const int max_items = 55;
         struct config_item items[max_items];
         int ii = 0;
         memset(items, 0, sizeof(items));
@@ -1382,6 +1383,10 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         items[ii].value.dt_float = &tapThrottleThreshold;
 
         ++ii;
+        items[ii].key = "kvstore_map_vbuckets";
+        items[ii].datatype = DT_BOOL;
+        items[ii].value.dt_bool = &kvstoreMapVbuckets;
+        ++ii;
         items[ii].key = NULL;
 
         assert(ii < max_items);
@@ -1422,6 +1427,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
                 uint32_t init_seq_num = (uint32_t)tap_ack_initial_sequence_number;
                 TapProducer::initialAckSequenceNumber = init_seq_num == 0 ? 1 : init_seq_num;
             }
+
+            stats.kvstoreMapVbuckets = kvstoreMapVbuckets;
 
             if (tapThrottleThreshold > 0) {
                 stats.tapThrottleThreshold = static_cast<double>(tapThrottleThreshold);
@@ -2696,6 +2703,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
 
     EPStats &epstats = getEpStats();
     add_casted_stat("ep_version", VERSION, add_stat, cookie);
+    add_casted_stat("ep_kvstore_map_vbuckets", epstats.kvstoreMapVbuckets,
+                     add_stat, cookie);
     add_casted_stat("ep_storage_age",
                     epstats.dirtyAge, add_stat, cookie);
     add_casted_stat("ep_storage_age_highwat",

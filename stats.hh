@@ -27,6 +27,8 @@ public:
                 dataAgeHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25),
                 diskCommitHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25) {}
 
+    // How to map keys,vbuckets to kvstores
+    Atomic<bool> kvstoreMapVbuckets;
     //! How long it took us to load the data from disk.
     Atomic<hrtime_t> warmupTime;
     //! Whether we're warming up.

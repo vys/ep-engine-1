@@ -924,7 +924,6 @@ private:
     Mutex                      vbsetMutex;
     uint32_t                   bgFetchDelay;
     uint64_t                  *persistenceCheckpointIds;
-    bool                       vb0_mode;
     int                        numKVStores;
     // During restore we're bypassing the checkpoint lists with the
     // objects we're restoring, but we need them to be persisted.
