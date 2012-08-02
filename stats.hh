@@ -43,11 +43,11 @@ public:
     //! Size of the in-process (output) queue for each flusher
     std::vector<Atomic<size_t> > flusher_todos;
     //! Number of deduplications fixed by the flusher
-    Atomic<size_t> flusherDedup;
+    std::vector<Atomic<size_t> > flusherDedup;
     //! Number of transaction commits.
-    Atomic<size_t> flusherCommits;
+    std::vector<Atomic<size_t> > flusherCommits;
     //! Number of times the flusher was preempted for a read
-    Atomic<size_t> flusherPreempts;
+    std::vector<Atomic<size_t> > flusherPreempts;
     //! Total time spent flushing.
     Atomic<size_t> cumulativeFlushTime;
     //! Total time spent committing.
@@ -71,9 +71,9 @@ public:
     //! Number of times an object was expired on access.
     Atomic<size_t> expired;
     //! Number of times we failed to start a transaction
-    Atomic<size_t> beginFailed;
+    std::vector<Atomic<size_t> > beginFailed;
     //! Number of times a commit failed.
-    Atomic<size_t> commitFailed;
+    std::vector<Atomic<size_t> > commitFailed;
     //! How long an object is dirty before written.
     Atomic<rel_time_t> dirtyAge;
     //! Oldest enqueued object we've seen while persisting.

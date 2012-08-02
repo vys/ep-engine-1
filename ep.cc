@@ -412,8 +412,6 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
         persistenceCheckpointIds[i] = 0;
     }
 
-    stats.flusher_todos.resize(numKVStores);
-
     startDispatcher();
     startFlusher();
     startNonIODispatcher();
@@ -1549,12 +1547,12 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
             pushToOutgoingQueue(dbShardQueues, flushQueue, id);
         }
         size_t queue_size = getWriteQueueSize();
-        stats.flusherDedup += dedup;
+        stats.flusherDedup[id] += dedup;
         stats.flusher_todos[id].set(flushQueue->size());
         stats.queue_size.set(queue_size);
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
-                         "Flushing %d items with %d still in queue\n",
-                         flushQueue->size(), queue_size);
+                         "Flusher Id %d flushing %d items with %d still in queue\n",
+                         id, flushQueue->size(), queue_size);
         delete []dbShardQueues;
         return flushQueue;
     }
@@ -1621,7 +1619,7 @@ int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
                                          std::queue<queued_item> *rejectQueue,
                                          int id) {
     if (!tctx[id]->enter()) {
-        ++stats.beginFailed;
+        ++stats.beginFailed[id];
         getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                          "Failed to start a transaction.\n");
         // Copy the input queue into the reject queue.
@@ -1644,7 +1642,7 @@ int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
         }
     }
     if (shouldPreemptFlush(completed, id)) {
-        ++stats.flusherPreempts;
+        ++stats.flusherPreempts[id];
     } else {
         tctx[id]->commit();
     }
@@ -2345,9 +2343,9 @@ void TransactionContext::commit() {
     rel_time_t cstart = ep_current_time();
     while (!underlying->commit()) {
         sleep(1);
-        ++stats.commitFailed;
+        ++stats.commitFailed[id];
     }
-    ++stats.flusherCommits;
+    ++stats.flusherCommits[id];
     rel_time_t complete_time = ep_current_time();
 
     stats.commit_time.set(complete_time - cstart);

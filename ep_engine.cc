@@ -1513,6 +1513,14 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         stats.mem_low_wat = memLowWat;
         stats.mem_high_wat = memHighWat;
 
+        // Initialize stats for each kvstore
+        stats.flusher_todos.resize(numKVStores);
+        stats.flusherDedup.resize(numKVStores);
+        stats.flusherCommits.resize(numKVStores);
+        stats.flusherPreempts.resize(numKVStores);
+        stats.beginFailed.resize(numKVStores);
+        stats.commitFailed.resize(numKVStores);
+
         databaseInitTime = ep_real_time() - start;
         // VANDANA: FIXME Get it from config
         epstore = new EventuallyPersistentStore(*this, kvstore, startVb0,
@@ -1621,14 +1629,14 @@ void EventuallyPersistentEngine::createKVStores() {
     char p3[256] = "/tmp/kv3";
     char p4[256] = "/tmp/kv4";
 
-    numKVStores = 1;
+    numKVStores = 2;
     kvstore = new KVStore * [numKVStores];
     
     strcat(p1, dbname);
     kvstore[0] = newKVStore(p1);
 
     strcat(p2, dbname);
- //   kvstore[1] = newKVStore(p2);
+    kvstore[1] = newKVStore(p2);
 
     strcat(p3, dbname);
   //  kvstore[2] = newKVStore(p3);
@@ -2714,10 +2722,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.totalPersisted, add_stat, cookie);
     add_casted_stat("ep_item_flush_failed",
                     epstats.flushFailed, add_stat, cookie);
-    add_casted_stat("ep_item_commit_failed",
-                    epstats.commitFailed, add_stat, cookie);
-    add_casted_stat("ep_item_begin_failed",
-                    epstats.beginFailed, add_stat, cookie);
     add_casted_stat("ep_expired", epstats.expired, add_stat, cookie);
     add_casted_stat("ep_item_flush_expired",
                     epstats.flushExpired, add_stat, cookie);
@@ -2732,14 +2736,22 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     }
     add_casted_stat("ep_flusher_todo",
                     epstats.flusher_todo_get(), add_stat, cookie);
-    add_casted_stat("ep_flusher_deduplication",
-                    epstats.flusherDedup, add_stat, cookie);
+    for (int i = 0; i < numKVStores; i++) {
+        add_casted_stat("ep_flusher_deduplication",
+                        epstats.flusherDedup[i], add_stat, cookie);
+        add_casted_stat("ep_commit_num", epstats.flusherCommits[i],
+                        add_stat, cookie);
+        add_casted_stat("ep_flush_preempts",
+                    epstats.flusherPreempts[i], add_stat, cookie);
+        add_casted_stat("ep_item_begin_failed",
+                        epstats.beginFailed[i], add_stat, cookie);
+        add_casted_stat("ep_item_commit_failed",
+                        epstats.commitFailed[i], add_stat, cookie);
+    }
     add_casted_stat("ep_uncommitted_items",
                     epstore->getNumUncommittedItems(), add_stat, cookie);
     add_casted_stat("ep_flusher_state",
                     epstore->getFlusher()->stateName(),
-                    add_stat, cookie);
-    add_casted_stat("ep_commit_num", epstats.flusherCommits,
                     add_stat, cookie);
     add_casted_stat("ep_commit_time",
                     epstats.commit_time, add_stat, cookie);
@@ -2749,8 +2761,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.vbucketDeletions, add_stat, cookie);
     add_casted_stat("ep_vbucket_del_fail",
                     epstats.vbucketDeletionFail, add_stat, cookie);
-    add_casted_stat("ep_flush_preempts",
-                    epstats.flusherPreempts, add_stat, cookie);
     add_casted_stat("ep_flush_duration",
                     epstats.flushDuration, add_stat, cookie);
     add_casted_stat("ep_flush_duration_total",
