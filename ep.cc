@@ -30,6 +30,7 @@
 #include "kvstore.hh"
 #include "ep_engine.h"
 #include "htresizer.hh"
+#include "kvstore-mapper.hh"
 
 extern "C" {
     static rel_time_t uninitialized_current_time(void) {
@@ -113,7 +114,7 @@ public:
     bool callback(Dispatcher &, TaskId) {
         RememberingCallback<GetValue> gcb;
 
-        int id = ep->getKVStoreId(key, vbucket);
+        int id = KVStoreMapper::getKVStoreId(key, vbucket);
         ep->getROUnderlying(id)->get(key, rowid, vbucket, vbver, gcb);
         gcb.waitForValue();
         assert(gcb.fired);
@@ -346,6 +347,8 @@ private:
     VBDeletionChunkRangeList      range_list;
     chunk_range_iterator          current_range;
 };
+
+KVStoreMapper *KVStoreMapper::instance = NULL;
 
 EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine &theEngine,
                                                      KVStore **t,
@@ -880,7 +883,7 @@ EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vbver
 
 void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version,
                                                    double delay=0) {
-    int id = getVBucketToKVId(vb->getId());
+    int id = KVStoreMapper::getVBucketToKVId(vb->getId());
     if (vbuckets.setBucketDeletion(vb->getId(), true)) {
         if (rwUnderlying[id]->getStorageProperties().hasEfficientVBDeletion()) {
             shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
@@ -969,7 +972,7 @@ void EventuallyPersistentStore::completeBGFetch(const std::string &key,
     // Go find the data
     RememberingCallback<GetValue> gcb;
 
-    int id = getKVStoreId(key, vbucket);
+    int id = KVStoreMapper::getKVStoreId(key, vbucket);
     roUnderlying[id]->get(key, rowid, vbucket, vbver, gcb);
     gcb.waitForValue();
     assert(gcb.fired);
@@ -1027,7 +1030,7 @@ void EventuallyPersistentStore::bgFetch(const std::string &key,
     ss << "Queued a background fetch, now at " << bgFetchQueue.get()
        << std::endl;
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, ss.str().c_str());
-    int i = getKVStoreId(key, vbucket);
+    int i = KVStoreMapper::getKVStoreId(key, vbucket);
     roDispatcher[i]->schedule(dcb, NULL, Priority::BgFetcherPriority, bgFetchDelay);
 }
 
@@ -1187,7 +1190,7 @@ EventuallyPersistentStore::getFromUnderlying(const std::string &key,
                                                                             v->getId(),
                                                                             cookie, cb));
         assert(bgFetchQueue > 0);
-        int i = getKVStoreId(key, vbucket);
+        int i = KVStoreMapper::getKVStoreId(key, vbucket);
         roDispatcher[i]->schedule(dcb, NULL, Priority::VKeyStatBgFetcherPriority, bgFetchDelay);
         return ENGINE_EWOULDBLOCK;
     } else if (isRestoreEnabled()) {
@@ -1493,7 +1496,7 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
             }
 
             // Not my vbucket
-            if (getVBucketToKVId(vbid) != id) {
+            if (KVStoreMapper::getVBucketToKVId(vbid) != id) {
                 continue;
             }
             // Grab all the items from online restore.
@@ -1508,7 +1511,7 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
             rlh.unlock();
 
             // Grab all the backfill items if exist.
-            vb->getBackfillItems(item_list);
+            vb->getBackfillItems(item_list, allFlusher[id]->getFilter());
 
             // Get all dirty items from the checkpoint.
             uint64_t checkpointId = vb->checkpointManager.getAllItemsForPersistence(item_list, id);
@@ -1518,7 +1521,7 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
             // Perform further deduplication here by removing duplicate mutations for each key.
             for (; reverse_it != item_list.rend(); ++reverse_it) {
                 queued_item qi = *reverse_it;
-                if (getKVStoreId(qi->getKey(), vb) != id) {
+                if (KVStoreMapper::getKVStoreId(qi->getKey(), vb) != id) {
                     continue;
                 }
                 switch (qi->getOperation()) {
@@ -2402,26 +2405,4 @@ bool VBCBAdaptor::callback(Dispatcher & d, TaskId t) {
         visitor->complete();
     }
     return !isdone;
-}
-
-int EventuallyPersistentStore::getKVStoreId(const std::string &key, uint16_t vbid)
-{
-    if (stats.kvstoreMapVbuckets) {
-        return getVBucketToKVId(vbid);
-    }
-
-    int h = 0;
-    int i=0;
-    const char *str = key.c_str();
-
-    for(i=0; str[i] != 0x00; i++) {
-        h = ( h << 4 ) ^ ( h >> 28 ) ^ str[i];
-    }
-    return std::abs(h) % (int)numKVStores;
-}
-
-// FIXME for a better distribution
-int EventuallyPersistentStore::getVBucketToKVId(uint16_t vbid)
-{
-    return vbid % numKVStores;
 }

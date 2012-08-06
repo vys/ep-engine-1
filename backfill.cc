@@ -4,6 +4,7 @@
 #include "ep_engine.h"
 #include "ep.hh"
 #include "backfill.hh"
+#include "kvstore-mapper.hh"
 
 double BackFillVisitor::backfillResidentThreshold = DEFAULT_BACKFILL_RESIDENT_THRESHOLD;
 
@@ -98,7 +99,7 @@ void BackFillVisitor::visit(StoredValue *v) {
     }
     std::string k = v->getKey();
     queued_item qi(new QueuedItem(k, currentBucket->getId(), queue_op_set, -1, v->getId()));
-    uint16_t shardId = engine->kvstore[(engine->epstore->getKVStoreId(k, currentBucket->getId()))]->getShardId(*qi);
+    uint16_t shardId = engine->kvstore[(KVStoreMapper::getKVStoreId(k, currentBucket->getId()))]->getShardId(*qi);
     found.push_back(std::make_pair(shardId, qi));
 }
 
@@ -107,7 +108,7 @@ void BackFillVisitor::apply(void) {
     if (efficientVBDump) {
         std::vector<uint16_t>::iterator it = vbuckets.begin();
         for (; it != vbuckets.end(); it++) {
-            int kvid = engine->epstore->getVBucketToKVId(*it);
+            int kvid = KVStoreMapper::getVBucketToKVId(*it);
             Dispatcher *d(engine->epstore->getRODispatcher(kvid));
             KVStore *underlying(engine->epstore->getROUnderlying(kvid));
             assert(d);

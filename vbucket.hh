@@ -16,6 +16,7 @@
 #include "atomic.hh"
 #include "stored-value.hh"
 #include "checkpoint.hh"
+#include "kvstore-mapper.hh"
 
 const size_t BASE_VBUCKET_SIZE=1024;
 
@@ -96,6 +97,7 @@ private:
 };
 
 class EventuallyPersistentEngine;
+class QueuedItemFilter;
 
 /**
  * An individual vbucket.
@@ -175,16 +177,22 @@ public:
     }
     bool queueBackfillItem(const queued_item &qi) {
         LockHolder lh(backfill.mutex);
-        backfill.items.push(qi);
+        backfill.items.push_back(qi);
         return true;
     }
-    void getBackfillItems(std::vector<queued_item> &items) {
+    void getBackfillItems(std::vector<queued_item> &items,
+                          QueuedItemFilter &filter) {
         LockHolder lh(backfill.mutex);
-        while (!backfill.items.empty()) {
-            items.push_back(backfill.items.front());
-            backfill.items.pop();
+        std::list<queued_item>::iterator it = backfill.items.begin();
+        while (it != backfill.items.end()) {
+            if (filter(*it)) {
+                items.push_back(*it);
+                backfill.items.erase(it);
+            }
+            ++it;
         }
     }
+
     bool isBackfillPhase() {
         LockHolder lh(backfill.mutex);
         return backfill.isBackfillPhase;
@@ -198,7 +206,7 @@ public:
     CheckpointManager checkpointManager;
     struct {
         Mutex mutex;
-        std::queue<queued_item> items;
+        std::list<queued_item> items;
         bool isBackfillPhase;
     } backfill;
 

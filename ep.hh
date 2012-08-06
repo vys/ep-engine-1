@@ -810,10 +810,6 @@ public:
      */
     void completeOnlineRestore();
 
-    int getKVStoreId(const std::string &key, uint16_t vbid);
-
-    int getVBucketToKVId(uint16_t vbid);
-
     StorageProperties *getStorageProperties(int kvid) { 
         return storageProperties[kvid];
     }
@@ -905,16 +901,16 @@ private:
 
     EventuallyPersistentEngine &engine;
     EPStats                    &stats;
-    StorageProperties           **storageProperties;
-    bool                        doPersistence;
+    StorageProperties          **storageProperties;
+    bool                       doPersistence;
     KVStore                    **rwUnderlying;
     KVStore                    **roUnderlying;
-    Dispatcher                **dispatcher;
-    Dispatcher                **roDispatcher;
-    Dispatcher                *nonIODispatcher;
-    Flusher                   *flusher;
-    Flusher                   **allFlusher;
-    InvalidItemDbPager        *invalidItemDbPager;
+    Dispatcher                 **dispatcher;
+    Dispatcher                 **roDispatcher;
+    Dispatcher                 *nonIODispatcher;
+    Flusher                    *flusher;
+    Flusher                    **allFlusher;
+    InvalidItemDbPager         *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;
     pthread_t                  thread;
@@ -923,7 +919,7 @@ private:
     TransactionContext         **tctx;
     Mutex                      vbsetMutex;
     uint32_t                   bgFetchDelay;
-    uint64_t                  *persistenceCheckpointIds;
+    uint64_t                   *persistenceCheckpointIds;
     int                        numKVStores;
     // During restore we're bypassing the checkpoint lists with the
     // objects we're restoring, but we need them to be persisted.

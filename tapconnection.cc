@@ -18,6 +18,7 @@
 #include "config.h"
 #include "ep_engine.h"
 #include "dispatcher.hh"
+#include "kvstore-mapper.hh"
 
 static void notifyReplicatedItems(std::list<TapLogElement>::iterator from,
                                   std::list<TapLogElement>::iterator to,
@@ -818,7 +819,7 @@ public:
         EventuallyPersistentStore *epstore = epe->getEpStore();
         assert(epstore);
 
-        int kvid = epstore->getKVStoreId(key, vbucket);
+        int kvid = KVStoreMapper::getKVStoreId(key, vbucket);
         epstore->getROUnderlying(kvid)->get(key, rowid, vbucket, vbver, gcb);
         gcb.waitForValue();
         assert(gcb.fired);
@@ -898,7 +899,7 @@ void TapProducer::queueBGFetch(const std::string &key, uint64_t id,
                                                               getName(), key,
                                                               vb, vbv,
                                                               id, c, sessionID));
-    int kvid = engine.getEpStore()->getKVStoreId(key, vb);
+    int kvid = KVStoreMapper::getKVStoreId(key, vb);
     engine.getEpStore()->getRODispatcher(kvid)->schedule(dcb, NULL, Priority::TapBgFetcherPriority);
     ++bgQueued;
     ++bgJobIssued;
