@@ -688,20 +688,27 @@ private:
     }
 
 
-    bool dbAccess(void) {
+    bool dbAccess() {
         bool ret = true;
-        std::string dbname = configuration.getDbname();
-        if (access(dbname.c_str(), F_OK) == -1) {
-            // file does not exist.. let's try to create it..
-            FILE *fp = fopen(dbname.c_str(), "w");
-            if (fp == NULL) {
-                ret= false;
-            } else {
-                fclose(fp);
-                std::remove(dbname.c_str());
+        for (std::map<std::string, KVStoreConfig>::iterator it = kvstoreConfigMap->begin();
+                it != kvstoreConfigMap->end(); it++) {
+            std::string dbname = it->second.getDbname();
+            if (access(dbname.c_str(), F_OK) == -1) {
+                // file does not exist.. let's try to create it..
+                FILE *fp = fopen(dbname.c_str(), "w");
+                if (fp == NULL) {
+                    getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                            "No access to \"%s\".\n", dbname.c_str());
+                    ret= false;
+                } else {
+                    fclose(fp);
+                    std::remove(dbname.c_str());
+                }
+            } else if (access(dbname.c_str(), R_OK) == -1 || access(dbname.c_str(), W_OK) == -1) {
+                getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                    "No access to \"%s\".\n", dbname.c_str());
+                ret = false;
             }
-        } else if (access(dbname.c_str(), R_OK) == -1 || access(dbname.c_str(), W_OK) == -1) {
-            ret = false;
         }
 
         return ret;
@@ -709,6 +716,7 @@ private:
 
     ENGINE_ERROR_CODE doEngineStats(const void *cookie, ADD_STAT add_stat);
     ENGINE_ERROR_CODE doMemoryStats(const void *cookie, ADD_STAT add_stat);
+    ENGINE_ERROR_CODE doKVStoreStats(const void *cookie, ADD_STAT add_stat);
     ENGINE_ERROR_CODE doVBucketStats(const void *cookie, ADD_STAT add_stat,
                                      bool prevStateRequested = false);
     ENGINE_ERROR_CODE doHashStats(const void *cookie, ADD_STAT add_stat);
@@ -753,7 +761,7 @@ private:
         }
     }
 
-    KVStore *newKVStore();
+    KVStore *newKVStore(KVStoreConfig &c);
 
     // Get the current tap connection for this cookie.
     // If this method returns NULL, you should return TAP_DISCONNECT
@@ -804,6 +812,7 @@ private:
     EPStats stats;
     SyncRegistry syncRegistry;
     Configuration configuration;
+    std::map<std::string, KVStoreConfig> *kvstoreConfigMap;
     struct {
         Mutex mutex;
         RestoreManager *manager;

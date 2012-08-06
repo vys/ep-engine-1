@@ -96,6 +96,7 @@ libobjectregistry_la_SOURCES = objectregistry.cc objectregistry.hh
 
 libkvstore_la_SOURCES = kvstore.cc kvstore.hh \
                         pathexpand.hh pathexpand.cc \
+                        tools/cJSON.c tools/cJSON.h \
                         sqlite-eval.cc sqlite-eval.hh \
                         sqlite-kvstore.cc sqlite-kvstore.hh \
                         sqlite-pst.cc sqlite-pst.hh \

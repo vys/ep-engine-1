@@ -20,20 +20,6 @@
             "default": "true",
             "type": "bool"
         },
-        "db_shards": {
-            "default": "4",
-            "type": "size_t"
-        },
-        "db_strategy": {
-            "default": "multiDB",
-            "type": "std::string"
-        },
-        "dbname": {
-            "default": "/tmp/test.db",
-            "descr": "Path to on-disk storage.",
-            "dynamic": false,
-            "type": "std::string"
-        },
         "exp_pager_stime": {
             "default": "3600",
             "type": "size_t"
@@ -69,14 +55,14 @@
             "default": "false",
             "type": "bool"
         },
-        "initfile": {
-            "default": "",
-            "type": "string"
-        },
         "keep_closed_chks": {
             "default": "false",
             "descr": "True if we want to keep the closed checkpoints for each vbucket unless the memory usage is above high water mark",
             "type": "bool"
+        },
+        "kvstore_config_file": {
+            "default": "",
+            "type": "std::string"
         },
         "max_checkpoints": {
             "default": "2",
@@ -131,10 +117,6 @@
             "default": "0.0",
             "type": "float"
         },
-        "postInitfile": {
-            "default": "",
-            "type": "string"
-        },
         "queue_age_cap": {
             "default": "900",
             "descr": "Maximum queue time before forcing persist",
@@ -153,11 +135,6 @@
         "restore_mode": {
             "default": "false",
             "type": "bool"
-        },
-        "shardpattern": {
-            "default": "%d/%b-%i.sqlite",
-            "dynamic": false,
-            "type": "std::string"
         },
         "stored_val_type": {
             "default": "featured",

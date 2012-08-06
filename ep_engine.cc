@@ -1029,7 +1029,7 @@ EventuallyPersistentEngine::EventuallyPersistentEngine(GET_SERVER_API get_server
     memHighWat(std::numeric_limits<size_t>::max()),
     itemExpiryWindow(3), vb_del_chunk_size(100), vb_chunk_del_threshold_time(500),
     mutation_count(0), getlDefaultTimeout(15), getlMaxTimeout(30),
-    syncTimeout(DEFAULT_SYNC_TIMEOUT)
+    syncTimeout(DEFAULT_SYNC_TIMEOUT), kvstoreConfigMap(NULL)
 {
     interface.interface = 1;
     ENGINE_HANDLE_V1::get_info = EvpGetInfo;
@@ -1068,6 +1068,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     resetStats();
 
     if (config != NULL && !configuration.parseConfiguration(config, serverApi)) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Failed to parse configuration. The \
+following parameters are deprecated. Please use json based kvstore configuration to setup \
+the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shards, db_strategy");
         return ENGINE_FAILED;
     }
 
@@ -1133,21 +1136,24 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         tapNoopInterval = tapIdleTimeout / 3;
     }
 
+    if ((kvstoreConfigMap = KVStore::parseConfig(*this)) == NULL) {
+        return ENGINE_FAILED;
+    }
+
+    // This check is valid till we implement and support multiple kvstores
+    if (kvstoreConfigMap->size() > 1) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Multiple kvstores are not supported");
+        return ENGINE_FAILED;
+    }
+
     time_t start = ep_real_time();
     try {
-        if ((kvstore = KVStore::create(*this)) == NULL) {
+        if ((kvstore = newKVStore(kvstoreConfigMap->begin()->second)) == NULL) {
             return ENGINE_FAILED;
         }
     } catch (std::exception& e) {
-        std::stringstream ss;
-        ss << "Failed to create database: " << e.what() << std::endl;
-        if (!dbAccess()) {
-            ss << "No access to \"" << configuration.getDbname() << "\"."
-                << std::endl;
-        }
-
-        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "%s",
-                ss.str().c_str());
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Failed to create database: %s\n", e.what());
+        dbAccess();
         return ENGINE_FAILED;
     }
 
@@ -1254,8 +1260,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
 }
 
 // this function can be removed since KVStoreConfig doesn't exist anymore
-KVStore* EventuallyPersistentEngine::newKVStore() {
-    return KVStore::create(*this);
+KVStore* EventuallyPersistentEngine::newKVStore(KVStoreConfig &c) {
+    return KVStore::create(c, *this);
 }
 
 void EventuallyPersistentEngine::destroy(bool force) {
@@ -2549,9 +2555,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     add_casted_stat("ep_tap_keepalive", tapKeepAlive,
                     add_stat, cookie);
 
-    add_casted_stat("ep_dbname", configuration.getDbname(), add_stat, cookie);
+    // Include kvstore stat in place of this
+    add_casted_stat("ep_dbname", kvstoreConfigMap->begin()->second.getDbname(), add_stat, cookie);
     add_casted_stat("ep_dbinit", databaseInitTime, add_stat, cookie);
-    add_casted_stat("ep_dbshards", configuration.getDbShards(), add_stat, cookie);
+    // Include kvstore stat in place of this
+    add_casted_stat("ep_dbshards", kvstoreConfigMap->begin()->second.getDbShards(), add_stat, cookie);
     add_casted_stat("ep_db_strategy", KVStore::typeToString(dbStrategy),
                     add_stat, cookie);
     add_casted_stat("ep_warmup", configuration.isWarmup() ? "true" : "false",
@@ -2662,6 +2670,39 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doMemoryStats(const void *cookie,
     std::map<std::string, size_t>::iterator it = allocator_stats.begin();
     for (; it != allocator_stats.end(); ++it) {
         add_casted_stat(it->first.c_str(), it->second, add_stat, cookie);
+    }
+
+    return ENGINE_SUCCESS;
+}
+
+ENGINE_ERROR_CODE EventuallyPersistentEngine::doKVStoreStats(const void *cookie,
+                                                           ADD_STAT add_stat) {
+    add_casted_stat("num_kvstores", kvstoreConfigMap->size(), add_stat, cookie);
+    for (std::map<std::string, KVStoreConfig>::iterator it = kvstoreConfigMap->begin();
+            it != kvstoreConfigMap->end(); it++) {
+        std::string kvname = it->first;
+        KVStoreConfig &kvc = it->second;
+        std::string &dbname = kvc.getDbname();
+        std::string &shP = kvc.getShardpattern();
+        add_casted_stat((kvname + ":dbname").c_str(), dbname, add_stat, cookie);
+        add_casted_stat((kvname + ":shardpattern").c_str(), shP, add_stat, cookie);
+        add_casted_stat((kvname + ":initfile").c_str(), kvc.getInitfile(), add_stat, cookie);
+        add_casted_stat((kvname + ":postInitfile").c_str(), kvc.getPostInitfile(), add_stat, cookie);
+        add_casted_stat((kvname + ":db_strategy").c_str(), kvc.getDbStrategy(), add_stat, cookie);
+        size_t k = kvc.getNumDataDbs();
+        add_casted_stat((kvname + ":data_dbs").c_str(), k, add_stat, cookie);
+        for (size_t i = 0; i < k; i++) {
+            std::stringstream ss;
+            ss << i;
+            add_casted_stat((kvname + ":data_dbname" + ss.str()).c_str(), kvc.getDataDbnameI(i), add_stat, cookie);
+        }
+        size_t s = kvc.getDbShards();
+        add_casted_stat((kvname + ":db_shards").c_str(), s, add_stat, cookie);
+        for (size_t i = 0; i < s; i++) {
+            std::stringstream ss;
+            ss << i;
+            add_casted_stat((kvname + ":db_shard_" + ss.str()).c_str(), kvc.getDbShardI(i), add_stat, cookie);
+        }
     }
 
     return ENGINE_SUCCESS;
@@ -3263,6 +3304,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
         rv = doDispatcherStats(cookie, add_stat);
     } else if (nkey == 6 && strncmp(stat_key, "memory", 6) == 0) {
         rv = doMemoryStats(cookie, add_stat);
+    } else if (nkey == 7 && strncmp(stat_key, "kvstore", 6) == 0) {
+        rv = doKVStoreStats(cookie, add_stat);
     } else if (nkey == 7 && strncmp(stat_key, "restore", 7) == 0) {
         rv = ENGINE_SUCCESS;
         LockHolder lh(restore.mutex);

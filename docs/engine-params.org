@@ -20,22 +20,17 @@ For example, if you would like to store your database in =/data/base=
 and prevent it from having objects larger than 1MB, you would run
 memcached like this:
 
-: memcached -E ep.so -e 'dbfile=/data/base;max_item_size=1048576'
+: memcached -E ep.so -e 'kvstore_config_file=/etc/kvconf.json;max_item_size=1048576'
 
 * Parameters for the EP Engine
 
 | key                    | type   | descr                                      |
 |------------------------+--------+--------------------------------------------|
 | config_file            | string | Path to additional parameters.             |
-| dbname                 | string | Path to on-disk storage.                   |
-| shardpattern           | string | File pattern for shards (see below)        |
+| kvstore_config_file    | string | Path to kvstore config file that is in     |
+|                        |        | JSON format (see below).                   |
 | ht_locks               | int    | Number of locks per hash table.            |
 | ht_size                | int    | Number of buckets per hash table.          |
-| initfile               | string | Optional SQL script to run after           |
-|                        |        | opening DB                                 |
-| postInitfile           | string | Optional SQL script to run after           |
-|                        |        | all DB shards and statements have          |
-|                        |        | been initialized                           |
 | max_item_size          | int    | Maximum number of bytes allowed for        |
 |                        |        | an item.                                   |
 | max_size               | int    | Max cumulative item size in bytes.         |
@@ -69,9 +64,6 @@ memcached like this:
 | failpartialwarmup      | bool   | If false, continue running after failing   |
 |                        |        | to load some records.                      |
 | max_vbuckets           | int    | Maximum number of vbuckets expected (1024) |
-| db_shards              | int    | Number of shards for db store              |
-| db_strategy            | string | DB store strategy ("multiDB", "singleDB"   |
-|                        |        | or "singleMTDB")                           |
 | vb_del_chunk_size      | int    | Chunk size of vbucket deletion             |
 | vb_chunk_del_time      | int    | vb chunk deletion threshold time (ms) used |
 |                        |        | for adjusting the chunk size dynamically   |
@@ -105,10 +97,62 @@ memcached like this:
 |                        |        | checks on the backup. Results in much      |
 |                        |        | faster restores.                           |
 
+** KVStore Config file format
+
+The kvstore config file is to be written in a JSON format with specific
+parameters described below. The path to the file should be passed to memcached
+using the parameter kvstore_config_file. If not specified, ep-engine uses a
+default config JSON string {"kvstores":{}} which produces a single kvstore with
+default values for every parameter. Since memcached will not give parse error
+details, you may use the python tool at tools/check_valid_json.py and pass the
+json file as argument to see if it parses it and prints correctly. In case of
+a parse error, this script specifies the line/column number where the parse
+failed.
+
+The kvstore config parameter expects an object type with exactly one key by the
+name "kvstores" mapping to an object containing all the kvstores that need to
+be configured. Every kvstore is a mapping between a string name for the kvstore
+and its configuration. The configuration for each kvstore is specified with the
+following parameters:
+
+| key                    | type   | descr                                      |
+|------------------------+--------+--------------------------------------------|
+| dbname                 | string | Path to on-disk storage. (default:         |
+|                        |        | /tmp/test.db)                              |
+| shardpattern           | string | File pattern for shards (see below)        |
+|                        |        | (default: %d/%b-%i.sqlite)                 |
+| initfile               | string | SQL script to run after opening DB         |
+|                        |        | (default: empty string, i.e. no file)      |
+| postInitfile           | string | SQL script to run after all DB shards and  |
+|                        |        | statements have been initialized           |
+|                        |        | (default: empty string, i.e. no file)      |
+| db_shards              | int    | Number of shards for db store (default: 4) |
+| db_strategy            | string | DB store strategy ("multiDB", "singleDB"   |
+|                        |        | or "singleMTDB") (default: multiDB)        |
+| data_dbnames           | array  | Array of strings each pointing to a db     |
+|                        |        | path. Based on the number of shards, the   |
+|                        |        | sharding is done on these paths in a round |
+|                        |        | robin mechanism. (default: empty array)    |
+
+dbname is where every kvstore centralizes it's store. Every data file (based
+on the value of db_shards) is sharded based on the pattern specified onto the
+paths given in data_dbnames. If this array is empty, the sharding is done on
+dbname. The list of all dbname values and the paths resulting in sharding
+across all kvstores is not allowed to have any duplicate paths. ep-engine
+validates the config and fails in such a scenario.
+
+To view the list of paths that have been generated using the shard patterns,
+use "stats kvstore".
+
+See a sample kvstore configuration below.
+
 ** Shard Patterns
 
 When using a multi-sharded database, =shardpattern= specifies how
-shards are named relative to the main database.
+shards are named relative to a data path. As described above, the
+data path is picked up in a round-robin way from data_dbnames for
+each shard number, unless this array is empty in which case dbname
+is used.
 
 =shardpattern= uses a printf-style string to expand the path with the
 given variables:
@@ -119,3 +163,33 @@ given variables:
 - =%i= : The shard number.
 
 The default value of =shardpattern= is =%d/%b-%i.sqlite=
+
+** Sample kvstore config
+
+{
+    "kvstores" : {
+        "kvstore1" : {
+            "dbname" : "/tmp/test2.db",
+            "data_dbnames" : [
+                "/tmp/test1.db",
+                "/tmp/test2.db"
+            ]
+        },
+        "kvstore2" : {
+            "dbname" : "/tmp/test2.db-3.s"
+        },
+        "kv3": {},
+        "kv4": {
+            "dbname" : "/tmp/test5.db",
+            "data_dbnames" : [
+                "/tmp/t1.db",
+                "/tmp/t2.db",
+                "/tmp/t3.db"
+            ],
+            "db_shards" : 15
+        }
+    }
+}
+
+("kv3" obtains all the default parameter values. Note that none of
+the dbname paths and shardpattern generated paths repeat.)

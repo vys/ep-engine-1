@@ -366,7 +366,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     if (storageProperties.maxConcurrency() > 1
         && storageProperties.maxReaders() > 1
         && concurrentDB) {
-        roUnderlying = engine.newKVStore();
+        roUnderlying = engine.newKVStore(theEngine.kvstoreConfigMap->begin()->second);
         roDispatcher = new Dispatcher(theEngine);
         roDispatcher->start();
     } else {
