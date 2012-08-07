@@ -368,6 +368,8 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     tctx = new TransactionContext *[numKVStores];
     storageProperties = new StorageProperties *[numKVStores];
 
+    KVStoreMapper::createKVMapper(numKVStores, stats.kvstoreMapVbuckets);
+
     for (int i = 0; i < numKVStores; ++i) {
         rwUnderlying[i] = t[i];
         dispatcher[i] = new Dispatcher(theEngine);
@@ -1495,20 +1497,14 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
                 continue;
             }
 
+#if 0
             // Not my vbucket
             if (KVStoreMapper::getVBucketToKVId(vbid) != id) {
                 continue;
             }
+#endif
             // Grab all the items from online restore.
-            LockHolder rlh(restore.mutex);
-            // VANDANA: FIXME: get items for my kvstore only and remove them from
-            // the restore.items list
-            std::map<uint16_t, std::vector<queued_item> >::iterator rit = restore.items.find(vbid);
-            if (rit != restore.items.end()) {
-                item_list.insert(item_list.end(), rit->second.begin(), rit->second.end());
-                rit->second.clear();
-            }
-            rlh.unlock();
+            getRestoreItems(vbid, allFlusher[id]->getFilter(), item_list);
 
             // Grab all the backfill items if exist.
             vb->getBackfillItems(item_list, allFlusher[id]->getFilter());
@@ -1679,7 +1675,7 @@ bool EventuallyPersistentStore::hasItemsForPersistence(int kvid) {
         RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
         if (vb && (vb->getState() != vbucket_state_dead)) {
             LockHolder rlh(restore.mutex);
-            std::map<uint16_t, std::vector<queued_item> >::iterator it = restore.items.find(vbid);
+            std::map<uint16_t, std::list<queued_item> >::iterator it = restore.items.find(vbid);
             if (vb->checkpointManager.hasNextForPersistence(kvid) ||
                 vb->getBackfillSize() > 0 ||
                 (it != restore.items.end() && !it->second.empty())) {
@@ -2156,11 +2152,11 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
                                       vbuckets.getBucketVersion(vbid),
                                       -1, itm.getFlags(),
                                       itm.getExptime(), itm.getCas()));
-        std::map<uint16_t, std::vector<queued_item> >::iterator it = restore.items.find(vbid);
+        std::map<uint16_t, std::list<queued_item> >::iterator it = restore.items.find(vbid);
         if (it != restore.items.end()) {
             it->second.push_back(qi);
         } else {
-            std::vector<queued_item> vb_items;
+            std::list<queued_item> vb_items;
             vb_items.push_back(qi);
             restore.items[vbid] = vb_items;
         }
