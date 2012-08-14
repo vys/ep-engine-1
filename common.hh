@@ -48,7 +48,7 @@ using UNORDERED_MAP_NAMESPACE::unordered_map;
 # error No unordered_map implementation found!
 #endif
 
-#if defined(HAVE_LIBTCMALLOC) || defined(HAVE_LIBTCMALLOC_MINIMAL)
+#if defined(TCMALLOC_STATS)
 # include "tcmalloc/tcmalloc_stats.hh"
 #endif
 

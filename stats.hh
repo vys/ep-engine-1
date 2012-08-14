@@ -419,7 +419,11 @@ struct key_stats {
 class MemoryAllocatorStats {
 public:
     static void getAllocatorStats(std::map<std::string, size_t> &allocator_stats) {
+#if defined(TCMALLOC_STATS)
+        TCMallocStats::getStats(allocator_stats);
+#else
         (void) allocator_stats;
+#endif
     }
 };
 
