@@ -11,6 +11,15 @@
 #include "stats.hh"
 #include "item.hh"
 #include "queueditem.hh"
+#include "pathexpand.hh"
+
+#define DEFAULT_KVSTORE_CONFIG "{\"kvstores\":{}}"
+#define DEFAULT_DBNAME "/tmp/test.db"
+#define DEFAULT_SHARDPATTERN "%d/%b-%i.sqlite"
+#define DEFAULT_INITFILE ""
+#define DEFAULT_POST_INITFILE ""
+#define DEFAULT_DB_SHARDS 4
+#define DEFAULT_DB_STRATEGY "multiDB"
 
 /**
  * Result of database mutation operations.
@@ -88,26 +97,70 @@ enum db_type {
 };
 
 /**
- * Configuration parameters to be passed to KVStore::create
+ * Config file for every kvstore
  */
 class KVStoreConfig {
 public:
-    KVStoreConfig(const char *l,
-                  const char *sp,
-                  const char *i,
-                  const char *p,
-                  size_t nv,
-                  size_t sh) : location(l), shardPattern(sp),
-                               initFile(i), postInitFile(p),
-                               numVBuckets(nv),
-                               shards(sh) {}
+    KVStoreConfig() :
+        dbname(DEFAULT_DBNAME), shardpattern(DEFAULT_SHARDPATTERN),
+        initfile(DEFAULT_INITFILE), postInitfile(DEFAULT_POST_INITFILE),
+        dbStrategy(DEFAULT_DB_STRATEGY), dbShards(DEFAULT_DB_SHARDS), numDataDbs(0)
+    {}
 
-    const char   *location;
-    const char   *shardPattern;
-    const char   *initFile;
-    const char   *postInitFile;
-    const size_t  numVBuckets;
-    const size_t  shards;
+    std::string& getDbname() {
+        return dbname;
+    }
+
+    std::string& getShardpattern() {
+        return shardpattern;
+    }
+
+    std::string& getInitfile() {
+        return initfile;
+    }
+
+    std::string& getPostInitfile() {
+        return postInitfile;
+    }
+
+    std::string getDbStrategy() {
+        return dbStrategy;
+    }
+
+    size_t getDbShards() {
+        return dbShards;
+    }
+
+    size_t getNumDataDbs() {
+        return numDataDbs;
+    }
+
+    std::string& getDataDbnameI(size_t i) {
+        assert(i < numDataDbs);
+        return dataDbnames[i];
+    }
+
+    std::string getDbShardI(size_t i) {
+        PathExpander p(numDataDbs ? dataDbnames[i % numDataDbs].c_str() : dbname.c_str());
+        return p.expand(shardpattern.c_str(), i);
+    }
+
+private:
+    std::string dbname;
+    std::string shardpattern;
+    std::string initfile;
+    std::string postInitfile;
+    std::string dbStrategy;
+    size_t dbShards;
+    size_t numDataDbs;
+    std::vector<std::string> dataDbnames;
+
+    void addDataDbname(std::string s) {
+        dataDbnames.push_back(s);
+        numDataDbs++;
+    }
+
+    friend class KVStore;
 };
 
 /**
@@ -123,9 +176,7 @@ public:
      * @param stats the server stats
      * @param conf type-specific parameters
      */
-    static KVStore *create(db_type type,
-                           EPStats &stats,
-                           const KVStoreConfig &conf);
+    static KVStore *create(KVStoreConfig &c, EventuallyPersistentEngine &theEngine);
 
     /**
      * Get the name of a db type.
@@ -142,6 +193,8 @@ public:
      */
     static bool stringToType(const char *name,
                              enum db_type &typeOut);
+
+    static std::map<std::string, KVStoreConfig> *parseConfig(EventuallyPersistentEngine &theEngine);
 
     virtual ~KVStore() {}
 

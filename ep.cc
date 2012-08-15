@@ -370,7 +370,9 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
 
     KVStoreMapper::createKVMapper(numKVStores, stats.kvstoreMapVbuckets);
 
-    for (int i = 0; i < numKVStores; ++i) {
+    int i = 0;
+    for (std::map<std::string, KVStoreConfig>::iterator it = theEngine.kvstoreConfigMap->begin();
+            it != theEngine.kvstoreConfigMap->end(); it++, i++) {
         rwUnderlying[i] = t[i];
         dispatcher[i] = new Dispatcher(theEngine);
         allFlusher[i] = new Flusher(this, dispatcher[i], i);
@@ -381,7 +383,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
         if (storageProperties[i]->maxConcurrency() > 1
             && storageProperties[i]->maxReaders() > 1
             && concurrentDB) {
-            roUnderlying[i] = engine.newKVStore("dummy");
+            roUnderlying[i] = engine.newKVStore(it->second);
             roDispatcher[i] = new Dispatcher(theEngine);
             roDispatcher[i]->start();
         } else {
@@ -394,7 +396,6 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
                          storageProperties[i]->maxConcurrency(),
                          storageProperties[i]->maxReaders(),
                          storageProperties[i]->maxWriters());
-
     }
     flusher = allFlusher[0];
 
@@ -412,8 +413,8 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     }
 
     persistenceCheckpointIds = new uint64_t[BASE_VBUCKET_SIZE];
-    for (size_t i = 0; i < BASE_VBUCKET_SIZE; ++i) {
-        persistenceCheckpointIds[i] = 0;
+    for (size_t j = 0; j < BASE_VBUCKET_SIZE; ++j) {
+        persistenceCheckpointIds[j] = 0;
     }
 
     startDispatcher();
