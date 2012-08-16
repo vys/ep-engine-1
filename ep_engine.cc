@@ -2853,7 +2853,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKVStoreStats(const void *cookie,
         for (size_t i = 0; i < s; i++) {
             std::stringstream ss;
             ss << i;
-            add_casted_stat((kvname + ":db_shard_" + ss.str()).c_str(), kvc.getDbShardI(i), add_stat, cookie);
+            add_casted_stat((kvname + ":db_shard" + ss.str()).c_str(), kvc.getDbShardI(i), add_stat, cookie);
         }
     }
 

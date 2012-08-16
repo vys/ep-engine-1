@@ -221,6 +221,25 @@ For introductory information on stats within membase, start with the
 | bg_evictions                  | Number of evictions done by background     |
 |                               | eviction policy so far                     |
 
+*** KVStore stats
+
+Displays the stats for all configured kvstores. <name> indicates the kvstore
+name used in the configuration.
+
+| Stat                          | Description                                |
+|-------------------------------+--------------------------------------------|
+| num_kvstores                  | Number of kvstores created from config     |
+| <name>:dbname                 | Main DB path                               |
+| <name>:shardpattern           | Shard pattern                              |
+| <name>:initfile               | SQL script to run after opening DB         |
+| <name>:postInitfile           | SQL script to run after all DB shards and  |
+|                               | statements have been initialized           |
+| <name>:db_strategy            | SQLite db strategy                         |
+| <name>:data_dbs               | Number of disk paths provided to place     |
+|                               | shards                                     |
+| <name>:data_dbname<i>         | Disk paths for data                        |
+| <name>:db_shards              | Number of shards for db store              |
+| <name>:db_shard<i>            | Generated shard paths                      |
 
 ** vBucket total stats
 
