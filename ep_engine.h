@@ -24,18 +24,11 @@
 #include "tapconnmap.hh"
 #include "tapconnection.hh"
 #include "restore.hh"
+#include "configuration.hh"
 
 #define DEFAULT_TAP_NOOP_INTERVAL 200
 #define DEFAULT_BACKFILL_RESIDENT_THRESHOLD 0.9
 #define MINIMUM_BACKFILL_RESIDENT_THRESHOLD 0.7
-
-#ifndef DEFAULT_MIN_DATA_AGE
-#define DEFAULT_MIN_DATA_AGE 0
-#endif
-
-#ifndef DEFAULT_QUEUE_AGE_CAP
-#define DEFAULT_QUEUE_AGE_CAP 900
-#endif
 
 #ifndef DEFAULT_SYNC_TIMEOUT
 #define DEFAULT_SYNC_TIMEOUT 2500
@@ -478,7 +471,9 @@ public:
     }
 
     void setTxnSize(int to) {
-        epstore->setTxnSize(to);
+        if (to > 0) {
+            epstore->setTxnSize(to);
+        }
     }
 
     void setBGFetchDelay(uint32_t to) {
@@ -529,7 +524,10 @@ public:
 
     ~EventuallyPersistentEngine() {
         delete epstore;
-        delete kvstore;
+        for (int i = 0; i < numKVStores; ++i) {
+            delete kvstore[i];
+        }
+        delete []kvstore;
         delete getlExtension;
     }
 
@@ -565,6 +563,10 @@ public:
 
     SyncRegistry &getSyncRegistry() {
         return syncRegistry;
+    }
+
+    Configuration &getConfiguration() {
+        return configuration;
     }
 
     void notifyTapNotificationThread(void);
@@ -732,19 +734,27 @@ private:
     }
 
 
-    bool dbAccess(void) {
+    bool dbAccess() {
         bool ret = true;
-        if (access(dbname, F_OK) == -1) {
-            // file does not exist.. let's try to create it..
-            FILE *fp = fopen(dbname, "w");
-            if (fp == NULL) {
-                ret= false;
-            } else {
-                fclose(fp);
-                std::remove(dbname);
+        for (std::map<std::string, KVStoreConfig>::iterator it = kvstoreConfigMap->begin();
+                it != kvstoreConfigMap->end(); it++) {
+            std::string dbname = it->second.getDbname();
+            if (access(dbname.c_str(), F_OK) == -1) {
+                // file does not exist.. let's try to create it..
+                FILE *fp = fopen(dbname.c_str(), "w");
+                if (fp == NULL) {
+                    getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                            "No access to \"%s\".\n", dbname.c_str());
+                    ret= false;
+                } else {
+                    fclose(fp);
+                    std::remove(dbname.c_str());
+                }
+            } else if (access(dbname.c_str(), R_OK) == -1 || access(dbname.c_str(), W_OK) == -1) {
+                getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                    "No access to \"%s\".\n", dbname.c_str());
+                ret = false;
             }
-        } else if (access(dbname, R_OK) == -1 || access(dbname, W_OK) == -1) {
-            ret = false;
         }
 
         return ret;
@@ -752,6 +762,7 @@ private:
 
     ENGINE_ERROR_CODE doEngineStats(const void *cookie, ADD_STAT add_stat);
     ENGINE_ERROR_CODE doMemoryStats(const void *cookie, ADD_STAT add_stat);
+    ENGINE_ERROR_CODE doKVStoreStats(const void *cookie, ADD_STAT add_stat);
     ENGINE_ERROR_CODE doVBucketStats(const void *cookie, ADD_STAT add_stat,
                                      bool prevStateRequested = false);
     ENGINE_ERROR_CODE doHashStats(const void *cookie, ADD_STAT add_stat);
@@ -797,26 +808,17 @@ private:
         }
     }
 
-    KVStore *newKVStore();
+    bool createKVStores();
+    KVStore *newKVStore(KVStoreConfig &c);
 
     // Get the current tap connection for this cookie.
     // If this method returns NULL, you should return TAP_DISCONNECT
     TapProducer* getTapProducer(const void *cookie);
 
-    const char *dbname;
-    const char *shardPattern;
-    const char *initFile;
-    const char *postInitFile;
     const char *evictionPolicy;
-    enum db_type dbStrategy;
-    bool warmup;
-    bool wait_for_warmup;
-    bool fail_on_partial_warmup;
-    bool startVb0;
-    bool concurrentDB;
     bool forceShutdown;
     SERVER_HANDLE_V1 *serverApi;
-    KVStore *kvstore;
+    KVStore **kvstore;
     EventuallyPersistentStore *epstore;
     TapThrottle *tapThrottle;
     std::map<const void*, Item*> lookups;
@@ -839,13 +841,9 @@ private:
     TapConnMap tapConnMap;
     Mutex tapMutex;
     size_t maxItemSize;
-    size_t tapBacklogLimit;
     size_t memLowWat;
     size_t memHighWat;
-    size_t minDataAge;
-    size_t queueAgeCap;
     size_t itemExpiryWindow;
-    size_t checkpointRemoverInterval;
     struct ExpiryPagerDelta {
         ExpiryPagerDelta() : sleeptime(0), lrusleeptime(0), running(false) {}
         Mutex mutex;
@@ -855,8 +853,6 @@ private:
         bool running;
     } expiryPager;
 
-    size_t nVBuckets;
-    size_t dbShards;
     size_t vb_del_chunk_size;
     size_t vb_chunk_del_threshold_time;
     Atomic<uint64_t> mutation_count;
@@ -865,6 +861,9 @@ private:
     size_t syncTimeout;
     EPStats stats;
     SyncRegistry syncRegistry;
+    int numKVStores;
+    Configuration configuration;
+    std::map<std::string, KVStoreConfig> *kvstoreConfigMap;
     struct {
         Mutex mutex;
         RestoreManager *manager;

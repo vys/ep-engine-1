@@ -118,6 +118,8 @@ public:
                 dataAgeHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25),
                 diskCommitHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25 ){}
 
+    // How to map keys,vbuckets to kvstores
+    Atomic<bool> kvstoreMapVbuckets;
     //! How long it took us to load the data from disk.
     Atomic<hrtime_t> warmupTime;
     //! Whether we're warming up.
@@ -131,14 +133,14 @@ public:
 
     //! size of the input queue
     Atomic<size_t> queue_size;
-    //! Size of the in-process (output) queue.
-    Atomic<size_t> flusher_todo;
+    //! Size of the in-process (output) queue for each flusher
+    std::vector<Atomic<size_t> > flusher_todos;
     //! Number of deduplications fixed by the flusher
-    Atomic<size_t> flusherDedup;
+    std::vector<Atomic<size_t> > flusherDedup;
     //! Number of transaction commits.
-    Atomic<size_t> flusherCommits;
+    std::vector<Atomic<size_t> > flusherCommits;
     //! Number of times the flusher was preempted for a read
-    Atomic<size_t> flusherPreempts;
+    std::vector<Atomic<size_t> > flusherPreempts;
     //! Total time spent flushing.
     Atomic<size_t> cumulativeFlushTime;
     //! Total time spent committing.
@@ -162,9 +164,9 @@ public:
     //! Number of times an object was expired on access.
     Atomic<size_t> expired;
     //! Number of times we failed to start a transaction
-    Atomic<size_t> beginFailed;
+    std::vector<Atomic<size_t> > beginFailed;
     //! Number of times a commit failed.
-    Atomic<size_t> commitFailed;
+    std::vector<Atomic<size_t> > commitFailed;
     //! How long an object is dirty before written.
     Atomic<rel_time_t> dirtyAge;
     //! Oldest enqueued object we've seen while persisting.
@@ -483,6 +485,15 @@ public:
 
         itemMemoryAgeHisto.reset();
         itemDiskAgeHisto.reset();
+    }
+    
+    size_t flusher_todo_get() {
+        size_t l = flusher_todos.size();
+        size_t sum = 0;
+        for (size_t i = 0; i < l; i++) {
+            sum += flusher_todos[i];
+        }
+        return sum;
     }
 
 private:

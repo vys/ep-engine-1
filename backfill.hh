@@ -60,10 +60,10 @@ public:
         VBucketVisitor(backfillVBfilter), engine(e), name(tc->getName()),
         queue(new std::list<queued_item>),
         found(), validityToken(token),
-        maxBackfillSize(e->tapBacklogLimit), valid(true),
-        efficientVBDump(e->epstore->getStorageProperties().hasEfficientVBDump()),
+        maxBackfillSize(e->getConfiguration().getTapBacklogLimit()), valid(true),
+        efficientVBDump(false), //FIXME Fix effecient vbdump to work with multiple kvstores
         residentRatioBelowThreshold(false), sessionID(sid) {
-        found.reserve(e->tapBacklogLimit);
+        found.reserve(maxBackfillSize);
     }
 
     virtual ~BackFillVisitor() {

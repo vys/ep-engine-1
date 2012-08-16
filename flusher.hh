@@ -5,6 +5,7 @@
 #include "common.hh"
 #include "ep.hh"
 #include "dispatcher.hh"
+#include "kvstore-mapper.hh"
 
 enum flusher_state {
     initializing,
@@ -47,10 +48,11 @@ private:
 class Flusher {
 public:
 
-    Flusher(EventuallyPersistentStore *st, Dispatcher *d) :
-        store(st), _state(initializing), dispatcher(d),
+    Flusher(EventuallyPersistentStore *st, Dispatcher *d, int i) :
+        store(st), _state(initializing), dispatcher(d), flusherId(i),
         flushRv(0), prevFlushRv(0), minSleepTime(0.1),
-        flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false), forceShutdownReceived(false) {
+        flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false), 
+        forceShutdownReceived(false), filter(i) {
     }
 
     ~Flusher() {
@@ -85,6 +87,8 @@ public:
 
     enum flusher_state state() const;
     const char * stateName() const;
+
+    QueuedItemFilter &getFilter() {return filter;}
 private:
     bool transition_state(enum flusher_state to);
     int doFlush();
@@ -98,6 +102,7 @@ private:
     TaskId task;
     Dispatcher *dispatcher;
     const char * stateName(enum flusher_state st) const;
+    int flusherId;
 
     // Current flush cycle state.
     int                      flushRv;
@@ -108,8 +113,8 @@ private:
     rel_time_t               flushStart;
     Atomic<bool>             vbStateLoaded;
     Atomic<bool>             forceShutdownReceived;
+    QueuedItemFilter         filter; 
 
     DISALLOW_COPY_AND_ASSIGN(Flusher);
 };
-
 #endif /* FLUSHER_H */

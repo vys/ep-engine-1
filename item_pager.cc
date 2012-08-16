@@ -86,7 +86,7 @@ public:
     }
 
     bool pauseVisitor() {
-        size_t queueSize = stats.queue_size.get() + stats.flusher_todo.get();
+        size_t queueSize = stats.queue_size.get() + stats.flusher_todo_get();
         return canPause && queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
     }
 
@@ -181,7 +181,7 @@ public:
     }
 
     bool pauseVisitor() {
-        size_t queueSize = stats.queue_size.get() + stats.flusher_todo.get();
+        size_t queueSize = stats.queue_size.get() + stats.flusher_todo_get();
         pauseMutations = queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
         return false;
     }
@@ -332,7 +332,7 @@ bool InvalidItemDbPager::callback(Dispatcher &d, TaskId t) {
     std::list<row_range>::iterator rit = it->second.begin();
     uint16_t vbid = it->first;
     uint16_t vb_version = vb_versions[vbid];
-    if (store->getRWUnderlying()->delVBucket(vbid, vb_version, *rit)) {
+    if (store->getRWUnderlying(0)->delVBucket(vbid, vb_version, *rit)) {
         it->second.erase(rit);
         if (it->second.begin() == it->second.end()) {
             vb_row_ranges.erase(it);

@@ -605,7 +605,7 @@ public:
         return managerInstance;
     }
 
-    static void createInstance(EventuallyPersistentStore *s, EPStats &st, const char *p) {
+    static void createInstance(EventuallyPersistentStore *s, EPStats &st, std::string p) {
         if (managerInstance == NULL) {
             managerInstance = new EvictionManager(s, st, p);
         }
@@ -674,7 +674,7 @@ private:
     static Atomic<size_t> minBlobSize;
     static EvictionManager *managerInstance;
 
-    EvictionManager(EventuallyPersistentStore *s, EPStats &st, const char *p) :
+    EvictionManager(EventuallyPersistentStore *s, EPStats &st, std::string &p) :
         maxSize(MAX_EVICTION_ENTRIES),
         pauseJob(false), store(s), stats(st), policyName(p),
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),

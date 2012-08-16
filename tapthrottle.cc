@@ -6,7 +6,7 @@
 const size_t MAXIMUM_QUEUE(1000000);
 
 bool TapThrottle::persistenceQueueSmallEnough() const {
-    size_t queueSize = stats.queue_size.get() + stats.flusher_todo.get();
+    size_t queueSize = stats.queue_size.get() + stats.flusher_todo_get();
     return queueSize < MAXIMUM_QUEUE;
 }
 

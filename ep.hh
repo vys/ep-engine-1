@@ -337,8 +337,9 @@ private:
 class TransactionContext {
 public:
 
-    TransactionContext(EPStats &st, KVStore *ks, SyncRegistry &syncReg)
-        : stats(st), underlying(ks), _remaining(0), intxn(false), syncRegistry(syncReg) {}
+    TransactionContext(EPStats &st, KVStore *ks, SyncRegistry &syncReg, int _id)
+        : stats(st), underlying(ks), _remaining(0), intxn(false), 
+        syncRegistry(syncReg), id(_id) {}
 
     /**
      * Call this whenever entering a transaction.
@@ -411,6 +412,7 @@ private:
     bool         intxn;
     std::list<queued_item>     uncommittedItems;
     SyncRegistry              &syncRegistry;
+    int id;
 };
 
 /**
@@ -450,8 +452,8 @@ class EventuallyPersistentStore {
 public:
 
     EventuallyPersistentStore(EventuallyPersistentEngine &theEngine,
-                              KVStore *t, bool startVb0,
-                              bool concurrentDB);
+                              KVStore **t, bool startVb0,
+                              bool concurrentDB, int numKV);
 
     ~EventuallyPersistentStore();
 
@@ -583,24 +585,24 @@ public:
      * You can use this to queue io related jobs.  Don't do stupid things with
      * it.
      */
-    Dispatcher* getDispatcher(void) {
+    Dispatcher* getDispatcher(int i) {
         assert(dispatcher);
-        return dispatcher;
+        return dispatcher[i];
     }
 
     /**
      * Get the current read-only IO dispatcher.
      */
-    Dispatcher* getRODispatcher(void) {
+    Dispatcher* getRODispatcher(int i) {
         assert(roDispatcher);
-        return roDispatcher;
+        return roDispatcher[i];
     }
 
     /**
      * True if the RW dispatcher and RO dispatcher are distinct.
      */
-    bool hasSeparateRODispatcher() {
-        return dispatcher != roDispatcher;
+    bool hasSeparateRODispatcher(int i) {
+        return dispatcher[i] != roDispatcher[i];
     }
 
     /**
@@ -712,18 +714,24 @@ public:
                     NULL, prio, 0, isDaemon);
     }
 
-    void warmup(Atomic<bool> &vbStateLoaded);
+    void warmup(Atomic<bool> &vbStateLoaded, int id);
 
     int getTxnSize() {
-        return tctx.getTxnSize();
+        return tctx[0]->getTxnSize();
     }
 
     void setTxnSize(int to) {
-        tctx.setTxnSize(to);
+        for (int i = 0; i < numKVStores; ++i) {
+            tctx[i]->setTxnSize(to);
+        }
     }
 
     size_t getNumUncommittedItems() {
-        return tctx.getNumUncommittedItems();
+        size_t ret = 0;
+        for (int i = 0; i < numKVStores; ++i) {
+            ret += tctx[i]->getNumUncommittedItems();
+        }
+        return ret;
     }
 
     const Flusher* getFlusher();
@@ -756,14 +764,14 @@ public:
                                 rel_time_t currentTime);
 
 
-    KVStore* getRWUnderlying() {
+    KVStore* getRWUnderlying(int id) {
         // This method might also be called leakAbstraction()
-        return rwUnderlying;
+        return rwUnderlying[id];
     }
 
-    KVStore* getROUnderlying() {
+    KVStore* getROUnderlying(int id) {
         // This method might also be called leakAbstraction()
-        return roUnderlying;
+        return roUnderlying[id];
     }
 
     InvalidItemDbPager* getInvalidItemDbPager() {
@@ -771,13 +779,6 @@ public:
     }
 
     void deleteExpiredItems(std::list<std::pair<uint16_t, std::string> > &);
-
-    /**
-     * Get the memoized storage properties from the DB.kv
-     */
-    const StorageProperties getStorageProperties() const {
-        return storageProperties;
-    }
 
     void scheduleVBSnapshot(const Priority &priority);
 
@@ -812,7 +813,28 @@ public:
      */
     void completeOnlineRestore();
 
+    StorageProperties *getStorageProperties(int kvid) { 
+        return storageProperties[kvid];
+    }
+
 private:
+
+    void getRestoreItems(uint16_t vbid, QueuedItemFilter &filter, 
+                         std::vector<queued_item> item_list) {
+        LockHolder rlh(restore.mutex);
+        std::map<uint16_t, std::list<queued_item> >::iterator rit = restore.items.find(vbid);
+        if (rit == restore.items.end()) {
+            return;
+        }
+        std::list<queued_item>::iterator it = rit->second.begin();
+        while (it != rit->second.end()) {
+            if (filter(*it)) {
+                item_list.push_back(*it);
+                rit->second.erase(it);
+            }
+            it++;
+        }
+    }
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
 
@@ -858,31 +880,35 @@ private:
         return v != NULL;
     }
 
-    std::queue<queued_item> *beginFlush();
-    void pushToOutgoingQueue();
-    void requeueRejectedItems(std::queue<queued_item> *rejects);
+    std::queue<queued_item> *beginFlush(int id);
+    void pushToOutgoingQueue(std::vector<queued_item> *dbShardQueues,
+                             std::queue<queued_item> *flushQueue, int id);
+    void requeueRejectedItems(std::queue<queued_item> *rejects,
+                              std::queue<queued_item> *flushQueue);
     void completeFlush(rel_time_t flush_start);
 
     void enqueueCommit();
     int flushSome(std::queue<queued_item> *q,
-                  std::queue<queued_item> *rejectQueue);
+                  std::queue<queued_item> *rejectQueue,
+                  int id);
     int flushOne(std::queue<queued_item> *q,
-                 std::queue<queued_item> *rejectQueue);
+                 std::queue<queued_item> *rejectQueue,
+                 int id);
     int flushOneDeleteAll(void);
-    int flushOneDelOrSet(const queued_item &qi, std::queue<queued_item> *rejectQueue);
+    int flushOneDelOrSet(const queued_item &qi, std::queue<queued_item> *rejectQueue, int id);
 
     StoredValue *fetchValidValue(RCPtr<VBucket> vb, const std::string &key,
                                  int bucket_num, bool wantsDeleted=false);
 
-    bool shouldPreemptFlush(size_t completed) {
+    bool shouldPreemptFlush(size_t completed, int i) {
         return (completed > 100
                 && bgFetchQueue > 0
-                && !hasSeparateRODispatcher());
+                && !hasSeparateRODispatcher(i));
     }
 
     size_t getWriteQueueSize(void);
 
-    bool hasItemsForPersistence(void);
+    bool hasItemsForPersistence(int id);
 
     friend class Flusher;
     friend class BGFetchCallback;
@@ -895,36 +921,36 @@ private:
 
     EventuallyPersistentEngine &engine;
     EPStats                    &stats;
-    bool                        doPersistence;
-    KVStore                    *rwUnderlying;
-    KVStore                    *roUnderlying;
-    StorageProperties          storageProperties;
-    Dispatcher                *dispatcher;
-    Dispatcher                *roDispatcher;
-    Dispatcher                *nonIODispatcher;
-    Flusher                   *flusher;
-    InvalidItemDbPager        *invalidItemDbPager;
+    StorageProperties          **storageProperties;
+    bool                       doPersistence;
+    KVStore                    **rwUnderlying;
+    KVStore                    **roUnderlying;
+    Dispatcher                 **dispatcher;
+    Dispatcher                 **roDispatcher;
+    Dispatcher                 *nonIODispatcher;
+    Flusher                    *flusher;
+    Flusher                    **allFlusher;
+    InvalidItemDbPager         *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;
-    std::queue<queued_item>    writing;
-    std::vector<queued_item>  *dbShardQueues;
     pthread_t                  thread;
     Atomic<size_t>             bgFetchQueue;
     Atomic<bool>               diskFlushAll;
-    TransactionContext         tctx;
+    TransactionContext         **tctx;
     Mutex                      vbsetMutex;
     uint32_t                   bgFetchDelay;
-    uint64_t                  *persistenceCheckpointIds;
+    uint64_t                   *persistenceCheckpointIds;
     size_t                     getItemsUpperThreshold;
     size_t                     getItemsLowerThreshold;
     size_t                     maxGetItemsChecks;
     Atomic<size_t>             getItemsThresholdChecks;
+    int                        numKVStores;
     // During restore we're bypassing the checkpoint lists with the
     // objects we're restoring, but we need them to be persisted.
     // This is solved by using a separate list for those objects.
     struct {
         Mutex mutex;
-        std::map<uint16_t, std::vector<queued_item> > items;
+        std::map<uint16_t, std::list<queued_item> > items;
         // Maintain the list of deleted keys that are received from the upstream
         // master via TAP or from the normal clients during online restore.
         // As an alternative to std::set, we can consider boost::unordered_set later.

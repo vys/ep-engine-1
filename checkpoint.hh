@@ -248,13 +248,15 @@ class CheckpointManager {
     friend class TapConsumer;
 public:
 
-    CheckpointManager(EPStats &st, uint16_t vbucket, uint64_t checkpointId = 1) :
+    CheckpointManager(EPStats &st, uint16_t vbucket, uint64_t checkpointId = 1, int numPersistenceCursors = 1) :
         stats(st), vbucketId(vbucket), numItems(0),
-        mutationCounter(0), persistenceCursor("persistence"), onlineUpdateCursor("online_update"),
+        mutationCounter(0), onlineUpdateCursor("online_update"),
         isCollapsedCheckpoint(false), doOnlineUpdate(false), doHotReload(false) {
 
         addNewCheckpoint(checkpointId);
-        registerPersistenceCursor();
+        for (int i = 0 ; i < numPersistenceCursors; ++i) {
+            registerPersistenceCursor(i);
+        }
     }
 
     ~CheckpointManager();
@@ -369,7 +371,7 @@ public:
      * be pushed into the flusher's outgoing queue where the further IO optimization is performed.
      * @return the last closed checkpoint Id.
      */
-    uint64_t getAllItemsForPersistence(std::vector<queued_item> &items, size_t upperThreshold = 0);
+    uint64_t getAllItemsForPersistence(std::vector<queued_item> &items, int id, size_t upperThreshold = 0);
     /**
      * Return the list of items, which needs to be updated from backgrond fetcher.
      * @param items the array that will contain the list of items to be fetched and
@@ -401,8 +403,15 @@ public:
      */
     size_t getNumItemsForPersistence_UNLOCKED() {
         size_t num_items = numItems;
-        size_t offset = persistenceCursor.offset;
-        return num_items > offset ? num_items - offset : 0;
+        size_t max = 0;
+        std::map<const std::string, CheckpointCursor>::iterator cit;
+        cit = persistenceCursors.begin();
+        for (; cit != persistenceCursors.end(); ++cit) {
+            size_t offset = cit->second.offset;
+            size_t cur = num_items > offset ? num_items - offset : 0;
+            max = (max > cur) ? max : cur;
+        }
+        return max;
     }
 
     size_t getNumItemsForPersistence() {
@@ -439,7 +448,7 @@ public:
 
     bool hasNext(const std::string &name);
 
-    bool hasNextForPersistence();
+    bool hasNextForPersistence(int id);
 
     static void initializeCheckpointConfig(size_t checkpoint_period,
                                            size_t checkpoint_max_items,
@@ -486,7 +495,7 @@ public:
 
 private:
 
-    void registerPersistenceCursor();
+    void registerPersistenceCursor(int i);
 
     /**
      * Create a new open checkpoint and add it to the checkpoint list.
@@ -550,19 +559,19 @@ private:
         return ++mutationCounter;
     }
 
-    void decrPersistenceCursorOffset(size_t decr) {
-        if (persistenceCursor.offset >= decr) {
-            persistenceCursor.offset -= decr;
+    void decrPersistenceCursorOffset(CheckpointCursor &cursor, size_t decr) {
+        if (cursor.offset >= decr) {
+            cursor.offset -= decr;
         } else {
-            persistenceCursor.offset = 0;
+            cursor.offset = 0;
             getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                              "VBucket persistence cursor's offset is negative. Reset it to 0.");
         }
     }
 
-    void decrPersistenceCursorPos_UNLOCKED() {
-        if (persistenceCursor.currentPos != (*(persistenceCursor.currentCheckpoint))->begin()) {
-            --(persistenceCursor.currentPos);
+    void decrPersistenceCursorPos_UNLOCKED(CheckpointCursor &cursor) {
+        if (cursor.currentPos != (*(cursor.currentCheckpoint))->begin()) {
+            --(cursor.currentPos);
         }
     }
 
@@ -584,7 +593,8 @@ private:
     Atomic<size_t>           numItems;
     uint64_t                 mutationCounter;
     std::list<Checkpoint*>   checkpointList;
-    CheckpointCursor         persistenceCursor;
+    std::map<const std::string, CheckpointCursor> persistenceCursors;
+    std::vector<CheckpointCursor *> persistenceVector;
     CheckpointCursor         onlineUpdateCursor;
     bool                     isCollapsedCheckpoint;
     uint64_t                 lastClosedCheckpointId;
