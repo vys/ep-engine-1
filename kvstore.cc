@@ -142,7 +142,7 @@ bool KVStore::stringToType(const char *name,
     } \
     uniques.insert(str);
 
-bool validateConfig(std::map<std::string, KVStoreConfig> *confMap) {
+static bool validateConfig(std::map<std::string, KVStoreConfig> *confMap) {
     std::set<std::string> uniques;
     for (std::map<std::string, KVStoreConfig>::iterator it = confMap->begin();
             it != confMap->end(); it++) {
@@ -158,7 +158,7 @@ bool validateConfig(std::map<std::string, KVStoreConfig> *confMap) {
 
 std::map<std::string, KVStoreConfig> *KVStore::parseConfig(EventuallyPersistentEngine &theEngine) {
     std::map<std::string, KVStoreConfig> *confMap = new std::map<std::string, KVStoreConfig>;
-    cJSON *c, *kvstores, *kvstore, *kvparam, *dbnames, *dbname;
+    cJSON *c = NULL, *kvstores, *kvstore, *kvparam, *dbnames, *dbname;
 
     std::string confFile = theEngine.getConfiguration().getKvstoreConfigFile();
     char *data;
