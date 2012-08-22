@@ -137,7 +137,7 @@ private:
             assert(data[input->getNBytes() - 1] == '\n');
             *i = new Item(input->getKey(), input->getFlags(),
                           input->getExptime(),
-                          data, input->getNBytes() - 2,
+                          data, input->getNBytes() - 2, input->getCksum(),
                           0, -1, input->getVBucketId());
             delete input;
         } else {
