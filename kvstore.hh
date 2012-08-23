@@ -88,29 +88,6 @@ enum db_type {
 };
 
 /**
- * Configuration parameters to be passed to KVStore::create
- */
-class KVStoreConfig {
-public:
-    KVStoreConfig(const char *l,
-                  const char *sp,
-                  const char *i,
-                  const char *p,
-                  size_t nv,
-                  size_t sh) : location(l), shardPattern(sp),
-                               initFile(i), postInitFile(p),
-                               numVBuckets(nv),
-                               shards(sh) {}
-
-    const char   *location;
-    const char   *shardPattern;
-    const char   *initFile;
-    const char   *postInitFile;
-    const size_t  numVBuckets;
-    const size_t  shards;
-};
-
-/**
  * Base class representing kvstore operations.
  */
 class KVStore {
@@ -123,9 +100,7 @@ public:
      * @param stats the server stats
      * @param conf type-specific parameters
      */
-    static KVStore *create(db_type type,
-                           EPStats &stats,
-                           const KVStoreConfig &conf);
+    static KVStore *create(EventuallyPersistentEngine &theEngine);
 
     /**
      * Get the name of a db type.
