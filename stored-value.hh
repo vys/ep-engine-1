@@ -274,7 +274,7 @@ public:
     void setValue(const value_t &v, uint32_t newFlags, time_t newExp,
                   uint64_t theCas, std::string _cksum, EPStats &stats, HashTable &ht) {
         size_t currSize = size();
-        reduceCacheSize(ht, currSize);
+        reduceCacheSize(ht, isResident() ? currSize : currSize + valLength());
         reduceCurrentSize(stats, isDeleted() ? currSize : currSize - value->length());
         value = v;
         setResident();
