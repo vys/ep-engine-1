@@ -247,6 +247,16 @@ public:
     //! The longest tap load time
     Atomic<hrtime_t> tapBgMaxLoad;
 
+    /* checksum counters */
+    //! Number of times checksum failed
+    Atomic<size_t> cksumFailed;
+
+    //! Number of times key got ejected due to checksum
+    Atomic<size_t> ejectedDueToChecksum;
+
+    //! Number of times key got invalid checksum string
+    Atomic<size_t> invalidCksumString;
+
     //! Histogram of tap background wait loads.
     Histogram<hrtime_t> tapBgLoadHisto;
 

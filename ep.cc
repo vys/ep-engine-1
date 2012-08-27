@@ -30,6 +30,7 @@
 #include "kvstore.hh"
 #include "ep_engine.h"
 #include "htresizer.hh"
+#include "crc32.hh"
 
 extern "C" {
     static rel_time_t uninitialized_current_time(void) {
@@ -622,7 +623,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
         // Even if the item was dirty, push it into the vbucket's open checkpoint.
     case WAS_CLEAN:
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
-                   item.getFlags(), item.getExptime(), item.getCas(), row_id);
+                   item.getFlags(), item.getExptime(), item.getCas(), row_id,
+                   item.getCksum());
         break;
     case INVALID_VBUCKET:
         ret = ENGINE_NOT_MY_VBUCKET;
@@ -664,7 +666,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::add(const Item &item,
     case ADD_SUCCESS:
     case ADD_UNDEL:
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
-                   item.getFlags(), item.getExptime(), item.getCas(), -1);
+                   item.getFlags(), item.getExptime(), item.getCas(), -1, item.getCksum());
     }
     return ENGINE_SUCCESS;
 }
@@ -705,7 +707,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
         // FALLTHROUGH
     case WAS_CLEAN:
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
-                   item.getFlags(), item.getExptime(), item.getCas(), row_id, true);
+                   item.getFlags(), item.getExptime(), item.getCas(), row_id,
+                   item.getCksum(), true);
         break;
     case INVALID_VBUCKET:
         ret = ENGINE_NOT_MY_VBUCKET;
@@ -994,7 +997,8 @@ void EventuallyPersistentStore::bgFetch(const std::string &key,
 GetValue EventuallyPersistentStore::get(const std::string &key,
                                         uint16_t vbucket,
                                         const void *cookie,
-                                        bool queueBG, bool honorStates) {
+                                        bool queueBG, bool honorStates, 
+                                        bool verifyCksum) {
     RCPtr<VBucket> vb = getVBucket(vbucket);
     if (!vb) {
         ++stats.numNotMyVBuckets;
@@ -1035,9 +1039,22 @@ GetValue EventuallyPersistentStore::get(const std::string &key,
         uint64_t icas = v->isLocked(ep_current_time())
             ? static_cast<uint64_t>(-1)
             : v->getCas();
-        GetValue rv(new Item(v->getKey(), v->getFlags(), v->getExptime(),
-                             v->getValue(), icas, v->getId(), vbucket),
-                    ENGINE_SUCCESS, v->getId(), -1, v);
+        
+        Item * it = new Item(v->getKey(), v->getFlags(), v->getExptime(),
+                             v->getValue(), v->getCksum(), icas, v->getId(), vbucket);
+
+        GetValue rv(it, ENGINE_SUCCESS, v->getId(), -1, v);
+
+        if (verifyCksum) {
+            DataIntegrity *d = DataIntegrity::getDi(it->getCksumMeta());
+            if (!d->verifyCksum(it)) {
+                ++stats.cksumFailed;
+                ++stats.ejectedDueToChecksum;
+                /* Setting the mismatch flag */
+                it->setCorruptCksumFlag();
+                v->ejectValue(stats, vb->ht);
+            }
+        }
         return rv;
     } else {
         GetValue rv;
@@ -1098,9 +1115,19 @@ GetValue EventuallyPersistentStore::getAndUpdateTtl(const std::string &key,
         uint64_t icas = v->isLocked(ep_current_time())
             ? static_cast<uint64_t>(-1)
             : v->getCas();
-        GetValue rv(new Item(v->getKey(), v->getFlags(), v->getExptime(),
-                             v->getValue(), icas, v->getId(), vbucket),
-                    ENGINE_SUCCESS, v->getId());
+
+        Item *it = new Item(v->getKey(), v->getFlags(), v->getExptime(),
+                       v->getValue(), v->getCksum(), icas, v->getId(), vbucket);
+        GetValue rv(it, ENGINE_SUCCESS, v->getId());
+        
+        DataIntegrity *d = DataIntegrity::getDi(it->getCksumMeta());
+        if (!d->verifyCksum(it)) {
+            ++stats.cksumFailed;
+            ++stats.ejectedDueToChecksum;
+            /* Setting the mismatch flag */
+            it->setCorruptCksumFlag();
+            v->ejectValue(stats, vb->ht);
+        }
         return rv;
     } else {
         GetValue rv;
@@ -1208,7 +1235,16 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
         v->lock(currentTime + lockTimeout, metadata);
 
         Item *it = new Item(v->getKey(), v->getFlags(), v->getExptime(),
-                            v->getValue(), v->getCas());
+                            v->getValue(), v->getCksum(), v->getCas());
+
+        DataIntegrity *d = DataIntegrity::getDi(it->getCksumMeta());
+        if (!d->verifyCksum(it)) {
+            ++stats.cksumFailed;
+            ++stats.ejectedDueToChecksum;
+            /* Setting the mismatch flag */
+            it->setCorruptCksumFlag();
+            v->ejectValue(stats, vb->ht);
+        }
 
         it->setCas();
         v->setCas(it->getCas());
@@ -1949,6 +1985,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
                     qi->getItem().setFlags(v->getFlags());
                     qi->getItem().setCas(v->getCas());
                     qi->getItem().setExpTime(v->getExptime());
+                    qi->getItem().setCksum(v->getCksum());
                 }
             }
 
@@ -2057,6 +2094,7 @@ void EventuallyPersistentStore::queueDirty(const std::string &key,
                                            time_t exptime,
                                            uint64_t cas,
                                            int64_t rowid,
+                                           const std::string &cksum,
                                            bool tapBackfill) {
     if (doPersistence) {
         RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
@@ -2064,10 +2102,10 @@ void EventuallyPersistentStore::queueDirty(const std::string &key,
             QueuedItem *qi = NULL;
             if (op == queue_op_set) {
                 qi = new QueuedItem(key, value, vbid, op, vbuckets.getBucketVersion(vbid),
-                                    rowid, flags, exptime, cas);
+                                    rowid, flags, exptime, cas, cksum);
             } else {
                 qi = new QueuedItem(key, vbid, op, vbuckets.getBucketVersion(vbid), rowid, flags,
-                                    exptime, cas);
+                                    exptime, cas, cksum);
             }
 
             queued_item item(qi);
@@ -2091,6 +2129,15 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
         return -1;
     }
 
+    DataIntegrity *di = DataIntegrity::getDi(itm.getCksumMeta());
+    /* Log error if checksum does not match */
+    if (!di->verifyCksum((Item *)&itm)) {
+        ++stats.cksumFailed;
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                        "Restore : Checksum verification failed for the key %s\n", 
+                        itm.getKey().c_str());
+    }
+
     int bucket_num(0);
     LockHolder lh = vb->ht.getLockedBucket(key, &bucket_num);
     LockHolder rlh(restore.mutex);
@@ -2102,7 +2149,7 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
                                       vbid, op,
                                       vbuckets.getBucketVersion(vbid),
                                       -1, itm.getFlags(),
-                                      itm.getExptime(), itm.getCas()));
+                                      itm.getExptime(), itm.getCas(), itm.getCksum()));
         std::map<uint16_t, std::vector<queued_item> >::iterator it = restore.items.find(vbid);
         if (it != restore.items.end()) {
             it->second.push_back(qi);

@@ -159,8 +159,8 @@ PreparedStatement *StatementFactory::mkInsert(sqlite3 *db,
                                               const std::string &table) const {
     char buf[1024];
     snprintf(buf, sizeof(buf),
-             "insert into %s (k, v, flags, exptime, cas, vbucket, vb_version) "
-             "values(?, ?, ?, ?, ?, ?, ?)", table.c_str());
+             "insert into %s (k, v, flags, exptime, cas, vbucket, vb_version, cksum) "
+             "values(?, ?, ?, ?, ?, ?, ?, ?)", table.c_str());
     return new PreparedStatement(db, buf);
 }
 
@@ -169,7 +169,7 @@ PreparedStatement *StatementFactory::mkUpdate(sqlite3 *db,
     char buf[1024];
     // Note that vbucket IDs don't change here.
     snprintf(buf, sizeof(buf),
-             "update %s set k=?, v=?, flags=?, exptime=?, cas=?, vb_version=? "
+             "update %s set k=?, v=?, flags=?, exptime=?, cas=?, vb_version=?, cksum=?"
              " where rowid = ?", table.c_str());
     return new PreparedStatement(db, buf);
 }
@@ -177,9 +177,9 @@ PreparedStatement *StatementFactory::mkUpdate(sqlite3 *db,
 PreparedStatement *StatementFactory::mkSelect(sqlite3 *db,
                                               const std::string &table) const {
     char buf[1024];
-    // v=0, flags=1, exptime=2, cas=3, rowid=4, vbucket=5
+    // v=0, flags=1, exptime=2, cas=3, rowid=4, vbucket=5, cksum=6
     snprintf(buf, sizeof(buf),
-             "select v, flags, exptime, cas, rowid, vbucket "
+             "select v, flags, exptime, cas, rowid, vbucket, cksum "
              "from %s where rowid = ?", table.c_str());
     return new PreparedStatement(db, buf);
 }
@@ -187,9 +187,9 @@ PreparedStatement *StatementFactory::mkSelect(sqlite3 *db,
 PreparedStatement *StatementFactory::mkSelectAll(sqlite3 *db,
                                                  const std::string &table) const {
     char buf[1024];
-    // k=0, v=1, flags=2, exptime=3, cas=4, vbucket=5, rowid=6
+    // k=0, v=1, flags=2, exptime=3, cas=4, vbucket=5, rowid=6, cksum=7
     snprintf(buf, sizeof(buf),
-             "select k, v, flags, exptime, cas, vbucket, vb_version, rowid "
+             "select k, v, flags, exptime, cas, vbucket, vb_version, rowid, cksum "
              "from %s", table.c_str());
     return new PreparedStatement(db, buf);
 }

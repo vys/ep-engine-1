@@ -34,5 +34,21 @@ private:
     EventuallyPersistentStore *backend;
 };
 
+/**
+ * Protocol extension to support data integrity's option command.
+ */
+class DiExtension: public EXTENSION_ASCII_PROTOCOL_DESCRIPTOR {
+public:
+    DiExtension(EventuallyPersistentStore *kvstore, GET_SERVER_API get_server_api);
+
+    void initialize();
+
+    ENGINE_ERROR_CODE executeDi(int argc, token_t *argv, void *cookie,
+                                  RESPONSE_HANDLER_T response_handler);
+private:
+    SERVER_HANDLE_V1 *serverApi;
+    EventuallyPersistentStore *backend;
+};
+
 #endif /* EP_EXTENSION_H */
 

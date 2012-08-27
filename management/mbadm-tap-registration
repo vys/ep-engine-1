@@ -106,7 +106,8 @@ if __name__ == '__main__':
             memcacheConstants.TAP_FLAG_CHECKPOINT: (1, 0, int(last_closed_checkpoint_id)),
             memcacheConstants.TAP_FLAG_SUPPORT_ACK: '',
             memcacheConstants.TAP_FLAG_REGISTERED_CLIENT: closed_checkpoint_only,
-            memcacheConstants.TAP_FLAG_BACKFILL: backfill_age
+            memcacheConstants.TAP_FLAG_BACKFILL: backfill_age,
+            memcacheConstants.TAP_FLAG_CKSUM: ''
             })
             mc._sendCmd(memcacheConstants.CMD_TAP_CONNECT, tap_name, val, 0, ext)
             cmd, opaque, cas, vbucketId, key, ext, val = readTap(mc)

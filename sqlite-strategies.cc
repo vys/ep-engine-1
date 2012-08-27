@@ -170,6 +170,7 @@ void SingleTableSqliteStrategy::initTables(void) {
             "  flags integer,"
             "  exptime integer,"
             "  cas integer,"
+            "  cksum varchar(100),"   
             "  v text)");
 }
 
@@ -222,7 +223,7 @@ void MultiDBSingleTableSqliteStrategy::initDB() {
 void MultiDBSingleTableSqliteStrategy::initTables() {
     char buf[1024];
     PathExpander p(filename);
-
+    
     for (int i = 0; i < numTables; i++) {
         snprintf(buf, sizeof(buf),
                  "create table if not exists kv_%d.kv"
@@ -232,6 +233,7 @@ void MultiDBSingleTableSqliteStrategy::initTables() {
                  "  flags integer,"
                  "  exptime integer,"
                  "  cas integer,"
+                 "  cksum varchar(100),"   
                  "  v text)", i);
         execute(buf);
     }
@@ -307,6 +309,7 @@ void MultiTableSqliteStrategy::initTables() {
                  "  flags integer,"
                  "  exptime integer,"
                  "  cas integer,"
+                 "  cksum varchar(100),"   
                  "  v text)", static_cast<int>(i));
         execute(buf);
     }
@@ -375,6 +378,7 @@ void MultiTableSqliteStrategy::createVBTable(uint16_t vbucket) {
              "  flags integer,"
              "  exptime integer,"
              "  cas integer,"
+             "  cksum varchar(100),"   
              "  v text)", static_cast<int>(vbucket));
     execute(buf);
 }
@@ -471,6 +475,7 @@ void ShardedMultiTableSqliteStrategy::createVBTable(uint16_t vbucket) {
                  "  flags integer,"
                  "  exptime integer,"
                  "  cas integer,"
+                 "  cksum varchar(100),"   
                  "  v text)", static_cast<int>(i), static_cast<int>(vbucket));
         execute(buf);
     }
@@ -522,6 +527,7 @@ void ShardedMultiTableSqliteStrategy::initTables() {
                      "  flags integer,"
                      "  exptime integer,"
                      "  cas integer,"
+                     "  cksum varchar(100),"   
                      "  v text)",
                      static_cast<int>(i), static_cast<int>(j));
             execute(buf);
@@ -613,6 +619,7 @@ void ShardedByVBucketSqliteStrategy::createVBTable(uint16_t vbucket) {
              "  flags integer,"
              "  exptime integer,"
              "  cas integer,"
+             "  cksum varchar(100),"   
              "  v text)",
              static_cast<int>(getShardForVBucket(static_cast<uint16_t>(vbucket))),
              static_cast<int>(vbucket));
@@ -644,6 +651,7 @@ void ShardedByVBucketSqliteStrategy::initTables() {
                  "  flags integer,"
                  "  exptime integer,"
                  "  cas integer,"
+                 "  cksum varchar(100),"   
                  "  v text)",
                  static_cast<int>(getShardForVBucket(static_cast<uint16_t>(j))),
                  static_cast<int>(j));

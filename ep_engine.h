@@ -25,6 +25,7 @@
 #include "tapconnection.hh"
 #include "restore.hh"
 #include "configuration.hh"
+#include "crc32.hh"
 
 #define DEFAULT_TAP_NOOP_INTERVAL 200
 #define DEFAULT_BACKFILL_RESIDENT_THRESHOLD 0.9
@@ -184,7 +185,9 @@ public:
                                    const size_t nkey,
                                    const size_t nbytes,
                                    const int flags,
-                                   const rel_time_t exptime)
+                                   const rel_time_t exptime,
+                                   const char *cksum,
+                                   const size_t nck)
     {
         (void)cookie;
         if (nbytes > maxItemSize) {
@@ -192,15 +195,14 @@ public:
         }
 
         time_t expiretime = (exptime == 0) ? 0 : ep_abs_time(ep_reltime(exptime));
-
-        *item = new Item(key, nkey, nbytes, flags, expiretime);
+        *item = new Item(key, nkey, nbytes, flags, expiretime, cksum, nck);
         if (*item == NULL) {
             return memoryCondition();
         } else {
             return ENGINE_SUCCESS;
         }
     }
-
+   
     ENGINE_ERROR_CODE itemDelete(const void* cookie,
                                  const void* key,
                                  const size_t nkey,
@@ -240,7 +242,7 @@ public:
         BlockTimer timer(&stats.getCmdHisto);
         std::string k(static_cast<const char*>(key), nkey);
 
-        GetValue gv(epstore->get(k, vbucket, cookie, serverApi->core));
+        GetValue gv(epstore->get(k, vbucket, cookie, serverApi->core, true, true));
 
         if (gv.getStatus() == ENGINE_SUCCESS) {
             *item = gv.getValue();
@@ -315,7 +317,8 @@ public:
                 size_t nb = vals.str().length();
                 *result = val;
                 Item *nit = new Item(key, (uint16_t)nkey, item->getFlags(),
-                                     item->getExptime(), vals.str().c_str(), nb);
+                                     item->getExptime(), vals.str().c_str(), nb,
+                                     DISABLED_CRC_STR, DISABLED_CRC_STR_SIZE);
                 nit->setCas(item->getCas());
                 ret = store(cookie, nit, cas, OPERATION_CAS, vbucket);
                 delete nit;
@@ -334,7 +337,8 @@ public:
 
             *result = initial;
             Item *item = new Item(key, (uint16_t)nkey, 0, expiretime,
-                                  vals.str().c_str(), nb);
+                                  vals.str().c_str(), nb,
+                                  DISABLED_CRC_STR, DISABLED_CRC_STR_SIZE);
             ret = store(cookie, item, cas, OPERATION_ADD, vbucket);
             delete item;
         }
@@ -376,7 +380,8 @@ public:
                                 uint64_t cas,
                                 const void *data,
                                 size_t ndata,
-                                uint16_t vbucket);
+                                uint16_t vbucket,
+                                const char *cksum);
 
     ENGINE_ERROR_CODE touch(const void* cookie,
                             protocol_binary_request_header *request,
@@ -781,6 +786,7 @@ private:
         char buffer[sizeof(engine_info) + 10 * sizeof(feature_info) ];
     } info;
     GetlExtension *getlExtension;
+    DiExtension *diExtension;
 
     TapConnMap tapConnMap;
     Mutex tapMutex;

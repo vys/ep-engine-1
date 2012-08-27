@@ -123,6 +123,7 @@
  */
 #define CMD_RESET_REPLICATION_CHAIN 0x9f
 
+#define CMD_DI_OPTIONS        0xa0
 /*
  * IDs for the events of the SYNC command.
  */

@@ -39,6 +39,7 @@ void StrategicSqlite3::insert(const Item &itm, uint16_t vb_version,
     ins_stmt->bind64(5, itm.getCas());
     ins_stmt->bind(6, itm.getVBucketId());
     ins_stmt->bind(7, vb_version);
+    ins_stmt->bind(8, itm.getCksum());
 
     ++stats.io_num_write;
     stats.io_write_bytes += itm.getKey().length() + itm.getNBytes();
@@ -69,7 +70,8 @@ void StrategicSqlite3::update(const Item &itm, uint16_t vb_version,
     upd_stmt->bind(4, itm.getExptime());
     upd_stmt->bind64(5, itm.getCas());
     upd_stmt->bind(6, vb_version);
-    upd_stmt->bind64(7, itm.getId());
+    upd_stmt->bind(7, itm.getCksum());
+    upd_stmt->bind64(8, itm.getId());
 
     int rv = upd_stmt->execute();
     if (rv == 1) {
@@ -125,6 +127,8 @@ void StrategicSqlite3::get(const std::string &key, uint64_t rowid,
                              sel_stmt->column_int(2),
                              sel_stmt->column_blob(0),
                              sel_stmt->column_bytes(0),
+                             sel_stmt->column_blob(6),
+                             sel_stmt->column_bytes(6),
                              sel_stmt->column_int64(3),
                              sel_stmt->column_int64(4),
                              static_cast<uint16_t>(sel_stmt->column_int(5))));
@@ -268,6 +272,8 @@ static void processDumpRow(EPStats &stats,
                          st->column_int(3),
                          st->column_blob(1),
                          st->column_bytes(1),
+                         st->column_blob(8),
+                         st->column_bytes(8),
                          0,
                          st->column_int64(7),
                          static_cast<uint16_t>(st->column_int(5))),
