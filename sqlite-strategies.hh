@@ -23,10 +23,7 @@ typedef enum {
 class SqliteStrategy {
 public:
 
-    SqliteStrategy(const char * const fn,
-                   const char * const finit,
-                   const char * const pfinit,
-                   size_t shards);
+    SqliteStrategy(KVStoreConfig *kvc);
 
     virtual ~SqliteStrategy();
 
@@ -136,6 +133,7 @@ protected:
     static bool shouldCheckSchemaVersion;
 
     sqlite3            *db;
+    KVStoreConfig      *kvstoreConfig;
     const char * const  filename;
     const char * const  initFile;
     const char * const  postInitFile;
@@ -174,11 +172,8 @@ public:
      * @param pfinit an init script to run after initializing all schema
      * @param shards the number of shards
      */
-    SingleTableSqliteStrategy(const char * const fn,
-                              const char * const finit,
-                              const char * const pfinit,
-                              size_t shards = 1) :
-        SqliteStrategy(fn, finit, pfinit, shards), statements() {
+    SingleTableSqliteStrategy(KVStoreConfig *kvc) :
+        SqliteStrategy(kvc), statements() {
         assert(filename);
     }
 
@@ -262,14 +257,9 @@ public:
      * @param pfinit same as SqliteStrategy
      * @param n number of DB shards to create
      */
-    MultiDBSingleTableSqliteStrategy(const char * const fn,
-                                     const char * const sp,
-                                     const char * const finit,
-                                     const char * const pfinit,
-                                     int n):
-        SingleTableSqliteStrategy(fn, finit, pfinit, n),
-        shardpattern(sp), numTables(n) {
-        assert(shardpattern);
+    MultiDBSingleTableSqliteStrategy(KVStoreConfig *kvc) :
+        SingleTableSqliteStrategy(kvc) {
+        numTables = kvstoreConfig->getDbShards();
     }
 
     void initDB(void);
@@ -279,7 +269,6 @@ public:
     void destroyInvalidTables(bool destroyOnlyOne = false);
 
 private:
-    const char * const shardpattern;
     int numTables;
 };
 
@@ -304,13 +293,10 @@ public:
      * @param nv the maxinum number of vbuckets
      * @param shards the number of data shards
      */
-    MultiTableSqliteStrategy(const char * const fn,
-                             const char * const finit,
-                             const char * const pfinit,
-                             int nv,
-                             int shards=1)
-        : SqliteStrategy(fn, finit, pfinit, shards),
-          nvbuckets(nv), statements() {
+    MultiTableSqliteStrategy(KVStoreConfig *kvc,
+                             int nv) :
+        SqliteStrategy(kvc),
+        nvbuckets(nv), statements() {
 
         assert(filename);
     }
@@ -401,15 +387,10 @@ public:
      * @param nv the maxinum number of vbuckets
      * @param n the number of data shards
      */
-    ShardedMultiTableSqliteStrategy(const char * const fn,
-                                    const char * const sp,
-                                    const char * const finit,
-                                    const char * const pfinit,
-                                    int nv,
-                                    int n)
-        : MultiTableSqliteStrategy(fn, finit, pfinit, nv, n),
-          shardpattern(sp),
-          statementsPerShard() {
+    ShardedMultiTableSqliteStrategy(KVStoreConfig *kvc,
+                                    int nv) :
+        MultiTableSqliteStrategy(kvc, nv),
+        statementsPerShard() {
 
         assert(filename);
     }
@@ -429,7 +410,6 @@ public:
     std::vector<PreparedStatement*> getVBStatements(uint16_t vb, vb_statement_type vbst);
 
 protected:
-    const char * const        shardpattern;
     // statementsPerShard[vbucket][shard]
     std::vector<std::vector<Statements*> > statementsPerShard;
 
@@ -464,14 +444,9 @@ public:
      * @param nv the maxinum number of vbuckets
      * @param n the number of data shards
      */
-    ShardedByVBucketSqliteStrategy(const char * const fn,
-                                   const char * const sp,
-                                   const char * const finit,
-                                   const char * const pfinit,
-                                   int nv,
-                                   int n)
-        : MultiTableSqliteStrategy(fn, finit, pfinit, nv, n),
-          shardpattern(sp) {
+    ShardedByVBucketSqliteStrategy(KVStoreConfig *kvc,
+                                   int nv) :
+        MultiTableSqliteStrategy(kvc, nv) {
 
         assert(filename);
     }
@@ -489,8 +464,6 @@ public:
     void createVBTable(uint16_t vbucket);
 
 protected:
-    const char * const shardpattern;
-
     size_t getShardForVBucket(uint16_t vb) {
         size_t rv = (static_cast<size_t>(vb) % shardCount);
         assert(rv < shardCount);

@@ -7,23 +7,27 @@
 #include "sqlite-strategies.hh"
 #include "sqlite-eval.hh"
 #include "ep.hh"
-#include "pathexpand.hh"
 
 static const int CURRENT_SCHEMA_VERSION(2);
 
 bool SqliteStrategy::shouldCheckSchemaVersion = true;
 
-SqliteStrategy::SqliteStrategy(const char * const fn,
-                               const char * const finit,
-                               const char * const pfinit,
-                               size_t shards) : db(NULL),
-    filename(fn),
-    initFile(finit),
-    postInitFile(pfinit),
-    shardCount(shards),
+static const char *stringToCharPtr(std::string str) {
+    if (!str.empty()) {
+        return strdup(str.c_str());
+    }
+    return NULL;
+}
+
+SqliteStrategy::SqliteStrategy(KVStoreConfig *kvc) :
+    db(NULL), kvstoreConfig(kvc),
+    filename(stringToCharPtr(kvc->getDbname())),
+    initFile(stringToCharPtr(kvc->getInitfile())),
+    postInitFile(stringToCharPtr(kvc->getPostInitfile())),
     ins_vb_stmt(NULL), clear_vb_stmt(NULL), sel_vb_stmt(NULL),
     clear_stats_stmt(NULL), ins_stat_stmt(NULL),
     schema_version(0) {
+    shardCount = kvc->getDbShards();
 
     assert(filename);
     assert(shardCount > 0);
@@ -208,10 +212,9 @@ void SingleTableSqliteStrategy::destroyInvalidTables(bool destroyOnlyOne) {
 
 void MultiDBSingleTableSqliteStrategy::initDB() {
     char buf[1024];
-    PathExpander p(filename);
 
     for (int i = 0; i < numTables; i++) {
-        std::string shardname(p.expand(shardpattern, i));
+        std::string shardname = kvstoreConfig->getDbShardI(i);
         snprintf(buf, sizeof(buf), "attach database \"%s\" as kv_%d",
                  shardname.c_str(), i);
         execute(buf);
@@ -221,7 +224,6 @@ void MultiDBSingleTableSqliteStrategy::initDB() {
 
 void MultiDBSingleTableSqliteStrategy::initTables() {
     char buf[1024];
-    PathExpander p(filename);
 
     for (int i = 0; i < numTables; i++) {
         snprintf(buf, sizeof(buf),
@@ -498,10 +500,9 @@ std::vector<PreparedStatement*> ShardedMultiTableSqliteStrategy::getVBStatements
 
 void ShardedMultiTableSqliteStrategy::initDB() {
     char buf[1024];
-    PathExpander p(filename);
 
     for (size_t i = 0; i < shardCount; ++i) {
-        std::string shardname(p.expand(shardpattern, static_cast<int>(i)));
+        std::string shardname = kvstoreConfig->getDbShardI(i);
         snprintf(buf, sizeof(buf), "attach database \"%s\" as kv_%d",
                  shardname.c_str(), static_cast<int>(i));
         execute(buf);
@@ -621,10 +622,9 @@ void ShardedByVBucketSqliteStrategy::createVBTable(uint16_t vbucket) {
 
 void ShardedByVBucketSqliteStrategy::initDB() {
     char buf[1024];
-    PathExpander p(filename);
 
     for (size_t i = 0; i < shardCount; ++i) {
-        std::string shardname(p.expand(shardpattern, static_cast<int>(i)));
+        std::string shardname = kvstoreConfig->getDbShardI(i);
         snprintf(buf, sizeof(buf), "attach database \"%s\" as kv_%d",
                  shardname.c_str(), static_cast<int>(i));
         execute(buf);

@@ -1359,7 +1359,7 @@ bool EventuallyPersistentEngine::createKVStores() {
     numKVStores = kvstoreConfigMap->size();
     kvstore = new KVStore * [numKVStores];
     int i = 0;
-    for (std::map<std::string, KVStoreConfig>::iterator it = kvstoreConfigMap->begin();
+    for (std::map<std::string, KVStoreConfig*>::iterator it = kvstoreConfigMap->begin();
             it != kvstoreConfigMap->end(); it++, i++) {
         if ((kvstore[i] = newKVStore(it->second)) == NULL) {
             return false;
@@ -1369,7 +1369,7 @@ bool EventuallyPersistentEngine::createKVStores() {
 }
 
 // this function can be removed since it is redundant now
-KVStore* EventuallyPersistentEngine::newKVStore(KVStoreConfig &c) {
+KVStore* EventuallyPersistentEngine::newKVStore(KVStoreConfig *c) {
     return KVStore::create(c, *this);
 }
 
@@ -2693,14 +2693,14 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
 
     // Use stats kvstore instead. This is available only for backward compatibility and
     // displays the value only for the first kvstore in the map
-    add_casted_stat("ep_dbname", kvstoreConfigMap->begin()->second.getDbname(), add_stat, cookie);
+    add_casted_stat("ep_dbname", kvstoreConfigMap->begin()->second->getDbname(), add_stat, cookie);
     add_casted_stat("ep_dbinit", databaseInitTime, add_stat, cookie);
     // Use stats kvstore instead. This is available only for backward compatibility and
     // displays the value only for the first kvstore in the map
-    add_casted_stat("ep_dbshards", kvstoreConfigMap->begin()->second.getDbShards(), add_stat, cookie);
+    add_casted_stat("ep_dbshards", kvstoreConfigMap->begin()->second->getDbShards(), add_stat, cookie);
     // Use stats kvstore instead. This is available only for backward compatibility and
     // displays the value only for the first kvstore in the map
-    add_casted_stat("ep_db_strategy", kvstoreConfigMap->begin()->second.getDbStrategy(),
+    add_casted_stat("ep_db_strategy", kvstoreConfigMap->begin()->second->getDbStrategy(),
                     add_stat, cookie);
     add_casted_stat("ep_warmup", configuration.isWarmup() ? "true" : "false",
                     add_stat, cookie);
@@ -2830,30 +2830,30 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doMemoryStats(const void *cookie,
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doKVStoreStats(const void *cookie,
                                                            ADD_STAT add_stat) {
     add_casted_stat("num_kvstores", kvstoreConfigMap->size(), add_stat, cookie);
-    for (std::map<std::string, KVStoreConfig>::iterator it = kvstoreConfigMap->begin();
+    for (std::map<std::string, KVStoreConfig*>::iterator it = kvstoreConfigMap->begin();
             it != kvstoreConfigMap->end(); it++) {
         std::string kvname = it->first;
-        KVStoreConfig &kvc = it->second;
-        std::string &dbname = kvc.getDbname();
-        std::string &shP = kvc.getShardpattern();
+        KVStoreConfig *kvc = it->second;
+        std::string &dbname = kvc->getDbname();
+        std::string &shP = kvc->getShardpattern();
         add_casted_stat((kvname + ":dbname").c_str(), dbname, add_stat, cookie);
         add_casted_stat((kvname + ":shardpattern").c_str(), shP, add_stat, cookie);
-        add_casted_stat((kvname + ":initfile").c_str(), kvc.getInitfile(), add_stat, cookie);
-        add_casted_stat((kvname + ":postInitfile").c_str(), kvc.getPostInitfile(), add_stat, cookie);
-        add_casted_stat((kvname + ":db_strategy").c_str(), kvc.getDbStrategy(), add_stat, cookie);
-        size_t k = kvc.getNumDataDbs();
+        add_casted_stat((kvname + ":initfile").c_str(), kvc->getInitfile(), add_stat, cookie);
+        add_casted_stat((kvname + ":postInitfile").c_str(), kvc->getPostInitfile(), add_stat, cookie);
+        add_casted_stat((kvname + ":db_strategy").c_str(), kvc->getDbStrategy(), add_stat, cookie);
+        size_t k = kvc->getNumDataDbs();
         add_casted_stat((kvname + ":data_dbs").c_str(), k, add_stat, cookie);
         for (size_t i = 0; i < k; i++) {
             std::stringstream ss;
             ss << i;
-            add_casted_stat((kvname + ":data_dbname" + ss.str()).c_str(), kvc.getDataDbnameI(i), add_stat, cookie);
+            add_casted_stat((kvname + ":data_dbname" + ss.str()).c_str(), kvc->getDataDbnameI(i), add_stat, cookie);
         }
-        size_t s = kvc.getDbShards();
+        size_t s = kvc->getDbShards();
         add_casted_stat((kvname + ":db_shards").c_str(), s, add_stat, cookie);
         for (size_t i = 0; i < s; i++) {
             std::stringstream ss;
             ss << i;
-            add_casted_stat((kvname + ":db_shard" + ss.str()).c_str(), kvc.getDbShardI(i), add_stat, cookie);
+            add_casted_stat((kvname + ":db_shard" + ss.str()).c_str(), kvc->getDbShardI(i), add_stat, cookie);
         }
     }
 

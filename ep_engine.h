@@ -527,7 +527,12 @@ public:
         for (int i = 0; i < numKVStores; ++i) {
             delete kvstore[i];
         }
+        for (std::map<std::string, KVStoreConfig*>::iterator it = kvstoreConfigMap->begin();
+                it != kvstoreConfigMap->end(); it++) {
+            delete it->second;
+        }
         delete []kvstore;
+        delete kvstoreConfigMap;
         delete getlExtension;
     }
 
@@ -736,9 +741,9 @@ private:
 
     bool dbAccess() {
         bool ret = true;
-        for (std::map<std::string, KVStoreConfig>::iterator it = kvstoreConfigMap->begin();
+        for (std::map<std::string, KVStoreConfig*>::iterator it = kvstoreConfigMap->begin();
                 it != kvstoreConfigMap->end(); it++) {
-            std::string dbname = it->second.getDbname();
+            std::string dbname = it->second->getDbname();
             if (access(dbname.c_str(), F_OK) == -1) {
                 // file does not exist.. let's try to create it..
                 FILE *fp = fopen(dbname.c_str(), "w");
@@ -809,7 +814,7 @@ private:
     }
 
     bool createKVStores();
-    KVStore *newKVStore(KVStoreConfig &c);
+    KVStore *newKVStore(KVStoreConfig *c);
 
     // Get the current tap connection for this cookie.
     // If this method returns NULL, you should return TAP_DISCONNECT
@@ -863,7 +868,7 @@ private:
     SyncRegistry syncRegistry;
     int numKVStores;
     Configuration configuration;
-    std::map<std::string, KVStoreConfig> *kvstoreConfigMap;
+    std::map<std::string, KVStoreConfig*> *kvstoreConfigMap;
     struct {
         Mutex mutex;
         RestoreManager *manager;

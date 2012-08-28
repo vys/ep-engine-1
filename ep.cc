@@ -372,7 +372,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     KVStoreMapper::createKVMapper(numKVStores, stats.kvstoreMapVbuckets);
 
     int i = 0;
-    for (std::map<std::string, KVStoreConfig>::iterator it = theEngine.kvstoreConfigMap->begin();
+    for (std::map<std::string, KVStoreConfig*>::iterator it = theEngine.kvstoreConfigMap->begin();
             it != theEngine.kvstoreConfigMap->end(); it++, i++) {
         rwUnderlying[i] = t[i];
         dispatcher[i] = new Dispatcher(theEngine);

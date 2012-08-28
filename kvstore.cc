@@ -13,60 +13,33 @@
 #include "sqlite-kvstore.hh"
 #include "tools/cJSON.h"
 
-static const char *stringToCharPtr(std::string str) {
-    if (!str.empty()) {
-        return strdup(str.c_str());
-    }
-    return NULL;
-}
-
-KVStore *KVStore::create(KVStoreConfig &c, EventuallyPersistentEngine &theEngine) {
+KVStore *KVStore::create(KVStoreConfig *c, EventuallyPersistentEngine &theEngine) {
     Configuration &conf = theEngine.getConfiguration();
     SqliteStrategy *sqliteInstance = NULL;
 
     enum db_type type = multi_db;
 
-    if (!KVStore::stringToType(c.getDbStrategy().c_str(), type)) {
+    if (!KVStore::stringToType(c->getDbStrategy().c_str(), type)) {
         getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                         "Unhandled db type: %s", c.getDbStrategy().c_str());
+                         "Unhandled db type: %s", c->getDbStrategy().c_str());
         return NULL;
     }
 
     switch (type) {
     case multi_db:
-        sqliteInstance = new MultiDBSingleTableSqliteStrategy(
-                 stringToCharPtr(c.getDbname()),
-                 stringToCharPtr(c.getShardpattern()),
-                 stringToCharPtr(c.getInitfile()),
-                 stringToCharPtr(c.getPostInitfile()), c.getDbShards());
+        sqliteInstance = new MultiDBSingleTableSqliteStrategy(c);
         break;
     case single_db:
-        sqliteInstance = new SingleTableSqliteStrategy(
-                 stringToCharPtr(c.getDbname()),
-                 stringToCharPtr(c.getInitfile()),
-                 stringToCharPtr(c.getPostInitfile()));
+        sqliteInstance = new SingleTableSqliteStrategy(c);
         break;
     case single_mt_db:
-        sqliteInstance = new MultiTableSqliteStrategy(
-                 stringToCharPtr(c.getDbname()),
-                 stringToCharPtr(c.getInitfile()),
-                 stringToCharPtr(c.getPostInitfile()), conf.getMaxVbuckets());
+        sqliteInstance = new MultiTableSqliteStrategy(c, conf.getMaxVbuckets());
         break;
     case multi_mt_db:
-        sqliteInstance = new ShardedMultiTableSqliteStrategy(
-                 stringToCharPtr(c.getDbname()),
-                 stringToCharPtr(c.getShardpattern()),
-                 stringToCharPtr(c.getInitfile()),
-                 stringToCharPtr(c.getPostInitfile()), conf.getMaxVbuckets(),
-                 c.getDbShards());
+        sqliteInstance = new ShardedMultiTableSqliteStrategy(c, conf.getMaxVbuckets());
         break;
     case multi_mt_vb_db:
-        sqliteInstance = new ShardedByVBucketSqliteStrategy(
-                 stringToCharPtr(c.getDbname()),
-                 stringToCharPtr(c.getShardpattern()),
-                 stringToCharPtr(c.getInitfile()),
-                 stringToCharPtr(c.getPostInitfile()), conf.getMaxVbuckets(),
-                 c.getDbShards());
+        sqliteInstance = new ShardedByVBucketSqliteStrategy(c, conf.getMaxVbuckets());
         break;
     }
 
@@ -142,22 +115,22 @@ bool KVStore::stringToType(const char *name,
     } \
     uniques.insert(str);
 
-static bool validateConfig(std::map<std::string, KVStoreConfig> *confMap) {
+static bool validateConfig(std::map<std::string, KVStoreConfig*> *confMap) {
     std::set<std::string> uniques;
-    for (std::map<std::string, KVStoreConfig>::iterator it = confMap->begin();
+    for (std::map<std::string, KVStoreConfig*>::iterator it = confMap->begin();
             it != confMap->end(); it++) {
-        KVStoreConfig &kvc = it->second;
-        CHECK_UNIQUE(kvc.getDbname());
-        int s = kvc.getDbShards();
+        KVStoreConfig *kvc = it->second;
+        CHECK_UNIQUE(kvc->getDbname());
+        int s = kvc->getDbShards();
         for (int i = 0; i < s; i++) {
-            CHECK_UNIQUE(kvc.getDbShardI(i));
+            CHECK_UNIQUE(kvc->getDbShardI(i));
         }
     }
     return true;
 }
 
-std::map<std::string, KVStoreConfig> *KVStore::parseConfig(EventuallyPersistentEngine &theEngine) {
-    std::map<std::string, KVStoreConfig> *confMap = new std::map<std::string, KVStoreConfig>;
+std::map<std::string, KVStoreConfig*> *KVStore::parseConfig(EventuallyPersistentEngine &theEngine) {
+    std::map<std::string, KVStoreConfig*> *confMap = new std::map<std::string, KVStoreConfig*>;
     cJSON *c = NULL, *kvstores, *kvstore, *kvparam, *dbnames, *dbname;
 
     std::string confFile = theEngine.getConfiguration().getKvstoreConfigFile();
@@ -194,7 +167,7 @@ std::map<std::string, KVStoreConfig> *KVStore::parseConfig(EventuallyPersistentE
 
     // Handle the empty case
     if (k == 0) {
-        (*confMap)["kvstore"] = KVStoreConfig();
+        (*confMap)["kvstore"] = new KVStoreConfig;
         cJSON_Delete(c);
         delete [] data;
         return confMap;
@@ -211,7 +184,7 @@ std::map<std::string, KVStoreConfig> *KVStore::parseConfig(EventuallyPersistentE
         }
 
         // Create the KVStoreConfig for this kvstore
-        KVStoreConfig kvc;
+        KVStoreConfig *kvc = new KVStoreConfig;
         std::set<std::string> unique_keys;
         int l = cJSON_GetArraySize(kvstore);
         for (int j = 0; j < l; j++) {
@@ -226,32 +199,33 @@ std::map<std::string, KVStoreConfig> *KVStore::parseConfig(EventuallyPersistentE
                 if (kvparam->type != cJSON_String) {
                     JSON_ERROR("Parameter dbname must have a string value");
                 }
-                kvc.dbname = kvparam->valuestring;
+                kvc->dbname = kvparam->valuestring;
             } else if (t.compare("shardpattern") == 0) {
                 if (kvparam->type != cJSON_String) {
                     JSON_ERROR("Parameter shardpattern must have a string value");
                 }
-                kvc.shardpattern = kvparam->valuestring;
+                kvc->shardpattern = kvparam->valuestring;
+                assert(kvc->shardpattern.size());
             } else if (t.compare("initfile") == 0) {
                 if (kvparam->type != cJSON_String) {
                     JSON_ERROR("Parameter initfile must have a string value");
                 }
-                kvc.initfile = kvparam->valuestring;
+                kvc->initfile = kvparam->valuestring;
             } else if (t.compare("postInitfile") == 0) {
                 if (kvparam->type != cJSON_String) {
                     JSON_ERROR("Parameter postInitfile must have a string value");
                 }
-                kvc.postInitfile = kvparam->valuestring;
+                kvc->postInitfile = kvparam->valuestring;
             } else if (t.compare("db_strategy") == 0) {
                 if (kvparam->type != cJSON_String) {
                     JSON_ERROR("Parameter db_strategy must have a string value");
                 }
-                kvc.dbStrategy = kvparam->valuestring;
+                kvc->dbStrategy = kvparam->valuestring;
             } else if (t.compare("db_shards") == 0) {
                 if (kvparam->type != cJSON_Number) {
                     JSON_ERROR("Parameter db_shards must have an integer value");
                 }
-                kvc.dbShards = kvparam->valueint;
+                kvc->dbShards = kvparam->valueint;
             } else if (t.compare("data_dbnames") == 0) {
                 if (kvparam->type != cJSON_Array) {
                     JSON_ERROR("Parameter data_dbnames must be an array of string values");
@@ -269,7 +243,7 @@ std::map<std::string, KVStoreConfig> *KVStore::parseConfig(EventuallyPersistentE
                         JSON_ERROR("Duplicate values in data_dbnames");
                     }
                     unique_dbnames.insert(dn);
-                    kvc.addDataDbname(dn);
+                    kvc->addDataDbname(dn);
                 }
             } else {
                 JSON_ERROR("Unknown parameter in kvstore");

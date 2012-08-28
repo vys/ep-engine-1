@@ -107,6 +107,16 @@ public:
         dbStrategy(DEFAULT_DB_STRATEGY), dbShards(DEFAULT_DB_SHARDS), numDataDbs(0)
     {}
 
+    KVStoreConfig(const char * dbn,
+            const char * shp,
+            const char * ifile,
+            const char * pfile,
+            const char * dbstrat,
+            size_t dbshards) :
+        dbname(dbn), shardpattern(shp), initfile(ifile),
+        postInitfile(pfile), dbStrategy(dbstrat), dbShards(dbshards)
+    {}
+
     std::string& getDbname() {
         return dbname;
     }
@@ -176,7 +186,7 @@ public:
      * @param stats the server stats
      * @param conf type-specific parameters
      */
-    static KVStore *create(KVStoreConfig &c, EventuallyPersistentEngine &theEngine);
+    static KVStore *create(KVStoreConfig *c, EventuallyPersistentEngine &theEngine);
 
     /**
      * Get the name of a db type.
@@ -194,7 +204,7 @@ public:
     static bool stringToType(const char *name,
                              enum db_type &typeOut);
 
-    static std::map<std::string, KVStoreConfig> *parseConfig(EventuallyPersistentEngine &theEngine);
+    static std::map<std::string, KVStoreConfig*> *parseConfig(EventuallyPersistentEngine &theEngine);
 
     virtual ~KVStore() {}
 
