@@ -568,8 +568,6 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(const RCPtr<VBucket> &vbu
                 }
             }
         }
-    } else if (checkpointList.size() == 1) { // Only one checkpoint. Nothing to cleanup
-        return 0;
     }
 
     if (keepClosedCheckpoints) {
@@ -638,8 +636,10 @@ void CheckpointManager::removeInvalidCursorsOnCheckpoint(Checkpoint *pCheckpoint
     for (; cit != cursors.end(); ++cit) {
         // Check it with persistence cursors
         mit = persistenceCursors.find(*cit);
-        if (mit == persistenceCursors.end() || pCheckpoint != *(mit->second.currentCheckpoint)) {
-            invalidCursorNames.push_back(*cit);
+        if (mit != persistenceCursors.end()) {
+            if (pCheckpoint != *(mit->second.currentCheckpoint)) {
+                invalidCursorNames.push_back(*cit);
+            }
         } else if ((*cit).compare(onlineUpdateCursor.name) == 0) { // OnlineUpdate cursor
             if (pCheckpoint != *(onlineUpdateCursor.currentCheckpoint)) {
                 invalidCursorNames.push_back(*cit);
