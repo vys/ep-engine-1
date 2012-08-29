@@ -1648,8 +1648,16 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
         }
 
         *vbucket = qi->getVBucketId();
+
+        if (qi->getOperation() == queue_op_set && connection->getFlags()
+            & TAP_CONNECT_REQUEST_KEYS_ONLY) {
+            *itm = new Item(qi->getKey().c_str(), qi->getKey().size(),
+                    0, qi->getFlags(), qi->getExpiryTime(), DISABLED_CRC_STR);
+            ret = TAP_MUTATION;
+            ++stats.numTapFGFetched;
+            ++connection->queueDrain;
+        } else if (qi->getOperation() == queue_op_set && qi->getValue()->length() == 0) {
         // The item is from the backfill operation and needs to be fetched from the hashtable.
-        if (qi->getOperation() == queue_op_set && qi->getValue()->length() == 0) {
             GetValue gv(epstore->get(qi->getKey(), qi->getVBucketId(), cookie,
                                      false, false));
             ENGINE_ERROR_CODE r = gv.getStatus();
@@ -1818,8 +1826,9 @@ tap_event_t EventuallyPersistentEngine::walkTapQueue(const void *cookie,
             if (connection->requestAck(ret, *vbucket)) {
                 *flags = TAP_FLAG_ACK;
             }
-            if (!(connection->getFlags() & TAP_FLAG_NO_VALUE)
-                && connection->getFlags() & TAP_CONNECT_REQUEST_CKSUM) {
+            if (connection->getFlags() & TAP_CONNECT_REQUEST_KEYS_ONLY) {
+                *flags |= TAP_FLAG_NO_VALUE; 
+            } else if (connection->getFlags() & TAP_CONNECT_REQUEST_CKSUM) {
                 *flags |= TAP_FLAG_CKSUM;
             }
         }
