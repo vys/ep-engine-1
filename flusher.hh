@@ -51,8 +51,9 @@ public:
     Flusher(EventuallyPersistentStore *st, Dispatcher *d, int i) :
         store(st), _state(initializing), dispatcher(d), flusherId(i),
         flushRv(0), prevFlushRv(0), minSleepTime(0.1),
-        flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false), 
-        forceShutdownReceived(false), filter(i) {
+        flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false),
+        forceShutdownReceived(false), filter(i), rejectedItemsRequeued(false),
+        last_min_data_age(-1) {
     }
 
     ~Flusher() {
@@ -114,6 +115,9 @@ private:
     Atomic<bool>             vbStateLoaded;
     Atomic<bool>             forceShutdownReceived;
     QueuedItemFilter         filter; 
+    bool                     rejectedItemsRequeued;
+    timeval                  waketime;
+    int                      last_min_data_age;
 
     DISALLOW_COPY_AND_ASSIGN(Flusher);
 };

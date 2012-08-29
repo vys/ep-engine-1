@@ -86,7 +86,8 @@ ep_la_SOURCES = \
                  tapconnmap.cc tapconnmap.hh \
                  tapthrottle.cc tapthrottle.hh \
                  vbucket.cc vbucket.hh \
-                 meta.cc meta.hh
+                 meta.cc meta.hh \
+                 crc32.hh crc32.cc
 
 if BUILD_BYTEORDER
 ep_la_SOURCES += byteorder.c
@@ -166,7 +167,8 @@ EXTRA_TESTS =
 
 ep_testsuite_la_CFLAGS = $(AM_CFLAGS) ${NO_WERROR}
 ep_testsuite_la_SOURCES= ep_testsuite.cc ep_testsuite.h \
-                         locks.hh mutex.hh testlogger_libify.cc
+                         locks.hh mutex.hh testlogger_libify.cc \
+                         crc32.cc
 ep_testsuite_la_LDFLAGS= -module -dynamic
 
 # This is because automake can't figure out how to build the same code

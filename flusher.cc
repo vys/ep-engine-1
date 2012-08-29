@@ -153,11 +153,23 @@ bool Flusher::step(Dispatcher &d, TaskId tid) {
             return false;
         case running:
             {
+                // Poll the dispatcher every DEFAULT_MIN_SLEEP_TIME (0.1) seconds to
+                // check if min_data_age changed, in which case perform the flush operation
+                timeval tv;
+                gettimeofday(&tv, NULL);
+                if (last_min_data_age == store->stats.min_data_age &&
+                        (tv.tv_sec < waketime.tv_sec || (tv.tv_sec == waketime.tv_sec && tv.tv_usec < waketime.tv_usec))) {
+                    d.snooze(tid, DEFAULT_MIN_SLEEP_TIME);
+                    return true;
+                }
+                last_min_data_age = store->stats.min_data_age;
                 doFlush();
                 if (_state == running) {
                     double tosleep = computeMinSleepTime();
+                    gettimeofday(&waketime, NULL);
+                    advance_tv(waketime, tosleep);
                     if (tosleep > 0) {
-                        d.snooze(tid, tosleep);
+                        d.snooze(tid, DEFAULT_MIN_SLEEP_TIME);
                     }
                     return true;
                 } else {
@@ -207,11 +219,13 @@ void Flusher::completeFlush() {
 
 double Flusher::computeMinSleepTime() {
     // If we were preempted, keep going!
-    if (flushQueue && !flushQueue->empty()) {
+    if (flushQueue && !flushQueue->empty() && !rejectedItemsRequeued) {
         flushRv = 0;
         prevFlushRv = 0;
         return 0.0;
     }
+
+    rejectedItemsRequeued = false;
 
     if (flushRv + prevFlushRv == 0) {
         minSleepTime = std::min(minSleepTime * 2, 1.0);
@@ -251,6 +265,7 @@ int Flusher::doFlush() {
                 // Requeue the rejects.
                 store->requeueRejectedItems(rejectQueue, flushQueue);
                 store->stats.flusher_todos[flusherId].set(flushQueue->size());
+                rejectedItemsRequeued = true;
             } else {
                 store->completeFlush(flushStart);
                 getLogger()->log(EXTENSION_LOG_INFO, NULL,

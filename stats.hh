@@ -253,6 +253,18 @@ public:
     //! High water value for time an op is blocked on a pending vbucket
     Atomic<hrtime_t> pendingOpsMaxDuration;
 
+    /*stats for getl*/
+    //!Number of times getl succeeded
+    Atomic<size_t> getl_hits;
+    //!Number of times getl failed due to wrong vbucket
+    Atomic<size_t> getl_misses_notmyvbuckets;
+    //!Number of times getl failed because it was already locked
+    Atomic<size_t> getl_misses_locked;
+    //!Number of times getl failed because key was not found
+    Atomic<size_t> getl_misses_notfound;
+    //!Number of times unlock was issued
+    Atomic<size_t> num_unlocks;
+
     //! Histogram of pending operation wait times.
     Histogram<hrtime_t> pendingOpsHisto;
 
@@ -301,6 +313,9 @@ public:
     //! Histogram of background wait loads.
     Histogram<hrtime_t> bgLoadHisto;
 
+    //! The total number of successful flush_all calls
+    Atomic<size_t> flushHits;
+
     /* TAP related stats */
     //! The total number of tap events sent (not including noops)
     Atomic<size_t> numTapFetched;
@@ -338,6 +353,16 @@ public:
     Atomic<hrtime_t> tapBgMinLoad;
     //! The longest tap load time
     Atomic<hrtime_t> tapBgMaxLoad;
+
+    /* checksum counters */
+    //! Number of times checksum failed
+    Atomic<size_t> cksumFailed;
+
+    //! Number of times key got ejected due to checksum
+    Atomic<size_t> ejectedDueToChecksum;
+
+    //! Number of times key got invalid checksum string
+    Atomic<size_t> invalidCksumString;
 
     //! Histogram of tap background wait loads.
     Histogram<hrtime_t> tapBgLoadHisto;
@@ -531,7 +556,11 @@ struct key_stats {
 class MemoryAllocatorStats {
 public:
     static void getAllocatorStats(std::map<std::string, size_t> &allocator_stats) {
+#if defined(TCMALLOC_STATS)
+        TCMallocStats::getStats(allocator_stats);
+#else
         (void) allocator_stats;
+#endif
     }
 };
 

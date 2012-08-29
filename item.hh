@@ -8,11 +8,13 @@
 #include <stdio.h>
 #include <memcached/engine.h>
 
+#include "crc32.hh"
 #include "mutex.hh"
 #include "locks.hh"
 #include "atomic.hh"
 #include "objectregistry.hh"
 #include "stats.hh"
+#include "crc32.hh"
 
 /**
  * A blob is a minimal sized storage for data up to 2^32 bytes long.
@@ -134,10 +136,29 @@ typedef RCPtr<Blob> value_t;
 class Item {
 public:
     Item(const void* k, const size_t nk, const size_t nb,
-         const uint32_t fl, const time_t exp, uint64_t theCas = 0,
-         int64_t i = -1, uint16_t vbid = 0) :
-        flags(fl), exptime(exp), cas(theCas), id(i), vbucketId(vbid)
+         const uint32_t fl, const time_t exp, const std::string &_cksum, 
+         uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0) :
+        flags(fl), exptime(exp), cas(theCas), id(i), 
+        vbucketId(vbid)
     {
+        cksum.assign(_cksum);
+        key.assign(static_cast<const char*>(k), nk);
+        assert(id != 0);
+        setData(NULL, nb);
+        ObjectRegistry::onCreateItem(this);
+    }
+   
+    Item(const void* k, const size_t nk, const size_t nb,
+        const uint32_t fl, const time_t exp, const char *_cksum, const size_t nck,
+        uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0) :
+        flags(fl), exptime(exp), cas(theCas), id(i), 
+        vbucketId(vbid)
+    {
+        if (nck > 0) {
+            cksum.assign(_cksum, nck);
+        } else {
+            cksum.assign(DISABLED_CRC_STR);
+        } 
         key.assign(static_cast<const char*>(k), nk);
         assert(id != 0);
         setData(NULL, nb);
@@ -145,10 +166,12 @@ public:
     }
 
     Item(const std::string &k, const uint32_t fl, const time_t exp,
-         const void *dta, const size_t nb, uint64_t theCas = 0,
-         int64_t i = -1, uint16_t vbid = 0) :
-        flags(fl), exptime(exp), cas(theCas), id(i), vbucketId(vbid)
+         const void *dta, const size_t nb, const std::string &_cksum, 
+         uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0) :
+        flags(fl), exptime(exp), cas(theCas), id(i), 
+        vbucketId(vbid)
     {
+        cksum.assign(_cksum);
         key.assign(k);
         assert(id != 0);
         setData(static_cast<const char*>(dta), nb);
@@ -156,19 +179,22 @@ public:
     }
 
     Item(const std::string &k, const uint32_t fl, const time_t exp,
-         const value_t &val, uint64_t theCas = 0,  int64_t i = -1, uint16_t vbid = 0) :
+         const value_t &val, const std::string &_cksum, uint64_t theCas = 0,  
+         int64_t i = -1, uint16_t vbid = 0) :
         flags(fl), exptime(exp), value(val), cas(theCas), id(i), vbucketId(vbid)
     {
+        cksum.assign(_cksum);
         assert(id != 0);
         key.assign(k);
         ObjectRegistry::onCreateItem(this);
     }
 
     Item(const void *k, uint16_t nk, const uint32_t fl, const time_t exp,
-         const void *dta, const size_t nb, uint64_t theCas = 0,
-         int64_t i = -1, uint16_t vbid = 0) :
+         const void *dta, const size_t nb, const void *_cksum, const size_t cb,
+         uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0) :
         flags(fl), exptime(exp), cas(theCas), id(i), vbucketId(vbid)
     {
+        cksum.assign(static_cast<const char*>(_cksum), cb);
         assert(id != 0);
         key.assign(static_cast<const char*>(k), nk);
         setData(static_cast<const char*>(dta), nb);
@@ -214,6 +240,18 @@ public:
     uint32_t getFlags() const {
         return flags;
     }
+    
+    const char *getCksumMeta() const {
+        return cksum.c_str();
+    }
+
+    const char *getCksumData() const {
+        return cksum.c_str()+5;
+    }
+
+    const std::string &getCksum() const {
+        return cksum;
+    }
 
     uint64_t getCas() const {
         return cas;
@@ -233,6 +271,26 @@ public:
 
     void setFlags(uint32_t f) {
         flags = f;
+    }
+
+    void setCksum(const char *ck) {
+        cksum.assign(ck);
+    }
+
+    void setCksum(std::string ck) {
+        cksum.assign(ck);
+    }
+
+    void setCksumMeta(std::string &ck) {
+        cksum.replace(0, ck.size(), ck);
+    }
+
+    void setCksumData(std::string &ck) {
+        cksum.replace(5, ck.size(), ck);
+    }
+
+    void setCorruptCksumFlag() {
+        cksum.replace(0, CORRUPT_CRC_LEN, CORRUPT_CRC);    
     }
 
     void setExpTime(time_t exp_time) {
@@ -277,7 +335,7 @@ public:
     }
 
     size_t size() {
-        return sizeof(Item) + key.size() + value->getSize();
+        return sizeof(Item) + key.size() + value->getSize() + cksum.size();
     }
 
 private:
@@ -301,6 +359,7 @@ private:
     time_t exptime;
     std::string key;
     value_t value;
+    std::string cksum;
     uint64_t cas;
     int64_t id;
     uint16_t vbucketId;

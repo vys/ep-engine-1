@@ -988,6 +988,10 @@ private:
         tapLog.pop_back();
     }
 
+    uint32_t getFlags () const {
+        return flags;
+    }
+
     void reschedule_UNLOCKED(const std::list<TapLogElement>::iterator &iter);
 
     void clearQueues_UNLOCKED();

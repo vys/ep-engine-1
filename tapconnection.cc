@@ -129,6 +129,10 @@ void TapProducer::evaluateFlags()
         ss << ",checkpoints";
     }
 
+    if (flags & TAP_CONNECT_REQUEST_CKSUM) {
+        ss << ",checksum";
+    }
+
     if (ss.str().length() > 0) {
         std::stringstream m;
         m.setf(std::ios::hex);

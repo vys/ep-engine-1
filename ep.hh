@@ -49,6 +49,7 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #include "vbucket.hh"
 #include "item_pager.hh"
 #include "eviction.hh"
+#include "crc32.hh"
 
 #define DEFAULT_TXN_SIZE 10000
 #define MAX_TXN_SIZE 10000000
@@ -486,12 +487,13 @@ public:
      * @param cookie the connection cookie
      * @param queueBG if true, automatically queue a background fetch if necessary
      * @param honorStates if false, fetch a result regardless of state
+     * @param verifyCksum if true verify the checksum 
      *
      * @return a GetValue representing the result of the request
      */
     GetValue get(const std::string &key, uint16_t vbucket,
                  const void *cookie, bool queueBG=true,
-                 bool honorStates=true);
+                 bool honorStates=true, bool verifyCksum = false);
 
     /**
      * Retrieve a value, but update its TTL first
@@ -844,7 +846,8 @@ private:
     void queueDirty(const std::string &key, uint16_t vbid,
                     enum queue_operation op, const value_t &value,
                     uint32_t flags = 0, time_t exptime = 0, uint64_t cas = 0,
-                    int64_t rowid = -1, bool tapBackfill = false);
+                    int64_t rowid = -1, const std::string &cksum = "", bool
+                    tapBackfill = false);
 
     /**
      * Retrieve a StoredValue and invoke a method on it.

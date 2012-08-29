@@ -24,17 +24,31 @@
 #include "embedded/sqlite3.h"
 #endif
 
-static const char *checks_enabled_query =
-    "select cpoint_op.vbucket_id,op,key,flg,exp,cas,val,cpoint_op.cpoint_id "
+static const char *checks_enabled_query[2] = {
+    "select cpoint_op.vbucket_id,op,key,flg,exp,cas,val "
     "from cpoint_state "
     "  join cpoint_op on (cpoint_op.vbucket_id = cpoint_state.vbucket_id and"
     "                     cpoint_op.cpoint_id = cpoint_state.cpoint_id) "
     "where cpoint_state.state = \"closed\" "
-    "order by cpoint_op.cpoint_id desc";
+    "order by cpoint_op.cpoint_id desc",
 
-static const char *checks_disabled_query =
-    "select cpoint_op.vbucket_id,op,key,flg,exp,cas,val,cpoint_id "
-    "from cpoint_op ";
+    "select cpoint_op.vbucket_id,op,key,flg,exp,cas,val,cksum "
+    "from cpoint_state "
+    "  join cpoint_op on (cpoint_op.vbucket_id = cpoint_state.vbucket_id and"
+    "                     cpoint_op.cpoint_id = cpoint_state.cpoint_id) "
+    "where cpoint_state.state = \"closed\" "
+    "order by cpoint_op.cpoint_id desc"
+    };
+
+static const char *checks_disabled_query[2] = {
+    "select cpoint_op.vbucket_id,op,key,flg,exp,cas,val "
+    "from cpoint_op ",
+    "select cpoint_op.vbucket_id,op,key,flg,exp,cas,val,cksum "
+    "from cpoint_op "
+    };
+
+static const char *restore_checkpoint_query =
+    "select max(cpoint_id) from cpoint_state";
 
 static const int vbucket_id_idx = 0;
 static const int op_idx = 1;
@@ -43,7 +57,13 @@ static const int flag_idx = 3;
 static const int exp_idx = 4;
 static const int cas_idx = 5;
 static const int val_idx = 6;
-static const int cpoint_idx = 7;
+static const int cksum_idx = 7;
+
+enum {
+    NO_VERSION = 0,
+    DEFAULT_VERSION = 1,
+    WITH_CKSUM_VERSION = 2    
+};
 
 extern "C" {
     static void *restoreThreadMain(void *arg);
@@ -145,13 +165,52 @@ public:
      * @throw a string describing why an error occured
      */
     void process() throw (std::string) {
+        int rc, query_index;
         if (sqlite3_open(file.c_str(), &db) !=  SQLITE_OK) {
             db = NULL;
             throw std::string("Failed to open database");
         }
 
-        if (sqlite3_prepare_v2(db, query,
-                               strlen(query),
+        if (!restore_cpoint) {
+            assert(sqlite3_prepare(db, restore_checkpoint_query, -1, &statement, NULL) == SQLITE_OK);
+            while ((rc = sqlite3_step(statement)) != SQLITE_DONE) {
+                if (rc == SQLITE_ROW) {
+                    restore_cpoint = (uint32_t) sqlite3_column_int(statement, 0);
+                } else if (rc != SQLITE_BUSY){
+                    std::stringstream ss;
+                    ss << "sqlite error: " << sqlite3_errmsg(db);
+                    throw std::string(ss.str());
+                }
+            }
+            (void)sqlite3_finalize(statement);
+        }
+
+        assert(sqlite3_prepare(db, "pragma user_version;", -1, &statement, NULL) == SQLITE_OK);
+        while ((rc = sqlite3_step(statement)) != SQLITE_DONE) {
+            if (rc == SQLITE_ROW) {
+                user_version = sqlite3_column_int(statement, 0);
+                break;
+            } else if (rc != SQLITE_BUSY){
+                std::stringstream ss;
+                ss << "sqlite error: " << sqlite3_errmsg(db);
+                throw std::string(ss.str());
+            }
+        }
+
+        switch (user_version) {
+            case DEFAULT_VERSION:
+            case NO_VERSION:
+                query_index = 0;
+                break;
+            case WITH_CKSUM_VERSION:
+                query_index = 1;
+                break;
+            default:
+                throw std::string("Invalid version number");
+        }
+
+        if (sqlite3_prepare_v2(db, query[query_index],
+                    strlen(query[query_index]),
                                &statement, NULL) != SQLITE_OK) {
             (void)sqlite3_finalize(statement);
             (void)sqlite3_close(db);
@@ -159,7 +218,6 @@ public:
             throw std::string("Failed to prepare statement");
         }
 
-        int rc;
         while ((rc = sqlite3_step(statement)) != SQLITE_DONE) {
             if (rc == SQLITE_ROW) {
                 processEntry();
@@ -203,16 +261,22 @@ private:
 
         uint16_t vbid =  (uint16_t)sqlite3_column_int(statement,
                                                       vbucket_id_idx);
-        if (!restore_cpoint) {
-            restore_cpoint = (uint32_t)sqlite3_column_int(statement,
-                                                            cpoint_idx);
-        }
-
         uint32_t flags = sqlite3_column_int(statement, flag_idx);
         time_t expiration = sqlite3_column_int(statement, exp_idx);
         uint64_t cas = sqlite3_column_int64(statement, cas_idx);
+        std::string cksum(DI_CKSUM_DISABLED_STR);
+     
+       if (user_version == WITH_CKSUM_VERSION) {
+            if (sqlite3_column_bytes(statement, cksum_idx) == 0) { 
+                  getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
+                        "Restore : Cksum is NULL for the key %s\n", key.c_str());
+            } else {
+                cksum.assign((char *)(sqlite3_column_text(statement, 
+                    cksum_idx)), sqlite3_column_bytes(statement, cksum_idx));
+            }
+        }
 
-        Item itm(key, flags, expiration, value, cas, -1, vbid);
+        Item itm(key, flags, expiration, value, cksum, cas, -1, vbid);
         int r = store.restoreItem(itm, op);
         if (r == 0) {
             ++restored;
@@ -234,7 +298,8 @@ private:
     uint32_t skipped;
     uint32_t busy;
     uint32_t restore_cpoint;
-    const char *query;
+    uint32_t user_version;
+    const char **query;
 };
 
 class RestoreManagerImpl : public RestoreManager {

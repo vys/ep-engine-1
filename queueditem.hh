@@ -32,17 +32,17 @@ class QueuedItem : public RCValue {
 public:
     QueuedItem(const std::string &k, const uint16_t vb, enum queue_operation o,
                const uint16_t vb_version = -1, const int64_t rid = -1, const uint32_t f = 0,
-               const time_t expiry_time = 0, const uint64_t cv = 0)
+               const time_t expiry_time = 0, const uint64_t cv = 0, std::string ck = "")
         : op(o),vbucket_version(vb_version), queued(ep_current_time()),
-          item(k, f, expiry_time, NULL, 0, cv, rid, vb) {
+          item(k, f, expiry_time, NULL, 0, ck, cv, rid, vb) {
         ObjectRegistry::onCreateQueuedItem(this);
     }
 
     QueuedItem(const std::string &k, const value_t &v, const uint16_t vb, enum queue_operation o,
                const uint16_t vb_version = -1, const int64_t rid = -1, const uint32_t f = 0,
-               const time_t expiry_time = 0, const uint64_t cv = 0)
+               const time_t expiry_time = 0, const uint64_t cv = 0, std::string ck = "")
         : op(o), vbucket_version(vb_version), queued(ep_current_time()),
-          item(k, f, expiry_time, v, cv, rid, vb)
+          item(k, f, expiry_time, v, ck, cv, rid, vb)
     {
         ObjectRegistry::onCreateQueuedItem(this);
     }
@@ -61,6 +61,7 @@ public:
     time_t getExpiryTime() const { return item.getExptime(); }
     uint64_t getCas() const { return item.getCas(); }
     const value_t &getValue() const { return item.getValue(); }
+    const std::string &getCksum(void) const { return item.getCksum(); }
     Item &getItem() { return item; }
 
     void setQueuedTime(uint32_t queued_time) {

@@ -57,6 +57,7 @@ Persistence:
     start          - start persistence
 
 Available params for "set":
+    enable_flushall     - enable the flush_all command (false by default)
     min_data_age        - minimum data age before flushing data
     queue_age_cap       - maximum queue age before flushing data
     max_txn_size        - maximum number of items in a flusher transaction

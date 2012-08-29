@@ -32,6 +32,7 @@
 #include "backfill.hh"
 #include "invalid_vbtable_remover.hh"
 #include "eviction.hh"
+#include "crc32.hh"
 
 static void assembleSyncResponse(std::stringstream &resp,
                                  SyncListener *syncListener,
@@ -105,10 +106,13 @@ extern "C" {
                                              const size_t nkey,
                                              const size_t nbytes,
                                              const int flags,
-                                             const rel_time_t exptime)
+                                             const rel_time_t exptime,
+                                             const char *cksum,
+                                             const size_t nck)
     {
+    
         return getHandle(handle)->itemAllocate(cookie, item, key,
-                                               nkey, nbytes, flags, exptime);
+                                               nkey, nbytes, flags, exptime, cksum, nck);
     }
 
     static ENGINE_ERROR_CODE EvpItemDelete(ENGINE_HANDLE* handle,
@@ -380,6 +384,9 @@ extern "C" {
                     inconsistentSlaveCheckpoint = true;
                 }
                 CheckpointManager::allowInconsistentSlaveCheckpoint(inconsistentSlaveCheckpoint);
+            } else if (strcmp(keyz, "enable_flushall") == 0) {
+                bool enableFlushAll = (strcmp(valz, "true") == 0);
+                e->getConfiguration().setEnableFlushall(enableFlushAll);
             } else if (strcmp(keyz, "keep_closed_chks") == 0) {
                 bool keepClosedCheckpoints = false;
                 if (strcmp(valz, "true") == 0) {
@@ -837,7 +844,8 @@ extern "C" {
     static ENGINE_ERROR_CODE EvpUnknownCommand(ENGINE_HANDLE* handle,
                                                const void* cookie,
                                                protocol_binary_request_header *request,
-                                               ADD_RESPONSE response)
+                                               ADD_RESPONSE response,
+                                               ADD_RESPONSE_WITH_CKSUM resCksum)
     {
         protocol_binary_response_status res =
             PROTOCOL_BINARY_RESPONSE_UNKNOWN_COMMAND;
@@ -898,11 +906,16 @@ extern "C" {
             res = evictKey(h, request, &msg, &msg_size);
             break;
         case CMD_GET_LOCKED:
-            rv = getLocked(h, (protocol_binary_request_getl*)request, cookie, &item, &msg, &msg_size, &res, free_msg);
+            rv = getLocked(h, (protocol_binary_request_getl*)request, cookie,
+                &item, &msg, &msg_size, &res, free_msg);
             if (rv == ENGINE_EWOULDBLOCK) {
                 // we dont have the value for the item yet
                 return rv;
             }
+            break;
+        case CMD_DI_OPTIONS:
+            msg = OPTION_RESPONSE;
+            res = PROTOCOL_BINARY_RESPONSE_SUCCESS; 
             break;
         case CMD_UNLOCK_KEY:
             res = unlockKey(h, request, &msg, &msg_size);
@@ -921,14 +934,26 @@ extern "C" {
 
         // Send a special response for getl since we don't want to send the key
         if (item && request->request.opcode == CMD_GET_LOCKED) {
-            uint32_t flags = item->getFlags();
-
-            response(NULL, 0, (const void *)&flags, sizeof(uint32_t),
+            if (request->request.datatype & PROTOCOL_BINARY_WITH_CKSUM) {
+                uint32_t tmpbuf[2];
+                tmpbuf[0] = item->getFlags();
+                tmpbuf[1] = htonl(item->getCksum().size());
+                resCksum(NULL, 0, (const void *)tmpbuf, 2*sizeof(uint32_t),
+                        item->getCksum().c_str(), item->getCksum().size(),
+                        static_cast<const void *>(item->getData()),
+                        item->getNBytes(),
+                        PROTOCOL_BINARY_RAW_BYTES,
+                        static_cast<uint16_t>(res), item->getCas(),
+                        cookie);
+            } else {
+                uint32_t flags = item->getFlags();
+                response(NULL, 0, (const void *)&flags, sizeof(uint32_t),
                     static_cast<const void *>(item->getData()),
                     item->getNBytes(),
                     PROTOCOL_BINARY_RAW_BYTES,
                     static_cast<uint16_t>(res), item->getCas(),
                     cookie);
+            }
         } else if (item) {
             std::string key  = item->getKey();
             uint32_t flags = item->getFlags();
@@ -977,13 +1002,14 @@ extern "C" {
                                           uint64_t cas,
                                           const void *data,
                                           size_t ndata,
-                                          uint16_t vbucket)
+                                          uint16_t vbucket,
+                                          const char *cksum)
     {
         return getHandle(handle)->tapNotify(cookie, engine_specific, nengine,
                                             ttl, tap_flags, tap_event,
                                             tap_seqno, key, nkey, flags,
                                             exptime, cas, data, ndata,
-                                            vbucket);
+                                            vbucket, cksum);
     }
 
     static tap_event_t EvpTapIterator(ENGINE_HANDLE* handle,
@@ -1078,6 +1104,7 @@ extern "C" {
         item_info->clsid = 0;
         item_info->nkey = static_cast<uint16_t>(it->getNKey());
         item_info->nvalue = 1;
+        item_info->cksum = it->getCksum().c_str();
         item_info->key = it->getKey().c_str();
         item_info->value[0].iov_base = const_cast<char*>(it->getData());
         item_info->value[0].iov_len = it->getNBytes();
@@ -1347,6 +1374,8 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
 
     getlExtension = new GetlExtension(epstore, getServerApiFunc);
     getlExtension->initialize();
+    diExtension = new DiExtension(epstore, getServerApiFunc);
+    diExtension->initialize();
 
     HashMetaData::getInstance()->initialize(getlMaxTimeout);
 
@@ -1405,16 +1434,20 @@ private:
 /// @endcond
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::flush(const void *, time_t when) {
-    shared_ptr<AllFlusher> cb(new AllFlusher(epstore, tapConnMap));
-    if (when == 0) {
-        cb->doFlush();
-    } else {
-        epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::FlushAllPriority,
-                                                static_cast<double>(when),
-                                                false);
-    }
+    if (configuration.isEnableFlushall()) {
+        shared_ptr<AllFlusher> cb(new AllFlusher(epstore, tapConnMap));
+        if (when == 0) {
+            cb->doFlush();
+        } else {
+            epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::FlushAllPriority,
+                    static_cast<double>(when),
+                    false);
+        }
+        stats.flushHits++;
 
-    return ENGINE_SUCCESS;
+        return ENGINE_SUCCESS;
+    }
+    return ENGINE_ENOTSUP;
 }
 
 ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
@@ -1427,6 +1460,21 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
     ENGINE_ERROR_CODE ret;
     Item *it = static_cast<Item*>(itm);
     item *i = NULL;
+   
+    /* validate the crc string */ 
+    if (DataIntegrity::validateCksumMetaData(it->getCksum().c_str())
+            == false) {
+        ++stats.invalidCksumString;
+        return ENGINE_CKSUM_FAILED;
+    }   
+
+    DataIntegrity *di = DataIntegrity::getDi(it->getCksumMeta());
+     
+    /* Return error if checksum does not match */
+    if (!di->verifyCksum(it)) {
+        ++stats.cksumFailed;
+        return ENGINE_CKSUM_FAILED;
+    }
 
     it->setVBucketId(vbucket);
 
@@ -1484,8 +1532,15 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
     case OPERATION_APPEND:
     case OPERATION_PREPEND:
         do {
+            std::string cksum(DI_CKSUM_DISABLED_STR);
             if ((ret = get(cookie, &i, it->getKey().c_str(),
                            it->getNKey(), vbucket)) == ENGINE_SUCCESS) {
+
+                if (DataIntegrity::isDataCorrupt(it->getCksum())) {
+                    itemRelease(cookie, i);
+                    return ENGINE_CKSUM_FAILED;
+                }
+
                 Item *old = reinterpret_cast<Item*>(i);
 
                 if (old->getCas() == (uint64_t) -1) {
@@ -1505,15 +1560,38 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
                 }
 
                 if (operation == OPERATION_APPEND) {
+                    
                     if (!old->append(*it)) {
                         itemRelease(cookie, i);
                         return memoryCondition();
                     }
+                    /* if old and new both items contains checksum, then only 
+                        calculate checksum 
+                        old->getCksumData will include old->flags in the checksum.  
+                        Since we ignore the new flags in case of append anyway, 
+                        we dont need to worry about including the new flags in the checksum.
+                    */
+
+                    if (di->hasCksum(old->getCksum()) && di->hasCksum(it->getCksum())) {
+                        cksum = di->getCksum(old->getValue()->getData(), old->getNBytes(),
+                                old->getCksumData(), old->getNBytes() - it->getNBytes());
+                        old->setCksumData(cksum); 
+                    } else {
+                        old->setCksum(cksum); 
+                    } 
                 } else {
-                    if (!old->prepend(*it)) {
-                        itemRelease(cookie, i);
-                        return memoryCondition();
-                    }
+
+                        std::string oldCksum = old->getCksum();
+
+                        if (!old->prepend(*it)) {
+                            itemRelease(cookie, i);
+                            return memoryCondition();
+                        } 
+
+                        if (di->hasCksum(oldCksum) && di->hasCksum(it->getCksum())) {
+                            cksum = di->getCksum(old);
+                        } 
+                        old->setCksumData(cksum);   
                 }
 
                 ret = store(cookie, old, cas, OPERATION_CAS, vbucket);
@@ -1618,7 +1696,7 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
         }
         *vbucket = checkpoint_msg->getVBucketId();
         Item *item = new Item(checkpoint_msg->getKey(), 0, 0, checkpoint_msg->getValue(),
-                              0, -1, checkpoint_msg->getVBucketId());
+                              DISABLED_CRC_STR, 0, -1, checkpoint_msg->getVBucketId());
         *itm = item;
         return ret;
     }
@@ -1667,7 +1745,7 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
 
         queued_item qi(new QueuedItem(item->getKey(), item->getValue(), item->getVBucketId(),
                                       queue_op_set, -1, item->getId(), item->getFlags(),
-                                      item->getExptime(), item->getCas()));
+                                      item->getExptime(), item->getCas(), item->getCksum()));
         connection->addTapLogElement(qi);
     } else if (connection->hasQueuedItem()) {
         if (connection->waitForBackfill() || connection->waitForCheckpointMsgAck()) {
@@ -1736,7 +1814,8 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
         } else { // The item is from the checkpoint in the unified queue.
             if (qi->getOperation() == queue_op_set) {
                 Item *item = new Item(qi->getKey(), qi->getFlags(), qi->getExpiryTime(),
-                                  qi->getValue(), qi->getCas(), qi->getRowId(), qi->getVBucketId());
+                                  qi->getValue(), qi->getCksum(), qi->getCas(), qi->getRowId(), 
+                                  qi->getVBucketId());
                 *itm = item;
                 ret = TAP_MUTATION;
 
@@ -1754,7 +1833,7 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
             } else if (qi->getOperation() == queue_op_del) {
                 ret = TAP_DELETION;
                 ENGINE_ERROR_CODE r = itemAllocate(cookie, itm, qi->getKey().c_str(),
-                                                   qi->getKey().length(), 0, 0, 0);
+                                                   qi->getKey().length(), 0, 0, 0, NULL, 0);
                 if (r != ENGINE_SUCCESS) {
                     getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                                      "Failed to allocate memory for deletion of: %s\n",
@@ -1853,6 +1932,10 @@ tap_event_t EventuallyPersistentEngine::walkTapQueue(const void *cookie,
             *seqno = connection->getSeqno();
             if (connection->requestAck(ret, *vbucket)) {
                 *flags = TAP_FLAG_ACK;
+            }
+            if (!(connection->getFlags() & TAP_FLAG_NO_VALUE)
+                && connection->getFlags() & TAP_CONNECT_REQUEST_CKSUM) {
+                *flags |= TAP_FLAG_CKSUM;
             }
         }
     }
@@ -2000,7 +2083,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
                                                         uint64_t, // cas
                                                         const void *data,
                                                         size_t ndata,
-                                                        uint16_t vbucket)
+                                                        uint16_t vbucket,
+                                                        const char *cksum)
 {
     void *specific = serverApi->cookie->get_engine_specific(cookie);
     TapConnection *connection = NULL;
@@ -2105,7 +2189,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
             BlockTimer timer(&stats.tapMutationHisto);
             TapConsumer *tc = dynamic_cast<TapConsumer*>(connection);
             RCPtr<Blob> vblob(Blob::New(static_cast<const char*>(data), ndata));
-            Item *item = new Item(k, flags, exptime, vblob);
+            Item *item = new Item(k, flags, exptime, vblob, cksum);
             item->setVBucketId(vbucket);
 
             if (tc) {
@@ -2125,6 +2209,16 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
                                      "Connection does not support tap ack'ing.. disconnect it\n");
                     ret = ENGINE_DISCONNECT;
                 }
+            }   
+        
+            DataIntegrity *di = DataIntegrity::getDi(item->getCksumMeta());
+
+            /* Log error if checksum does not match */
+            if (!di->verifyCksum(item)) {
+                ++stats.cksumFailed;
+                getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                                 "Replication : Checksum verification failed for the key %s\n", 
+                                 item->getKey().c_str());
             }
 
             delete item;
@@ -2508,6 +2602,25 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.flushDurationHighWat, add_stat, cookie);
     add_casted_stat("ep_flush_all",
                     epstore->isFlushAllScheduled() ? "true" : "false", add_stat, cookie);
+    add_casted_stat("flush_hits",
+                    epstats.flushHits, add_stat, cookie);
+    size_t getl_misses = epstats.getl_misses_notmyvbuckets
+                         + epstats.getl_misses_locked
+                         + epstats.getl_misses_notfound;
+    add_casted_stat("cmd_getl",
+                    epstats.getl_hits + getl_misses, add_stat, cookie);
+    add_casted_stat("getl_hits",
+                    epstats.getl_hits, add_stat, cookie);
+    add_casted_stat("getl_misses",
+                    getl_misses, add_stat, cookie);
+    add_casted_stat("getl_misses_notmyvbuckets",
+                    epstats.getl_misses_notmyvbuckets, add_stat, cookie);
+    add_casted_stat("getl_misses_locked",
+                    epstats.getl_misses_locked, add_stat, cookie);
+    add_casted_stat("getl_misses_notfound",
+                    epstats.getl_misses_notfound, add_stat, cookie);
+    add_casted_stat("num_unlocks",
+                    epstats.num_unlocks, add_stat, cookie);
     add_casted_stat("curr_items", activeCountVisitor.getNumItems(), add_stat, cookie);
     add_casted_stat("curr_items_tot",
                    activeCountVisitor.getNumItems() +
@@ -2757,6 +2870,13 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                         epstats.bgLoad,
                         add_stat, cookie);
     }
+
+    add_casted_stat("ep_cksum_failed", epstats.cksumFailed,
+                    add_stat, cookie);
+    add_casted_stat("ep_cksum_eject", epstats.ejectedDueToChecksum,
+                    add_stat, cookie);
+    add_casted_stat("ep_cksum_invalid_string", epstats.invalidCksumString,
+                    add_stat, cookie);
 
     for (int i = 0; i < numKVStores; ++i) {
         StorageProperties *sprop(epstore->getStorageProperties(i));

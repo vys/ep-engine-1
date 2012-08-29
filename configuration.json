@@ -36,6 +36,10 @@
             "default": "lru",
             "type": "std::string"
         },
+        "enable_flushall": {
+            "default": "false",
+            "type": "bool"
+        },
         "exp_pager_stime": {
             "default": "3600",
             "type": "size_t"

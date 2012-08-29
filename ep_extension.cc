@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "ep_extension.h"
+#include "crc32.hh"
 #include <memcached/extension.h>
 
 #define ITEM_LOCK_TIMEOUT       15    /* 15 seconds */
@@ -144,7 +145,8 @@ ENGINE_ERROR_CODE GetlExtension::executeGetl(int argc, token_t *argv,
         std::stringstream strm;
 
         strm << "VALUE " << item->getKey() << " " << ntohl(item->getFlags())
-             << " " << item->getNBytes() << " " << item->getCas() << "\r\n";
+             << " " << item->getNBytes() << " " << item->getCksum() << " " <<
+            item->getCas() << "\r\n";
 
         std::string strVal = strm.str();
         size_t len = strVal.length();
@@ -211,4 +213,80 @@ ENGINE_ERROR_CODE GetlExtension::executeUnl(int argc, token_t *argv, void *respo
         return response_handler(response_cookie,
                                 sizeof("NOT_FOUND\r\n") - 1, "NOT_FOUND\r\n");
     }
+}
+
+/* Extension to support options command for engine */
+
+static DiExtension* getDiExtension(const void* cookie)
+{
+    return reinterpret_cast<DiExtension*>(const_cast<void *>(cookie));
+}
+
+extern "C" {
+    static const char *di_ext_get_name(const void *cmd_cookie) {
+        (void) cmd_cookie;
+        return "DI";
+    }
+
+    static ENGINE_ERROR_CODE di_ext_execute(const void *cmd_cookie, const void *cookie,
+            int argc, token_t *argv,
+            RESPONSE_HANDLER_T response_handler) {
+        (void) cmd_cookie;
+
+        return getDiExtension(cmd_cookie)->executeDi(argc, argv,
+                (void *)cookie,
+                response_handler);
+    }
+
+    static bool di_ext_accept(const void *cmd_cookie, void *cookie,
+            int argc, token_t *argv, size_t *ndata,
+            char **ptr) {
+        (void) cmd_cookie;
+        (void) cookie;
+        (void) argc;
+        (void) ndata;
+        (void) ptr;
+        // accept option command
+        return (sizeof("options")-1 == argv[0].length && 
+            strncasecmp(argv[0].value, "options", argv[0].length) == 0);
+    }
+
+    static void di_ext_abort(const void *cmd_cookie, const void *cookie) {
+        (void) cmd_cookie;
+        (void) cookie;
+    }
+
+}  /* extern C */
+
+DiExtension::DiExtension(EventuallyPersistentStore *kvstore,
+                             GET_SERVER_API get_server_api):
+    backend(kvstore)
+{
+    serverApi = get_server_api();
+}
+
+
+void DiExtension::initialize()
+{
+    if (serverApi != NULL) {
+        EXTENSION_ASCII_PROTOCOL_DESCRIPTOR *ptr = this;
+        get_name = di_ext_get_name;
+        accept = di_ext_accept;
+        execute = di_ext_execute;
+        abort = di_ext_abort;
+        cookie = ptr;
+        serverApi->extension->register_extension(EXTENSION_ASCII_PROTOCOL, ptr);
+        getLogger()->log(EXTENSION_LOG_INFO, NULL, "Loaded extension: DI\n");
+    }
+}
+
+ENGINE_ERROR_CODE DiExtension::executeDi(int argc, token_t *argv,
+        void *response_cookie,
+        RESPONSE_HANDLER_T response_handler)
+{
+    (void) argc;
+    (void) argv;
+    return response_handler(response_cookie,
+            sizeof(OPTION_RESPONSE) - 1,
+            OPTION_RESPONSE);
 }

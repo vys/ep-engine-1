@@ -45,6 +45,7 @@ struct feature_data {
     bool       resident : 1;    //!< True if this object's value is in memory.
     bool       has_metadata : 1;    //!< True if this object is locked has metadata associated with the lock, 
                                     //!< valid only if the lock has not expired
+    uint64_t   cksum;           //!< The checksum
     uint8_t    keylen;          //!< Length of the key
     char       keybytes[1];     //!< The key itself.
 };
@@ -175,6 +176,25 @@ public:
     }
 
     /**
+     * Get the checksum of the key.
+     */
+    std::string getCksum() const {
+        return std::string(cksum);
+    }
+
+    /**
+     * Set the checksum of the key.
+     */
+    void setCksum(const std::string &ck) {
+        size_t len = ck.size()+1;
+        if (!cksum || len > strlen(cksum)) {
+            delete cksum;
+            cksum = new char[len];
+        }  
+        memcpy(cksum, ck.c_str(), len);
+    }
+
+    /**
      * True of this item is for the given key.
      *
      * @param k the key we're checking
@@ -252,13 +272,14 @@ public:
      * @param ht the hashtable that contains this StoredValue instance
      */
     void setValue(const value_t &v, uint32_t newFlags, time_t newExp,
-                  uint64_t theCas, EPStats &stats, HashTable &ht) {
+                  uint64_t theCas, std::string _cksum, EPStats &stats, HashTable &ht) {
         size_t currSize = size();
-        reduceCacheSize(ht, currSize);
+        reduceCacheSize(ht, isResident() ? currSize : currSize + valLength());
         reduceCurrentSize(stats, isDeleted() ? currSize : currSize - value->length());
         value = v;
         setResident(true, &stats);
         flags = newFlags;
+        setCksum(_cksum);
         if (!_isSmall) {
             extra.feature.cas = theCas;
             extra.feature.exptime = newExp;
@@ -530,6 +551,8 @@ public:
         value.reset();
         markDirty();
         setCas(getCas() + 1);
+        delete cksum;
+        cksum = NULL;    
 
         size_t newsize = size();
         if (oldsize < newsize) {
@@ -592,7 +615,8 @@ private:
     StoredValue(const Item &itm, StoredValue *n, EPStats &stats, HashTable &ht,
                 bool setDirty = true, bool small = false) :
         value(itm.getValue()), next(n), id(itm.getId()),
-        dirtiness(0), _isSmall(small), flags(itm.getFlags()), replicas(0)
+        dirtiness(0), _isSmall(small), flags(itm.getFlags()), replicas(0),
+        cksum(NULL)    
     {
 
         if (_isSmall) {
@@ -607,6 +631,8 @@ private:
             extra.feature.keylen = itm.getKey().length();
             switch_time = ep_current_time();
         }
+
+        setCksum(itm.getCksum());
 
         if (setDirty) {
             markDirty();
@@ -646,8 +672,9 @@ private:
     bool               _isSmall  :  1; // 1 bit    | 4 bytes
     bool               _isDirty  :  1; // 1 bit  --+
     uint32_t           flags;          // 4 bytes
+    uint32_t           switch_time;    // 4 bytes
     Atomic<uint8_t>    replicas;       // 1 byte
-    uint32_t           switch_time;  // 4 bytes
+    char               *cksum;         // 1 byte
 
     union stored_value_bodies extra;
 
@@ -676,7 +703,7 @@ typedef enum {
     WAS_CLEAN,                  //!< The item was clean before this mutation
     WAS_DIRTY,                  //!< This item was already dirty before this mutation
     IS_LOCKED,                  //!< The item is locked and can't be updated.
-    NOMEM                       //!< Insufficient memory to store this item.
+    NOMEM                      //!< Insufficient memory to store this item.
 } mutation_type_t;
 
 /**
@@ -1069,7 +1096,7 @@ public:
             }
             v->setValue(itm.getValue(),
                         itm.getFlags(), itm.getExptime(),
-                        itm.getCas(), stats, *this);
+                        itm.getCas(), itm.getCksum(), stats, *this);
             row_id = v->getId();
         } else {
             if (itm.getCas() != 0) {
@@ -1110,7 +1137,7 @@ public:
                 rv = (v->isDeleted() || v->isExpired(ep_real_time())) ? ADD_UNDEL : ADD_SUCCESS;
                 v->setValue(itm.getValue(),
                             itm.getFlags(), itm.getExptime(),
-                            itm.getCas(), stats, *this);
+                            itm.getCas(), itm.getCksum(), stats, *this);
                 if (isDirty) {
                     v->markDirty();
                 } else {
