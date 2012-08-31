@@ -47,6 +47,7 @@ bool StoredValue::ejectValue(EPStats &stats, HashTable &ht) {
         } else if (new_keymeta_overhead < old_keymeta_overhead) {
             reduceCurrentSize(stats, old_keymeta_overhead - new_keymeta_overhead);
         }
+        reduceCacheSize(ht, old_keymeta_overhead, false, true);
         ++stats.numValueEjects;
         ++ht.numNonResidentItems;
         ++ht.numEjects;
@@ -86,6 +87,7 @@ bool StoredValue::restoreValue(const value_t &v, EPStats &stats, HashTable &ht) 
         } else if (new_keymeta_overhead < old_keymeta_overhead) {
             reduceCurrentSize(stats, old_keymeta_overhead - new_keymeta_overhead);
         }
+        increaseCacheSize(ht, new_keymeta_overhead, false, true);
         --ht.numNonResidentItems;
         return true;
     }
@@ -367,23 +369,29 @@ size_t StoredValue::getCurrentSize(EPStats &st) {
 }
 
 void StoredValue::increaseCacheSize(HashTable &ht,
-                                    size_t by, bool residentOnly) {
-    if (!residentOnly) {
+                                    size_t by, bool skipCache,
+                                    bool skipMem) {
+    if (!skipCache) {
         ht.cacheSize.incr(by);
         assert(ht.cacheSize.get() < GIGANTOR);
     }
-    ht.memSize.incr(by);
-    assert(ht.memSize.get() < GIGANTOR);
+    if (!skipMem) {
+        ht.memSize.incr(by);
+        assert(ht.memSize.get() < GIGANTOR);
+    }
 }
 
 void StoredValue::reduceCacheSize(HashTable &ht,
-                                  size_t by, bool residentOnly) {
-    if (!residentOnly) {
+                                  size_t by, bool skipCache,
+                                  bool skipMem) {
+    if (!skipCache) {
         ht.cacheSize.decr(by);
         assert(ht.cacheSize.get() < GIGANTOR);
     }
-    ht.memSize.decr(by);
-    assert(ht.memSize.get() < GIGANTOR);
+    if (!skipMem) {
+        ht.memSize.decr(by);
+        assert(ht.memSize.get() < GIGANTOR);
+    }
 }
 
 void StoredValue::increaseCurrentSize(EPStats &st, size_t by) {
