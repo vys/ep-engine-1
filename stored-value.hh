@@ -274,7 +274,12 @@ public:
     void setValue(const value_t &v, uint32_t newFlags, time_t newExp,
                   uint64_t theCas, std::string _cksum, EPStats &stats, HashTable &ht) {
         size_t currSize = size();
-        reduceCacheSize(ht, isResident() ? currSize : currSize + valLength());
+        reduceCacheSize(ht, currSize, true);
+        if (isResident()) {
+            reduceCacheSize(ht, currSize, false, true);
+        } else {
+            reduceCacheSize(ht, valLength(), false, true);
+        }
         reduceCurrentSize(stats, isDeleted() ? currSize : currSize - value->length());
         value = v;
         setResident(true, &stats);
@@ -679,9 +684,11 @@ private:
     union stored_value_bodies extra;
 
     static void increaseCacheSize(HashTable &ht,
-                                  size_t by, bool residentOnly = false);
+                                  size_t by, bool residentOnly = false,
+                                  bool skipMem = false);
     static void reduceCacheSize(HashTable &ht,
-                                size_t by, bool residentOnly = false);
+                                size_t by, bool skipCache = false,
+                                bool skipMem = false);
     static void increaseCurrentSize(EPStats&, size_t by);
     static void reduceCurrentSize(EPStats&, size_t by);
     static bool hasAvailableSpace(EPStats&, const Item &item);
