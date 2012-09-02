@@ -802,7 +802,11 @@ public:
     int restoreItem(const Item &itm, enum queue_operation op);
 
     bool isFlushAllScheduled() {
-        return diskFlushAll.get();
+        bool val = false;
+        for (size_t i = 0; i < diskFlushAll.size(); ++i) {
+            val |= diskFlushAll[i].get();
+        }
+        return val;
     }
 
     void setPersistenceCheckpointId(uint16_t vbid, uint64_t checkpointId);
@@ -897,7 +901,7 @@ private:
     int flushOne(std::queue<queued_item> *q,
                  std::queue<queued_item> *rejectQueue,
                  int id);
-    int flushOneDeleteAll(void);
+    int flushOneDeleteAll(int id);
     int flushOneDelOrSet(const queued_item &qi, std::queue<queued_item> *rejectQueue, int id);
 
     StoredValue *fetchValidValue(RCPtr<VBucket> vb, const std::string &key,
@@ -938,7 +942,7 @@ private:
     SyncObject                 mutex;
     pthread_t                  thread;
     Atomic<size_t>             bgFetchQueue;
-    Atomic<bool>               diskFlushAll;
+    std::vector<Atomic<bool> > diskFlushAll;
     TransactionContext         **tctx;
     Mutex                      vbsetMutex;
     uint32_t                   bgFetchDelay;

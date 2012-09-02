@@ -358,7 +358,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
                                                      bool concurrentDB,
                                                      int numKV) :
     engine(theEngine), stats(engine.getEpStats()),
-    diskFlushAll(false), tctx(NULL), bgFetchDelay(0), numKVStores(numKV)
+    tctx(NULL), bgFetchDelay(0), numKVStores(numKV)
 {
     doPersistence = getenv("EP_NO_PERSISTENCE") == NULL;
 
@@ -407,6 +407,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     stats.memOverhead = sizeof(EventuallyPersistentStore);
 
     setTxnSize(DEFAULT_TXN_SIZE);
+    diskFlushAll.resize(numKVStores);
 
     if (startVb0) {
         RCPtr<VBucket> vb(new VBucket(0, vbucket_state_active, stats, numKVStores));
@@ -1505,15 +1506,17 @@ void EventuallyPersistentStore::reset() {
             vb->resetStats();
         }
     }
-    if (diskFlushAll.cas(false, true)) {
-        // Increase the write queue size by 1 as flusher will execute flush_all as a single task.
-        stats.queue_size.set(getWriteQueueSize() + 1);
+    for (int i = 0; i < numKVStores; ++i) {
+        if (diskFlushAll[i].cas(false, true)) {
+            // Increase the write queue size by 1 as flusher will execute flush_all as a single task.
+            stats.queue_size.set(getWriteQueueSize() + 1);
+        }
     }
 }
 
 std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
 
-    if (!hasItemsForPersistence(id) && !diskFlushAll) {
+    if (!hasItemsForPersistence(id) && !diskFlushAll[id]) {
         stats.dirtyAge = 0;
         // If the persistence queue is empty, reset queue-related stats for each vbucket.
         size_t numOfVBuckets = vbuckets.getSize();
@@ -1535,7 +1538,7 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
         dbShardQueues = new std::vector<queued_item>[num_shards];
 
         assert(rwUnderlying);
-        if (diskFlushAll) {
+        if (diskFlushAll[id]) {
             queued_item qi(new QueuedItem("", 0xffff, queue_op_flush));
             flushQueue->push(qi);
         }
@@ -1980,11 +1983,9 @@ private:
     DISALLOW_COPY_AND_ASSIGN(PersistenceCallback);
 };
 
-int EventuallyPersistentStore::flushOneDeleteAll() {
-    for (int i = 0; i < numKVStores; ++i) {
-        rwUnderlying[i]->reset();
-    }
-    diskFlushAll.cas(true, false);
+int EventuallyPersistentStore::flushOneDeleteAll(int id) {
+    rwUnderlying[id]->reset();
+    diskFlushAll[id].cas(true, false);
     return 1;
 }
 
@@ -2136,7 +2137,7 @@ int EventuallyPersistentStore::flushOne(std::queue<queued_item> *q,
     int rv = 0;
     switch (qi->getOperation()) {
     case queue_op_flush:
-        rv = flushOneDeleteAll();
+        rv = flushOneDeleteAll(id);
         break;
     case queue_op_set:
         if (qi->getVBucketVersion() == vbuckets.getBucketVersion(qi->getVBucketId())) {
