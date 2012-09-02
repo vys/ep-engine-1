@@ -272,6 +272,7 @@ int Flusher::doFlush() {
                                  "Completed a flush, age of oldest item was %ds\n",
                                  flushRv);
 
+                delete flushQueue;
                 delete rejectQueue;
                 rejectQueue = NULL;
                 flushQueue = NULL;
