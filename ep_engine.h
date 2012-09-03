@@ -258,6 +258,10 @@ public:
                                int nkey,
                                ADD_STAT add_stat);
 
+    void updateFrontEndStats(char *(stat_keys[]), 
+                               uint64_t *values, 
+                               int count);
+
     void resetStats() { stats.reset(); }
 
     ENGINE_ERROR_CODE store(const void *cookie,
@@ -528,6 +532,10 @@ public:
 
     EPStats &getEpStats() {
         return stats;
+    }
+
+    ExtStats &getFrontEndStats() {
+        return festats;
     }
 
     EventuallyPersistentStore* getEpStore() { return epstore; }
@@ -808,6 +816,7 @@ private:
     size_t getlMaxTimeout;
     size_t syncTimeout;
     EPStats stats;
+    ExtStats festats;
     SyncRegistry syncRegistry;
     Configuration configuration;
     struct {

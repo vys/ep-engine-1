@@ -437,4 +437,43 @@ public:
     }
 };
 
+typedef std::map< std::string, Histogram<hrtime_t>*> statsmap_t;
+
+class ExtStats {
+
+public:
+    ExtStats() {}
+    void add(std::string key, hrtime_t value) {
+        statsmap_t::iterator iter;
+        if ((iter = smap.find(key)) == smap.end()) {
+            Histogram<hrtime_t> *histo = new Histogram<hrtime_t>;   
+            addnew(key, histo);
+            histo->add(value);
+        }
+        else {
+            Histogram<hrtime_t> *histo = iter->second;
+            histo->add(value);
+        }
+    }
+
+    const statsmap_t &getStats() {
+        return smap;
+    }
+
+private:
+    void addnew(std::string key, Histogram<hrtime_t> *&histo) {
+        statsmap_t::iterator iter;
+        LockHolder lh(smutex);
+        if ((iter = smap.find(key)) == smap.end()) {
+            smap[key] = histo;
+        }
+        else {
+            delete histo; 
+            histo = iter->second;
+        }
+    }
+    statsmap_t smap;
+    Mutex smutex;       
+};
+
 #endif /* STATS_HH */
