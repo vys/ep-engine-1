@@ -151,7 +151,7 @@ extern "C" {
     }
 
     static void EvpUpdateFrontEndStats(ENGINE_HANDLE* handle,
-                                         char *(stat_keys[]),
+                                         char *stat_keys[],
                                          uint64_t *values, 
                                         int count)
     {
@@ -159,7 +159,7 @@ extern "C" {
     }
 
     static void EvpUpdateExtensionStats(ENGINE_HANDLE* handle,
-                                         char *(stat_keys[]),
+                                         char *stat_keys[],
                                          uint64_t *values, 
                                         int count)
     {
@@ -2492,9 +2492,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.flushHits, add_stat, cookie);
     size_t getl_misses = epstats.getl_misses_notmyvbuckets
                          + epstats.getl_misses_locked
-                         + epstats.getl_misses_notfound;
+                         + epstats.getl_misses_notfound;                      
     add_casted_stat("cmd_getl",
-                    epstats.getl_hits + getl_misses, add_stat, cookie);
+                    epstats.getl_hits + getl_misses, add_stat, cookie);                    
     add_casted_stat("getl_hits",
                     epstats.getl_hits, add_stat, cookie);
     add_casted_stat("getl_misses",
@@ -2794,8 +2794,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     add_casted_stat("ep_checkpoint_max_items", CheckpointManager::getCheckpointMaxItems(),
                     add_stat, cookie);
 
-    statsmap_t smap = festats.getStats();                    
-    statsmap_t::iterator iter;
+    StatsMap smap = festats.getStats();                    
+    StatsMap::iterator iter;
     for(iter = smap.begin(); iter != smap.end(); iter++) {
         std::string stat_key = iter->first;
         Histogram<hrtime_t> *h = iter->second;
@@ -3336,8 +3336,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,
 
     add_casted_stat("online_update_revert", stats.checkpointRevertHisto, add_stat, cookie);
 
-    statsmap_t smap = festats.getStats();                    
-    statsmap_t::iterator iter;
+    StatsMap smap = festats.getStats();                    
+    StatsMap::iterator iter;
     for(iter = smap.begin(); iter != smap.end(); iter++) {
         std::string stat_key = iter->first;
         Histogram<hrtime_t> *h = iter->second;
@@ -3474,19 +3474,16 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
     return rv;
 }
 
-void EventuallyPersistentEngine::updateFrontEndStats(char *(stat_keys[]), 
+void EventuallyPersistentEngine::updateFrontEndStats(char *stat_keys[], 
                                                      uint64_t *values, 
                                                     int count) {
     int i;
     for (i = 0; i < count; i++) {
         festats.add(std::string(stat_keys[i]), values[i]);
-        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                "Adding stat for key %s value %llu\n",
-                stat_keys[i], values[i]);
     }
 }
 
-void EventuallyPersistentEngine::updateExtensionStats(char *(stat_keys[]), 
+void EventuallyPersistentEngine::updateExtensionStats(char *stat_keys[], 
                                                      uint64_t *values, 
                                                     int count) {
     int i;
@@ -3502,9 +3499,6 @@ void EventuallyPersistentEngine::updateExtensionStats(char *(stat_keys[]),
             key.assign("options");
         }
         festats.add(key, values[i]);
-        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                "Adding stat for key %s value %llu\n",
-                key.c_str(), values[i]);
     }
 }
 

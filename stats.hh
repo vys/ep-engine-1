@@ -476,4 +476,43 @@ private:
     Mutex smutex;       
 };
 
+typedef unordered_map< std::string, Histogram<hrtime_t>*> StatsMap;
+
+class ExtStats {
+
+public:
+    ExtStats() {}
+    void add(std::string key, hrtime_t value) {
+        StatsMap::iterator iter;
+        if ((iter = smap.find(key)) == smap.end()) {
+            Histogram<hrtime_t> *histo = new Histogram<hrtime_t>;   
+            addnew(key, histo);
+            histo->add(value);
+        }
+        else {
+            Histogram<hrtime_t> *histo = iter->second;
+            histo->add(value);
+        }
+    }
+
+    const StatsMap &getStats() {
+        return smap;
+    }
+
+private:
+    void addnew(std::string key, Histogram<hrtime_t> *&histo) {
+        StatsMap::iterator iter;
+        LockHolder lh(smutex);
+        if ((iter = smap.find(key)) == smap.end()) {
+            smap[key] = histo;
+        }
+        else {
+            delete histo; 
+            histo = iter->second;
+        }
+    }
+    StatsMap smap;
+    Mutex smutex;       
+};
+
 #endif /* STATS_HH */
