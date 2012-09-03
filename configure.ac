@@ -207,18 +207,11 @@ AS_IF(test "x${ac_cv_with_tcmalloc_headers}" != "x",
 
 AC_CHECK_HEADERS(google/malloc_extension.h)
 
-AC_ARG_ENABLE([tcmalloc-stats],
-              [AS_HELP_STRING([--enable-tcmalloc-stats],
-                              [Enable tcmalloc-stats @<:@default=off@:>@])],
-              [ac_enable_tcmalloc_stats="$enableval"],
-              [ac_enable_tcmalloc_stats="no"])
-
-AS_IF([test "x$ac_enable_tcmalloc_stats" != "xno"],
+AS_IF(test "x${ac_enable_tcmalloc_stats}" = "xyes",
       [AS_IF(test "x${ac_cv_with_memcached}" != "x",
-             CXXFLAGS="${CXXFLAGS} -isystem ${ac_cv_with_memcached}/include")
-       AC_DEFINE(TCMALLOC_STATS, 1, [Enable stats call for tcmalloc])])
+             CXXFLAGS="${CXXFLAGS} -isystem ${ac_cv_with_memcached}/include")])
 
-AM_CONDITIONAL(BUILD_TCMALLOC_STATS, test "x${ac_enable_tcmalloc_stats}" != "xno")
+AM_CONDITIONAL(BUILD_TCMALLOC_STATS, test "x${ac_enable_tcmalloc_stats}" = "xyes")
 
 dnl ----------------------------------------------------------------------------
 
