@@ -158,6 +158,13 @@ extern "C" {
         getHandle(handle)->updateFrontEndStats(stat_keys, values, count);
     }
 
+    static void EvpUpdateExtensionStats(ENGINE_HANDLE* handle,
+                                         char *(stat_keys[]),
+                                         uint64_t *values, 
+                                        int count)
+    {
+        getHandle(handle)->updateExtensionStats(stat_keys, values, count);
+    }
 
     static ENGINE_ERROR_CODE EvpStore(ENGINE_HANDLE* handle,
                                       const void *cookie,
@@ -1089,6 +1096,7 @@ EventuallyPersistentEngine::EventuallyPersistentEngine(GET_SERVER_API get_server
     ENGINE_HANDLE_V1::errinfo = NULL;
     ENGINE_HANDLE_V1::aggregate_stats = NULL;
     ENGINE_HANDLE_V1::update_stats = EvpUpdateFrontEndStats;
+    ENGINE_HANDLE_V1::update_extension_stats = EvpUpdateExtensionStats;
 
     serverApi = getServerApiFunc();
     extensionApi = serverApi->extension;
@@ -3468,6 +3476,28 @@ void EventuallyPersistentEngine::updateFrontEndStats(char *(stat_keys[]),
         getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                 "Adding stat for key %s value %llu\n",
                 stat_keys[i], values[i]);
+    }
+}
+
+void EventuallyPersistentEngine::updateExtensionStats(char *(stat_keys[]), 
+                                                     uint64_t *values, 
+                                                    int count) {
+    int i;
+    std::string key;
+
+    for (i = 0; i < count; i++) {
+        if ((strcmp(stat_keys[i], "getl") == 0) ||
+                (atoi(stat_keys[i]) == CMD_GET_LOCKED)) {
+            key.assign("getl");
+        }
+        else if ((strcmp(stat_keys[i], "options") == 0) ||
+                (atoi(stat_keys[i]) == CMD_DI_OPTIONS)) {
+            key.assign("options");
+        }
+        festats.add(key, values[i]);
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                "Adding stat for key %s value %llu\n",
+                key.c_str(), values[i]);
     }
 }
 

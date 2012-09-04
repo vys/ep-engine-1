@@ -262,6 +262,10 @@ public:
                                uint64_t *values, 
                                int count);
 
+    void updateExtensionStats(char *(stat_keys[]), 
+                               uint64_t *values, 
+                               int count);
+
     void resetStats() { stats.reset(); }
 
     ENGINE_ERROR_CODE store(const void *cookie,
