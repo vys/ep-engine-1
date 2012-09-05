@@ -765,6 +765,9 @@ public:
                                 uint64_t cas,
                                 rel_time_t currentTime);
 
+    // Return blob size for the given key. This gives the actual on-disk size
+    // even if the key is not resident
+    size_t getBlobSize(const std::string &key, uint16_t vbucket);
 
     KVStore* getRWUnderlying(int id) {
         // This method might also be called leakAbstraction()

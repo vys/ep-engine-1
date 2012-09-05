@@ -203,7 +203,9 @@ public:
         if (deficit > 0) {
             getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: No memory, attempting ejection.");
             if (!eviction.disableInlineEviction) {
-                EvictionManager::getInstance()->evictSize(deficit);
+                if (EvictionManager::getInstance()->evictSize(deficit) == false) {
+                    return ENGINE_TMPFAIL;
+                }
             }
         }
 

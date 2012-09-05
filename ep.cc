@@ -2483,3 +2483,18 @@ bool VBCBAdaptor::callback(Dispatcher & d, TaskId t) {
     }
     return !isdone;
 }
+
+size_t EventuallyPersistentStore::getBlobSize(const std::string &key,
+                       uint16_t vbucket) {
+    RCPtr<VBucket> vb = getVBucket(vbucket);
+    if (!vb || vb->getState() != vbucket_state_active) {
+        return 0;
+    }
+    int bucket_num(0);
+    LockHolder lh = vb->ht.getLockedBucket(key, &bucket_num);
+    StoredValue *v = fetchValidValue(vb, key, bucket_num);
+    if (!v) {
+        return 0;
+    }
+    return v->valLength();
+}
