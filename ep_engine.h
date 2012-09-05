@@ -439,9 +439,19 @@ public:
         protocol_binary_response_status rv = PROTOCOL_BINARY_RESPONSE_SUCCESS;
         *msg = NULL;
         if (!epstore->pauseFlusher()) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL,
-                             "Attempted to stop flusher in state [%s]\n",
-                             epstore->getFlusher()->stateName());
+            if (numKVStores == 1) {
+                getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                        "Attempted to stop flusher in state [%s]\n",
+                        epstore->getFlusher()->stateName());
+            } else {
+                getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                        "Attempted to stop flushers in states:\n");
+                for (int i = 0; i < numKVStores; i++) {
+                    getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                            "Flusher %i: [%s]\n",
+                            i, epstore->getFlusher(i)->stateName());
+                }
+            }
             *msg = "Flusher not running.";
             rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
         }
@@ -453,9 +463,19 @@ public:
         protocol_binary_response_status rv = PROTOCOL_BINARY_RESPONSE_SUCCESS;
         *msg = NULL;
         if (!epstore->resumeFlusher()) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL,
-                             "Attempted to start flusher in state [%s]\n",
-                             epstore->getFlusher()->stateName());
+            if (numKVStores == 1) {
+                getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                        "Attempted to start flusher in state [%s]\n",
+                        epstore->getFlusher()->stateName());
+            } else {
+                getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                        "Attempted to start flushers in states:\n");
+                for (int i = 0; i < numKVStores; i++) {
+                    getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                            "Flusher %i: [%s]\n",
+                            i, epstore->getFlusher(i)->stateName());
+                }
+            }
             *msg = "Flusher not shut down.";
             rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
         }

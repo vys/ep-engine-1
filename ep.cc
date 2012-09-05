@@ -477,8 +477,8 @@ void EventuallyPersistentStore::startNonIODispatcher() {
     nonIODispatcher->start();
 }
 
-const Flusher* EventuallyPersistentStore::getFlusher() {
-    return flusher;
+const Flusher* EventuallyPersistentStore::getFlusher(int id) {
+    return allFlusher[id];
 }
 
 void EventuallyPersistentStore::startFlusher() {
@@ -1659,7 +1659,7 @@ void EventuallyPersistentStore::requeueRejectedItems(std::queue<queued_item> *re
     stats.queue_size.set(getWriteQueueSize());
 }
 
-void EventuallyPersistentStore::completeFlush(rel_time_t flush_start) {
+void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
     LockHolder lh(vbsetMutex);
     size_t numOfVBuckets = vbuckets.getSize();
     for (size_t i = 0; i < numOfVBuckets; ++i) {
@@ -1682,11 +1682,15 @@ void EventuallyPersistentStore::completeFlush(rel_time_t flush_start) {
     //FIXME:: Why is it needed?
 //    stats.flusher_todo.set(writing.size());
     stats.queue_size.set(getWriteQueueSize());
-    rel_time_t complete_time = ep_current_time();
-    stats.flushDuration.set(complete_time - flush_start);
-    stats.flushDurationHighWat.set(std::max(stats.flushDuration.get(),
+    rel_time_t time_diff = ep_current_time() - flush_start;
+    stats.flushDuration.set(time_diff);
+    stats.flushDurations[id].set(time_diff);
+    stats.flushDurationHighWat.set(std::max(time_diff,
                                             stats.flushDurationHighWat.get()));
-    stats.cumulativeFlushTime.incr(complete_time - flush_start);
+    stats.flushDurationHighWats[id].set(std::max(time_diff,
+                                            stats.flushDurationHighWats[id].get()));
+    stats.cumulativeFlushTime.incr(time_diff);
+    stats.cumulativeFlushTimes[id].incr(time_diff);
 }
 
 int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
@@ -2429,10 +2433,12 @@ void TransactionContext::commit() {
         ++stats.commitFailed[id];
     }
     ++stats.flusherCommits[id];
-    rel_time_t complete_time = ep_current_time();
+    rel_time_t time_diff = ep_current_time() - cstart;
 
-    stats.commit_time.set(complete_time - cstart);
-    stats.cumulativeCommitTime.incr(complete_time - cstart);
+    stats.commit_time.set(time_diff);
+    stats.commit_times[id].set(time_diff);
+    stats.cumulativeCommitTime.incr(time_diff);
+    stats.cumulativeCommitTimes[id].incr(time_diff);
     intxn = false;
     syncRegistry.itemsPersisted(uncommittedItems);
     uncommittedItems.clear();

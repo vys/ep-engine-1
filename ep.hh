@@ -736,7 +736,7 @@ public:
         return ret;
     }
 
-    const Flusher* getFlusher();
+    const Flusher* getFlusher(int id = 0);
 
     bool getKeyStats(const std::string &key, uint16_t vbucket,
                      key_stats &kstats);
@@ -895,7 +895,7 @@ private:
                              std::queue<queued_item> *flushQueue, int id);
     void requeueRejectedItems(std::queue<queued_item> *rejects,
                               std::queue<queued_item> *flushQueue);
-    void completeFlush(rel_time_t flush_start);
+    void completeFlush(rel_time_t flush_start, int id);
 
     void enqueueCommit();
     int flushSome(std::queue<queued_item> *q,

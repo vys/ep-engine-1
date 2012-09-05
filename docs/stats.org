@@ -55,7 +55,10 @@ For introductory information on stats within membase, start with the
 |                               | due to the expiry of the item              |
 | ep_queue_size                 | Number of items queued for storage.        |
 | ep_flusher_todo               | Number of items remaining to be written.   |
-| ep_flusher_state              | Current state of the flusher thread.       |
+| ep_flusher_state              | Current state of the main flusher thread.  |
+|                               | This stat exists only for backward         |
+|                               | compatibility. Use ep_flusher_state_<n>    |
+|                               | when using multiple flushers.              |
 | ep_commit_num                 | Total number of write commits.             |
 | ep_commit_time                | Number of seconds of most recent commit.   |
 | ep_commit_time_total          | Cumulative seconds spent committing.       |
@@ -164,7 +167,27 @@ For introductory information on stats within membase, start with the
 | eviction_headroom             | Amount of memory kept aside to trigger LRU |
 |                               | based eviction                             |
 | disable_inline_eviction       | Disable inline/LRU based eviction          |
-                        
+
+Note: For some stats (displayed below), more values are displayed when run
+with multiple kvstores. For example, ep_flusher_todo displays the total items
+remaining to be flushed. This is segregated per flusher and displayed under
+ep_flusher_todo_<n> for n varying from 0 to numKVStores-1. The main stat
+still displays the values in the global perspective. The following are the
+stats with this per-kvstore based stats:
+
+ep_flusher_todo
+ep_flusher_state
+ep_commit_time
+ep_commit_time_total
+ep_flush_duration
+ep_flush_duration_total
+ep_flush_duration_highwat
+ep_flusher_deduplication
+ep_commit_num
+ep_flush_preempts
+ep_item_begin_failed
+ep_item_commit_failed
+
 
 ** Eviction stats
 

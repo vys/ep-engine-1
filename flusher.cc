@@ -267,7 +267,7 @@ int Flusher::doFlush() {
                 store->stats.flusher_todos[flusherId].set(flushQueue->size());
                 rejectedItemsRequeued = true;
             } else {
-                store->completeFlush(flushStart);
+                store->completeFlush(flushStart, flusherId);
                 getLogger()->log(EXTENSION_LOG_INFO, NULL,
                                  "Completed a flush, age of oldest item was %ds\n",
                                  flushRv);

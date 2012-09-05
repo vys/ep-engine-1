@@ -143,8 +143,12 @@ public:
     std::vector<Atomic<size_t> > flusherPreempts;
     //! Total time spent flushing.
     Atomic<size_t> cumulativeFlushTime;
+    //! Total time spent flushing per flusher.
+    std::vector<Atomic<size_t> > cumulativeFlushTimes;
     //! Total time spent committing.
     Atomic<size_t> cumulativeCommitTime;
+    //! Total time spent committing per transaction context.
+    std::vector<Atomic<size_t> > cumulativeCommitTimes;
     //! Objects that were rejected from persistence for being too fresh.
     Atomic<size_t> tooYoung;
     //! Objects that were forced into persistence for being too old.
@@ -177,10 +181,16 @@ public:
     Atomic<rel_time_t> dataAgeHighWat;
     //! How long does it take to do an entire flush cycle.
     Atomic<rel_time_t> flushDuration;
+    //! How long does it take to do an entire flush cycle per flusher.
+    std::vector<Atomic<rel_time_t> > flushDurations;
     //! Longest flush cycle we've seen.
     Atomic<rel_time_t> flushDurationHighWat;
-    //! Amount of time spent in the commit phase.
+    //! Longest flush cycle we've seen per flusher.
+    std::vector<Atomic<rel_time_t> > flushDurationHighWats;
+    //! Amount of time spent in the last commit phase.
     Atomic<rel_time_t> commit_time;
+    //! Amount of time spent in the last commit phase for each kvstore.
+    std::vector<Atomic<rel_time_t> > commit_times;
     //! Number of times we deleted a vbucket.
     Atomic<size_t> vbucketDeletions;
     //! Number of times we failed to delete a vbucket.
@@ -517,6 +527,51 @@ public:
         size_t sum = 0;
         for (size_t i = 0; i < l; i++) {
             sum += flusher_todos[i];
+        }
+        return sum;
+    }
+
+    size_t flusherDedup_get() {
+        size_t l = flusherDedup.size();
+        size_t sum = 0;
+        for (size_t i = 0; i < l; i++) {
+            sum += flusherDedup[i];
+        }
+        return sum;
+    }
+
+    size_t flusherCommits_get() {
+        size_t l = flusherCommits.size();
+        size_t sum = 0;
+        for (size_t i = 0; i < l; i++) {
+            sum += flusherCommits[i];
+        }
+        return sum;
+    }
+
+    size_t flusherPreempts_get() {
+        size_t l = flusherPreempts.size();
+        size_t sum = 0;
+        for (size_t i = 0; i < l; i++) {
+            sum += flusherPreempts[i];
+        }
+        return sum;
+    }
+
+    size_t beginFailed_get() {
+        size_t l = beginFailed.size();
+        size_t sum = 0;
+        for (size_t i = 0; i < l; i++) {
+            sum += beginFailed[i];
+        }
+        return sum;
+    }
+
+    size_t commitFailed_get() {
+        size_t l = commitFailed.size();
+        size_t sum = 0;
+        for (size_t i = 0; i < l; i++) {
+            sum += commitFailed[i];
         }
         return sum;
     }

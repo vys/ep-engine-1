@@ -1278,6 +1278,11 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     stats.flusherPreempts.resize(numKVStores);
     stats.beginFailed.resize(numKVStores);
     stats.commitFailed.resize(numKVStores);
+    stats.cumulativeFlushTimes.resize(numKVStores);
+    stats.cumulativeCommitTimes.resize(numKVStores);
+    stats.flushDurations.resize(numKVStores);
+    stats.flushDurationHighWats.resize(numKVStores);
+    stats.commit_times.resize(numKVStores);
 
     databaseInitTime = ep_real_time() - start;
     epstore = new EventuallyPersistentStore(*this, kvstore, configuration.isVb0(),
@@ -1305,13 +1310,29 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     startEngineThreads();
 
     // If requested, don't complete the initialization until the
-    // flusher transitions out of the initializing state (i.e
+    // flushers transition out of the initializing state (i.e
     // warmup is finished).
-    const Flusher *flusher = epstore->getFlusher();
     useconds_t sleepTime = 1;
     useconds_t maxSleepTime = 500000;
-    if (configuration.isWaitforwarmup() && flusher) {
-        while (flusher->state() == initializing) {
+    bool flushersInitialized = true;
+    for (int i = 0; i < numKVStores; i++) {
+        if (NULL == epstore->getFlusher(i)) {
+            flushersInitialized = false;
+            break;
+        }
+    }
+    if (configuration.isWaitforwarmup() && flushersInitialized) {
+        while (true) {
+            bool flushersStateRunning = true;
+            for (int i = 0; i < numKVStores; i++) {
+                if (epstore->getFlusher(i)->state() == initializing) {
+                    flushersStateRunning = false;
+                    break;
+                }
+            }
+            if (flushersStateRunning) {
+                break;
+            }
             usleep(sleepTime);
             sleepTime = std::min(sleepTime << 1, maxSleepTime);
         }
@@ -1321,10 +1342,20 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
                     static_cast<unsigned int>(stats.warmOOM));
             exit(1);
         }
-    } else {
+    } else if (flushersInitialized) {
         // Although we don't wait for the full data load, wait until the states of all vbuckets
         // are loaded from vbucket_states table. This won't take much time.
-        while (flusher && !flusher->isVBStateLoaded()) {
+        while (true) {
+            bool flushersVBStateLoaded = true;
+            for (int i = 0; i < numKVStores; i++) {
+                if (!epstore->getFlusher(i)->isVBStateLoaded()) {
+                    flushersVBStateLoaded = false;
+                    break;
+                }
+            }
+            if (flushersVBStateLoaded) {
+                break;
+            }
             usleep(sleepTime);
             sleepTime = std::min(sleepTime << 1, maxSleepTime);
         }
@@ -2583,29 +2614,51 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.flushExpired, add_stat, cookie);
     add_casted_stat("ep_queue_size",
                     epstats.queue_size, add_stat, cookie);
-    if (epstats.flusher_todos.size() > 1) {
-        for (size_t i = 0; i < epstats.flusher_todos.size(); i++) {
-            char buf[20];
+    if (numKVStores > 1) {
+        for (int i = 0; i < numKVStores; i++) {
+            char buf[40];
             sprintf(buf, "ep_flusher_todo_%d", int(i));
             add_casted_stat(buf, epstats.flusher_todos[i], add_stat, cookie);
+            sprintf(buf, "ep_flusher_state_%d", int(i));
+            add_casted_stat(buf, epstore->getFlusher(i)->stateName(), add_stat, cookie);
+            sprintf(buf, "ep_commit_time_%d", int(i));
+            add_casted_stat(buf, epstats.commit_times[i], add_stat, cookie);
+            sprintf(buf, "ep_commit_time_total_%d", int(i));
+            add_casted_stat(buf, epstats.cumulativeCommitTimes[i], add_stat, cookie);
+            sprintf(buf, "ep_flush_duration_%d", int(i));
+            add_casted_stat(buf, epstats.flushDurations[i], add_stat, cookie);
+            sprintf(buf, "ep_flush_duration_total_%d", int(i));
+            add_casted_stat(buf, epstats.cumulativeFlushTimes[i], add_stat, cookie);
+            sprintf(buf, "ep_flush_duration_highwat_%d", int(i));
+            add_casted_stat(buf, epstats.flushDurationHighWats[i], add_stat, cookie);
+            sprintf(buf, "ep_flusher_deduplication_%d", int(i));
+            add_casted_stat(buf, epstats.flusherDedup[i], add_stat, cookie);
+            sprintf(buf, "ep_commit_num_%d", int(i));
+            add_casted_stat(buf, epstats.flusherCommits[i], add_stat, cookie);
+            sprintf(buf, "ep_flush_preempts_%d", int(i));
+            add_casted_stat(buf, epstats.flusherPreempts[i], add_stat, cookie);
+            sprintf(buf, "ep_item_begin_failed_%d", int(i));
+            add_casted_stat(buf, epstats.beginFailed[i], add_stat, cookie);
+            sprintf(buf, "ep_item_commit_failed_%d", int(i));
+            add_casted_stat(buf, epstats.commitFailed[i], add_stat, cookie);
         }
     }
     add_casted_stat("ep_flusher_todo",
                     epstats.flusher_todo_get(), add_stat, cookie);
-    for (int i = 0; i < numKVStores; i++) {
-        add_casted_stat("ep_flusher_deduplication",
-                        epstats.flusherDedup[i], add_stat, cookie);
-        add_casted_stat("ep_commit_num", epstats.flusherCommits[i],
-                        add_stat, cookie);
-        add_casted_stat("ep_flush_preempts",
-                    epstats.flusherPreempts[i], add_stat, cookie);
-        add_casted_stat("ep_item_begin_failed",
-                        epstats.beginFailed[i], add_stat, cookie);
-        add_casted_stat("ep_item_commit_failed",
-                        epstats.commitFailed[i], add_stat, cookie);
-    }
+    add_casted_stat("ep_flusher_deduplication",
+                    epstats.flusherDedup_get(), add_stat, cookie);
+    add_casted_stat("ep_commit_num", epstats.flusherCommits_get(),
+                    add_stat, cookie);
+    add_casted_stat("ep_flush_preempts",
+                    epstats.flusherPreempts_get(), add_stat, cookie);
+    add_casted_stat("ep_item_begin_failed",
+                    epstats.beginFailed_get(), add_stat, cookie);
+    add_casted_stat("ep_item_commit_failed",
+                    epstats.commitFailed_get(), add_stat, cookie);
     add_casted_stat("ep_uncommitted_items",
                     epstore->getNumUncommittedItems(), add_stat, cookie);
+    // This will report state only for the main flusher, remains for
+    // backward compatibility
     add_casted_stat("ep_flusher_state",
                     epstore->getFlusher()->stateName(),
                     add_stat, cookie);
