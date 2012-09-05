@@ -188,7 +188,7 @@ public:
     void setCksum(const std::string &ck) {
         size_t len = ck.size()+1;
         if (!cksum || len > strlen(cksum)) {
-            delete cksum;
+            delete [] cksum;
             cksum = new char[len];
         }  
         memcpy(cksum, ck.c_str(), len);
