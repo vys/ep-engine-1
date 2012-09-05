@@ -42,8 +42,10 @@ protected:
 
 class EvictionPolicy {
 public:
-    EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) : 
-                   backgroundJob(job), store(s), stats(st), age(0) {}
+    EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, 
+                   bool inlineEviction) :
+                   backgroundJob(job), supportsInlineEviction(inlineEviction),
+                   store(s), stats(st), age(0) {}
 
     virtual ~EvictionPolicy() {}
 
@@ -74,6 +76,8 @@ public:
         return true;
     }
     bool backgroundJob;
+    
+    bool supportsInlineEviction;
 
 protected:
     EventuallyPersistentStore *store;
@@ -137,7 +141,7 @@ public:
 class LRUPolicy : public EvictionPolicy {
 public:
     LRUPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz) :
-              EvictionPolicy(s, st, job), maxSize(sz),
+              EvictionPolicy(s, st, job, true), maxSize(sz),
               list(new FixedList<LRUItem, LRUItemCompare>(maxSize)),
               templist(NULL),
               stopBuild(false),
@@ -411,7 +415,7 @@ class RandomPolicy : public EvictionPolicy {
 
 public:
     RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz)
-        :   EvictionPolicy(s, st, job),
+        :   EvictionPolicy(s, st, job, true),
             maxSize(sz),
             list(new RandomList()),
             it(list->begin()),
@@ -499,8 +503,8 @@ private:
 class BGEvictionPolicy : public EvictionPolicy {
 public:
     BGEvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) :
-                     EvictionPolicy(s, st, job), shouldRun(true), ejected(0),
-                     startTime(0), endTime(0) {}
+                     EvictionPolicy(s, st, job, false), shouldRun(true), 
+                     ejected(0), startTime(0), endTime(0) {}
 
     ~BGEvictionPolicy() {}
 

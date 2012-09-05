@@ -43,10 +43,14 @@ bool EvictionManager::evictSize(size_t size)
 {
     size_t cur = 0;
 
+    if (!evpolicy->supportsInlineEviction) {
+        return true;
+    }
+
     while(cur < size) {
         EvictItem *ent = evpolicy->evict();
         if (ent == NULL) {
-            getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Eviction: Empty list, ejection failed.  Evicted only %uB out of a total %uB required.", cur, size);
+            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty list, ejection failed.  Evicted only %uB out of a total %uB required.", cur, size);
             stats.evictionStats.numEmptyQueue++;
             return false;
         }
