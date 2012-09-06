@@ -76,6 +76,10 @@ public:
         ::operator delete(p);
      }
 
+    ~StoredValue() {
+        delete []cksum;
+    }
+
     /**
      * Update the "last used" time for the object.
      */
@@ -556,7 +560,7 @@ public:
         value.reset();
         markDirty();
         setCas(getCas() + 1);
-        delete cksum;
+        delete []cksum;
         cksum = NULL;    
 
         size_t newsize = size();
