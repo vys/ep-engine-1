@@ -555,12 +555,14 @@ public:
         for (int i = 0; i < numKVStores; ++i) {
             delete kvstore[i];
         }
-        for (std::map<std::string, KVStoreConfig*>::iterator it = kvstoreConfigMap->begin();
-                it != kvstoreConfigMap->end(); it++) {
-            delete it->second;
+        if (kvstoreConfigMap) {
+            for (std::map<std::string, KVStoreConfig*>::iterator it = kvstoreConfigMap->begin();
+                    it != kvstoreConfigMap->end(); it++) {
+                delete it->second;
+            }
+            delete kvstoreConfigMap;
         }
         delete []kvstore;
-        delete kvstoreConfigMap;
         delete getlExtension;
     }
 
