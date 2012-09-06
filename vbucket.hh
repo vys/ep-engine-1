@@ -16,7 +16,6 @@
 #include "atomic.hh"
 #include "stored-value.hh"
 #include "checkpoint.hh"
-#include "kvstore-mapper.hh"
 
 const size_t BASE_VBUCKET_SIZE=1024;
 

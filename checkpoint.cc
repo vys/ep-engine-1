@@ -767,6 +767,7 @@ bool CheckpointManager::queueDirty(const queued_item &item, const RCPtr<VBucket>
 uint64_t CheckpointManager::getAllItemsFromCurrentPosition(CheckpointCursor &cursor,
                                                            uint64_t barrier,
                                                            std::vector<queued_item> &items,
+                                                           QueuedItemFilter &filter,
                                                            size_t upperThreshold) {
     size_t count = 0;
     while (true) {
@@ -776,10 +777,12 @@ uint64_t CheckpointManager::getAllItemsFromCurrentPosition(CheckpointCursor &cur
             }
         }
         while (++(cursor.currentPos) != (*(cursor.currentCheckpoint))->end()) {
-            items.push_back(*(cursor.currentPos));
-            count++;
-            if (upperThreshold && count == upperThreshold) {
-                break;
+            if (filter(*(cursor.currentPos))) {
+                items.push_back(*(cursor.currentPos));
+                count++;
+                if (upperThreshold && count == upperThreshold) {
+                    break;
+                }
             }
         }
         if (upperThreshold && count == upperThreshold) {
@@ -815,7 +818,8 @@ uint64_t CheckpointManager::getAllItemsForPersistence(std::vector<queued_item> &
     // otherwise get all the items up to the end of the current open checkpoint, honoring upperThreshold
     // in either case.
     uint64_t barrier = doOnlineUpdate ? (*(onlineUpdateCursor.currentCheckpoint))->getId() : 0;
-    uint64_t checkpointId = getAllItemsFromCurrentPosition(*(persistenceVector.at(id)), barrier, items, upperThreshold);
+    QueuedItemFilter filter(id);
+    uint64_t checkpointId = getAllItemsFromCurrentPosition(*(persistenceVector.at(id)), barrier, items, filter, upperThreshold);
     persistenceVector.at(id)->offset += items.size();
     return checkpointId;
 }
@@ -830,7 +834,8 @@ uint64_t CheckpointManager::getAllItemsForTAPConnection(const std::string &name,
                          name.c_str());
         return 0;
     }
-    uint64_t checkpointId = getAllItemsFromCurrentPosition(it->second, 0, items);
+    QueuedItemFilter filter(0, true);
+    uint64_t checkpointId = getAllItemsFromCurrentPosition(it->second, 0, items, filter);
     it->second.offset = numItems;
     return checkpointId;
 }
@@ -840,7 +845,8 @@ uint64_t CheckpointManager::getAllItemsForOnlineUpdate(std::vector<queued_item> 
     uint64_t checkpointId = 0;
     if (doOnlineUpdate) {
         // Get all the items up to the end of the current open checkpoint
-        checkpointId = getAllItemsFromCurrentPosition(onlineUpdateCursor, 0, items);
+        QueuedItemFilter filter(0, true);
+        checkpointId = getAllItemsFromCurrentPosition(onlineUpdateCursor, 0, items, filter);
         onlineUpdateCursor.offset += items.size();
     }
 

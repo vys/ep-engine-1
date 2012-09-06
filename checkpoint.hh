@@ -12,6 +12,7 @@
 #include "locks.hh"
 #include "queueditem.hh"
 #include "stats.hh"
+#include "kvstore-mapper.hh"
 
 #define MIN_CHECKPOINT_ITEMS 100
 #define MAX_CHECKPOINT_ITEMS 500000
@@ -519,6 +520,7 @@ private:
     uint64_t getAllItemsFromCurrentPosition(CheckpointCursor &cursor,
                                             uint64_t barrier,
                                             std::vector<queued_item> &items,
+                                            QueuedItemFilter &filter,
                                             size_t upperThreshold = 0);
 
     bool moveCursorToNextCheckpoint(CheckpointCursor &cursor);

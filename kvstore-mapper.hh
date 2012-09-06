@@ -56,17 +56,17 @@ private:
  */
 class QueuedItemFilter {
 public:
-    QueuedItemFilter(int _kvid) : kvid(_kvid) {}
+    QueuedItemFilter(int _kvid, bool _alwaysPass = false) :
+        kvid(_kvid),
+        alwaysPass(_alwaysPass)
+    {}
 
-    bool operator ()(size_t x) {
-        (void) x;
-        return true;
-    }
     bool operator () (queued_item &itm) {
-        return KVStoreMapper::getKVStoreId(itm->getKey(), itm->getVBucketId()) == kvid;
+        return alwaysPass || (KVStoreMapper::getKVStoreId(itm->getKey(), itm->getVBucketId()) == kvid);
     }
 
 private:
     int kvid;
+    bool alwaysPass;
 };
 #endif

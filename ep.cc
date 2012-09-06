@@ -1589,9 +1589,6 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
             // Perform further deduplication here by removing duplicate mutations for each key.
             for (; reverse_it != item_list.rend(); ++reverse_it) {
                 queued_item qi = *reverse_it;
-                if (KVStoreMapper::getKVStoreId(qi->getKey(), vb) != id) {
-                    continue;
-                }
                 switch (qi->getOperation()) {
                 case queue_op_set:
                 case queue_op_del:
