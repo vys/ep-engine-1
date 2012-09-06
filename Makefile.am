@@ -321,6 +321,9 @@ endif
 
 if BUILD_TCMALLOC_STATS
 ep_la_SOURCES += tcmalloc/tcmalloc_stats.hh tcmalloc/tcmalloc_stats.cc
+ep_la_LIBADD += $(BETTER_MALLOC_LIBS)
+ep_testsuite_la_LIBADD += $(BETTER_MALLOC_LIBS)
+management_mbdbconvert_LDADD += $(BETTER_MALLOC_LIBS)
 endif
 
 pythonlibdir=$(libdir)/python
