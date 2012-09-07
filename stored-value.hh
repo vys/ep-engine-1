@@ -76,6 +76,10 @@ public:
         ::operator delete(p);
      }
 
+    ~StoredValue() {
+        delete []cksum;
+    }
+
     /**
      * Update the "last used" time for the object.
      */
@@ -188,7 +192,7 @@ public:
     void setCksum(const std::string &ck) {
         size_t len = ck.size()+1;
         if (!cksum || len > strlen(cksum)) {
-            delete cksum;
+            delete [] cksum;
             cksum = new char[len];
         }  
         memcpy(cksum, ck.c_str(), len);
@@ -551,7 +555,7 @@ public:
         value.reset();
         markDirty();
         setCas(getCas() + 1);
-        delete cksum;
+        delete []cksum;
         cksum = NULL;    
 
         size_t newsize = size();

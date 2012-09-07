@@ -525,6 +525,7 @@ public:
         delete epstore;
         delete kvstore;
         delete getlExtension;
+        delete diExtension;
     }
 
     engine_info *getInfo() {
