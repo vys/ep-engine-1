@@ -768,7 +768,8 @@ uint64_t CheckpointManager::getAllItemsFromCurrentPosition(CheckpointCursor &cur
                                                            uint64_t barrier,
                                                            std::vector<queued_item> &items,
                                                            QueuedItemFilter &filter,
-                                                           size_t upperThreshold) {
+                                                           size_t upperThreshold,
+                                                           size_t *itemsShifted) {
     size_t count = 0;
     while (true) {
         if ( barrier > 0 )  {
@@ -783,6 +784,9 @@ uint64_t CheckpointManager::getAllItemsFromCurrentPosition(CheckpointCursor &cur
                 if (upperThreshold && count == upperThreshold) {
                     break;
                 }
+            }
+            if (itemsShifted) {
+                (*itemsShifted)++;
             }
         }
         if (upperThreshold && count == upperThreshold) {
@@ -819,8 +823,11 @@ uint64_t CheckpointManager::getAllItemsForPersistence(std::vector<queued_item> &
     // in either case.
     uint64_t barrier = doOnlineUpdate ? (*(onlineUpdateCursor.currentCheckpoint))->getId() : 0;
     QueuedItemFilter filter(id);
-    uint64_t checkpointId = getAllItemsFromCurrentPosition(*(persistenceVector.at(id)), barrier, items, filter, upperThreshold);
-    persistenceVector.at(id)->offset += items.size();
+    size_t count = 0;
+    uint64_t checkpointId = getAllItemsFromCurrentPosition(*(persistenceVector.at(id)), 
+                                                           barrier, items, filter, 
+                                                           upperThreshold, &count);
+    persistenceVector.at(id)->offset += count;
     return checkpointId;
 }
 

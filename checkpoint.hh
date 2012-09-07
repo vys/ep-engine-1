@@ -521,7 +521,8 @@ private:
                                             uint64_t barrier,
                                             std::vector<queued_item> &items,
                                             QueuedItemFilter &filter,
-                                            size_t upperThreshold = 0);
+                                            size_t upperThreshold = 0,
+                                            size_t *itemsShifted = NULL);
 
     bool moveCursorToNextCheckpoint(CheckpointCursor &cursor);
 
@@ -565,9 +566,10 @@ private:
         if (cursor.offset >= decr) {
             cursor.offset -= decr;
         } else {
-            cursor.offset = 0;
             getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                             "VBucket persistence cursor's offset is negative. Reset it to 0.");
+                             "VBucket persistence cursor's offset is negative. offset = %d, decr = %d",
+                             cursor.offset.get(), decr);
+            cursor.offset = 0;
         }
     }
 
