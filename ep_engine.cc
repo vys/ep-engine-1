@@ -1395,7 +1395,7 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
         epstore->getDispatcher(i)->schedule(sscb, NULL, Priority::StatSnapPriority,
                 STATSNAP_FREQ);
 
-        if (kvstore[i]->getStorageProperties().hasEfficientVBDeletion()) {
+        if (epstore->getStorageProperties(i)->hasEfficientVBDeletion()) {
             shared_ptr<DispatcherCallback> invalidVBTableRemover(new InvalidVBTableRemover(this));
             epstore->getDispatcher(i)->schedule(invalidVBTableRemover, NULL,
                     Priority::VBucketDeletionPriority,
