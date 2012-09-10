@@ -829,7 +829,7 @@ public:
 private:
 
     void getRestoreItems(uint16_t vbid, QueuedItemFilter &filter, 
-                         std::vector<queued_item> item_list) {
+                         std::vector<queued_item> &item_list) {
         LockHolder rlh(restore.mutex);
         std::map<uint16_t, std::list<queued_item> >::iterator rit = restore.items.find(vbid);
         if (rit == restore.items.end()) {
@@ -839,9 +839,10 @@ private:
         while (it != rit->second.end()) {
             if (filter(*it)) {
                 item_list.push_back(*it);
-                rit->second.erase(it);
+                it = rit->second.erase(it);
+            } else {
+                it++;
             }
-            it++;
         }
     }
 
