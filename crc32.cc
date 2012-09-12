@@ -39,8 +39,8 @@ std::string Crc32::getCksum(const char *key, int keyLen, const char *old, int of
 
 std::string Crc32::getCksum(Item *it) {
     uint32_t flags = ntohl(it->getFlags());
-    const char *c = (getCksum((char*)&flags, sizeof(uint32_t))).c_str();
-    return getCksum(it->getValue()->getData(), it->getNBytes(), c);
+    std::string flagsCksum = (getCksum((char*)&flags, sizeof(uint32_t))).c_str();
+    return getCksum(it->getValue()->getData(), it->getNBytes(), flagsCksum.c_str());
 }
 
 bool Crc32::hasCksum(std::string cksum) {
