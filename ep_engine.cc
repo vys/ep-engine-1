@@ -2787,6 +2787,12 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     add_stat, cookie);
     add_casted_stat("ep_keep_closed_checkpoints", CheckpointManager::isKeepingClosedCheckpoints(),
                     add_stat, cookie);
+    add_casted_stat("ep_max_checkpoints", CheckpointManager::getMaxCheckpoints(),
+                    add_stat, cookie);
+    add_casted_stat("ep_checkpoint_period", CheckpointManager::getCheckpointPeriod(),
+                    add_stat, cookie);
+    add_casted_stat("ep_checkpoint_max_items", CheckpointManager::getCheckpointMaxItems(),
+                    add_stat, cookie);
 
     statsmap_t smap = festats.getStats();                    
     statsmap_t::iterator iter;

@@ -158,6 +158,9 @@ For introductory information on stats within membase, start with the
 | ep_onlineupdate_revert_update | Number of reverted updated items           |
 | ep_inconsistent_slave_chk     | Flag indicating if we allow a "downstream" |
 |                               | master to receive checkpoint messages      |
+| ep_max_checkpoints            | Number of checkpoints to be kept in memory |
+| ep_checkpoint_period          | Maximum interval for creating a checkpoint |
+| ep_checkpoint_max_items       | Maximum number of items for a checkpoint   |
 
 ** vBucket total stats
 
