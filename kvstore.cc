@@ -169,7 +169,7 @@ std::map<std::string, KVStoreConfig*> *KVStore::parseConfig(EventuallyPersistent
     if (k == 0) {
         (*confMap)["kvstore"] = new KVStoreConfig;
         cJSON_Delete(c);
-        delete [] data;
+        free(data);
         return confMap;
     }
 
@@ -253,7 +253,7 @@ std::map<std::string, KVStoreConfig*> *KVStore::parseConfig(EventuallyPersistent
     }
 
     cJSON_Delete(c);
-    delete [] data;
+    free(data);
 
     if (!validateConfig(confMap)) {
         delete confMap;
