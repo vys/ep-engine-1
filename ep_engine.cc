@@ -1362,7 +1362,9 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     }
 
     // Run the vbucket state snapshot job once after the warmup
-    epstore->scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
+    for (int i = 0; i < numKVStores; i++) {
+        epstore->scheduleVBSnapshot(Priority::VBucketPersistHighPriority, i);
+    }
 
     // Initialize the eviction manager
     EvictionManager::createInstance(epstore, stats, configuration.getEvictionPolicy());

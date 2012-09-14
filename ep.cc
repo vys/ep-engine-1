@@ -148,11 +148,11 @@ private:
  */
 class SnapshotVBucketsCallback : public DispatcherCallback {
 public:
-    SnapshotVBucketsCallback(EventuallyPersistentStore *e, const Priority &p)
-        : ep(e), priority(p) { }
+    SnapshotVBucketsCallback(EventuallyPersistentStore *e, const Priority &p, int i)
+        : ep(e), priority(p), kvid(i) { }
 
     bool callback(Dispatcher &, TaskId) {
-        ep->snapshotVBuckets(priority);
+        ep->snapshotVBuckets(priority, kvid);
         return false;
     }
 
@@ -162,6 +162,7 @@ public:
 private:
     EventuallyPersistentStore *ep;
     const Priority &priority;
+    int kvid;
 };
 
 /**
@@ -763,7 +764,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
 }
 
 
-void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority) {
+void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority, int kvid) {
 
     class VBucketStateVisitor : public VBucketVisitor {
     public:
@@ -796,10 +797,10 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority) {
 
     VBucketStateVisitor v(vbuckets);
     visit(v);
-    if (!rwUnderlying[0]->snapshotVBuckets(v.states)) {
+    if (!rwUnderlying[kvid]->snapshotVBuckets(v.states)) {
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Rescheduling a task to snapshot vbuckets\n");
-        scheduleVBSnapshot(priority);
+        scheduleVBSnapshot(priority, kvid);
     }
 }
 
@@ -815,7 +816,8 @@ void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
                                              (new NotifyVBStateChangeCallback(vb,
                                                                         engine)),
                                   NULL, Priority::NotifyVBStateChangePriority, 0, false);
-        scheduleVBSnapshot(Priority::VBucketPersistLowPriority);
+        scheduleVBSnapshot(Priority::VBucketPersistLowPriority,
+                           KVStoreMapper::getVBucketToKVId(vbid));
     } else {
         RCPtr<VBucket> newvb(new VBucket(vbid, to, stats));
         if (to != vbucket_state_active) {
@@ -827,11 +829,12 @@ void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
         vbuckets.addBucket(newvb);
         vbuckets.setBucketVersion(vbid, vb_new_version);
         lh.unlock();
-        scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
+        scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
+                           KVStoreMapper::getVBucketToKVId(vbid));
     }
 }
 
-void EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p) {
+void EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p, int kvid) {
     if (p == Priority::VBucketPersistHighPriority) {
         if (!vbuckets.setHighPriorityVbSnapshotFlag(true)) {
             return;
@@ -841,9 +844,8 @@ void EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p) {
             return;
         }
     }
-    // FIXME:: VANDANA
-    dispatcher[0]->schedule(shared_ptr<DispatcherCallback>(new SnapshotVBucketsCallback(this, p)),
-                         NULL, p, 0, false);
+    dispatcher[kvid]->schedule(shared_ptr<DispatcherCallback>(
+                        new SnapshotVBucketsCallback(this, p, kvid)), NULL, p, 0, false);
 }
 
 vbucket_del_result
@@ -927,7 +929,8 @@ bool EventuallyPersistentStore::deleteVBucket(uint16_t vbid) {
         stats.currentSize.decr(statvis.memSize - statvis.valSize);
         assert(stats.currentSize.get() < GIGANTOR);
         vbuckets.removeBucket(vbid);
-        scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
+        scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
+                           KVStoreMapper::getVBucketToKVId(vbid));
         scheduleVBDeletion(vb, vb_version);
     }
     return rv;
@@ -956,7 +959,8 @@ bool EventuallyPersistentStore::resetVBucket(uint16_t vbid) {
         vb->checkpointManager.clear(vb->getState());
         vb->resetStats();
 
-        scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
+        scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
+                           KVStoreMapper::getVBucketToKVId(vbid));
         // Clear all the items from the vbucket kv table on disk.
         scheduleVBDeletion(vb, vb_version);
         rv = true;
@@ -1515,23 +1519,7 @@ void EventuallyPersistentStore::reset() {
 }
 
 std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
-
-    if (!hasItemsForPersistence(id) && !diskFlushAll[id]) {
-        stats.dirtyAge = 0;
-        // If the persistence queue is empty, reset queue-related stats for each vbucket.
-        size_t numOfVBuckets = vbuckets.getSize();
-        for (size_t i = 0; i < numOfVBuckets; ++i) {
-            assert(i <= std::numeric_limits<uint16_t>::max());
-            uint16_t vbid = static_cast<uint16_t>(i);
-            RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
-            if (vb) {
-                vb->dirtyQueueSize.set(0);
-                vb->dirtyQueueMem.set(0);
-                vb->dirtyQueueAge.set(0);
-                vb->dirtyQueuePendingWrites.set(0);
-            }
-        }
-    } else {
+    if (hasItemsForPersistence(id) || diskFlushAll[id]) {
         std::queue<queued_item> *flushQueue = new std::queue<queued_item>();
         size_t num_shards = rwUnderlying[id]->getNumShards();
         std::vector<queued_item>  *dbShardQueues;
@@ -1626,6 +1614,21 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
                          id, flushQueue->size(), queue_size);
         delete []dbShardQueues;
         return flushQueue;
+    } else {
+        stats.dirtyAge = 0;
+        // If the persistence queue is empty, reset queue-related stats for each vbucket.
+        size_t numOfVBuckets = vbuckets.getSize();
+        for (size_t i = 0; i < numOfVBuckets; ++i) {
+            assert(i <= std::numeric_limits<uint16_t>::max());
+            uint16_t vbid = static_cast<uint16_t>(i);
+            RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
+            if (vb && vb->checkpointManager.getNumItemsForPersistence() == 0) {
+                vb->dirtyQueueSize.set(0);
+                vb->dirtyQueueMem.set(0);
+                vb->dirtyQueueAge.set(0);
+                vb->dirtyQueuePendingWrites.set(0);
+            }
+        }
     }
     return NULL;
 }
@@ -1674,7 +1677,7 @@ void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
 
     // Schedule the vbucket state snapshot task to record the latest checkpoint Id
     // that was successfully persisted for each vbucket.
-    scheduleVBSnapshot(Priority::VBucketPersistHighPriority);
+    scheduleVBSnapshot(Priority::VBucketPersistHighPriority, id);
 
     //FIXME:: Why is it needed?
 //    stats.flusher_todo.set(writing.size());

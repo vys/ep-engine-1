@@ -666,7 +666,7 @@ public:
         return vbuckets.getPersistenceCheckpointId(vb);
     }
 
-    void snapshotVBuckets(const Priority &priority);
+    void snapshotVBuckets(const Priority &priority, int kvid);
     void setVBucketState(uint16_t vbid,
                          vbucket_state_t state);
 
@@ -785,7 +785,7 @@ public:
 
     void deleteExpiredItems(std::list<std::pair<uint16_t, std::string> > &);
 
-    void scheduleVBSnapshot(const Priority &priority);
+    void scheduleVBSnapshot(const Priority &priority, int kvid);
 
     const VBucketMap &getVBuckets() {
         return vbuckets;
