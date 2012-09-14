@@ -81,6 +81,9 @@ void SyncRegistry::itemPersisted(const queued_item &item) {
 
 void SyncRegistry::itemsPersisted(std::list<queued_item> &itemlist) {
     LockHolder lh(persistenceMutex);
+    if (persistenceListeners.empty()) {
+        return;
+    }
     std::list<queued_item>::iterator it = itemlist.begin();
 
     for ( ; it != itemlist.end(); it++) {
