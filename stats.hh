@@ -479,9 +479,14 @@ private:
 typedef unordered_map< std::string, Histogram<hrtime_t>*> StatsMap;
 
 class ExtStats {
-
 public:
     ExtStats() {}
+    ~ExtStats() {
+        StatsMap::iterator iter = smap.begin();
+        while (iter != smap.end()) {
+            delete iter->second;
+        }
+    }
     void add(std::string key, hrtime_t value) {
         StatsMap::iterator iter;
         if ((iter = smap.find(key)) == smap.end()) {
