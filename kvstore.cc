@@ -143,7 +143,7 @@ std::map<std::string, KVStoreConfig*> *KVStore::parseConfig(EventuallyPersistent
         if (stat(confFile.c_str(), &st) == -1) {
             JSON_ERROR("Cannot read KVStore config file");
         } else {
-            data = new char[st.st_size + 1];
+            data = (char*) malloc((st.st_size + 1) * sizeof(char));
             data[st.st_size] = 0;
             std::ifstream input(confFile.c_str());
             input.read(data, st.st_size);
