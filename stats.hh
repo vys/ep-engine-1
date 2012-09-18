@@ -485,6 +485,7 @@ public:
         StatsMap::iterator iter = smap.begin();
         while (iter != smap.end()) {
             delete iter->second;
+            iter++;
         }
     }
     void add(std::string key, hrtime_t value) {
