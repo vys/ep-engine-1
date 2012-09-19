@@ -1068,7 +1068,7 @@ EventuallyPersistentEngine::EventuallyPersistentEngine(GET_SERVER_API get_server
     tapNoopInterval(DEFAULT_TAP_NOOP_INTERVAL), nextTapNoop(0),
     startedEngineThreads(false), shutdown(false),
     getServerApiFunc(get_server_api), getlExtension(NULL), diExtension(NULL), tapConnMap(*this),
-    maxItemSize(20*1024*1024), tapBacklogLimit(5000),
+    maxItemSize(20*1024*1024),
     memLowWat(std::numeric_limits<size_t>::max()),
     memHighWat(std::numeric_limits<size_t>::max()),
     itemExpiryWindow(3), vb_del_chunk_size(100), vb_chunk_del_threshold_time(500),
