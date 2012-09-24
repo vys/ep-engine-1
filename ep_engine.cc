@@ -1282,7 +1282,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
     epstore->getDispatcher()->schedule(sscb, NULL, Priority::StatSnapPriority,
             STATSNAP_FREQ);
 
-    if (kvstore->getStorageProperties().hasEfficientVBDeletion()) {
+    if (epstore->getStorageProperties().hasEfficientVBDeletion()) {
         shared_ptr<DispatcherCallback> invalidVBTableRemover(new InvalidVBTableRemover(this));
         epstore->getDispatcher()->schedule(invalidVBTableRemover, NULL,
                 Priority::VBucketDeletionPriority,
