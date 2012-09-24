@@ -58,7 +58,7 @@
             "type": "size_t"
         },
         "get_items_upper_threshold": {
-            "default": "50000",
+            "default": "0",
             "type": "size_t"
         },
         "getl_default_timeout": {

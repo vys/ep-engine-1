@@ -179,23 +179,28 @@ The default value of =shardpattern= is =%d/%b-%i.sqlite=
     "kvstores" : {
         "kvstore1" : {
             "dbname" : "/tmp/test2.db",
+            "initfile" : "/opt/membase/membase-init.sql",
             "data_dbnames" : [
                 "/tmp/test1.db",
                 "/tmp/test2.db"
             ]
         },
         "kvstore2" : {
+            "initfile" : "/opt/membase/membase-init.sql",
             "dbname" : "/tmp/test2.db-3.s"
         },
-        "kv3": {},
+        "kv3": {
+            "initfile" : "/opt/membase/membase-init.sql"
+        },
         "kv4": {
             "dbname" : "/tmp/test5.db",
+            "initfile" : "/opt/membase/membase-init.sql",
             "data_dbnames" : [
                 "/tmp/t1.db",
                 "/tmp/t2.db",
                 "/tmp/t3.db"
             ],
-            "db_shards" : 15
+            "db_shards" : 10
         }
     }
 }
