@@ -55,15 +55,19 @@ Persistence:
     start          - start persistence
 
 Available params for "set":
-    enable_flushall- enable the flush_all command (false by default)
-    min_data_age   - minimum data age before flushing data
-    queue_age_cap  - maximum queue age before flushing data
-    max_txn_size   - maximum number of items in a flusher transaction
-    bg_fetch_delay - delay before executing a bg fetch (test feature)
-    max_size       - max memory used by the server
-    mem_high_wat   - high water mark
-    mem_low_wat    - low water mark
-    exp_pager_stime- Expiry Pager Sleeptime""")
+    enable_flushall         - enable the flush_all command (false by default)
+    min_data_age            - minimum data age before flushing data
+    queue_age_cap           - maximum queue age before flushing data
+    max_txn_size            - maximum number of items in a flusher transaction
+    bg_fetch_delay          - delay before executing a bg fetch (test feature)
+    max_size                - max memory used by the server
+    mem_high_wat            - high water mark
+    mem_low_wat             - low water mark
+    exp_pager_stime         - Expiry Pager Sleeptime
+    chk_max_items           - Max no of keys after which a checkpoint will be closed ( Valid range 100 - 500000)
+    chk_period              - Max time period after which a checkpoint will be closed (Valid range 60s - 3600s)
+    keep_closed_chks        - Flag to keep closed checkpoints in memory ( True / False )
+    inconsistent_slave_chk  - Setting this to true will disable checkpoint creation ( True / False )""")
 
     c.addCommand('stop', stop, 'stop')
     c.addCommand('start', start, 'start')
