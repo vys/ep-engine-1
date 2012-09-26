@@ -939,8 +939,7 @@ private:
     Dispatcher                 **dispatcher;
     Dispatcher                 **roDispatcher;
     Dispatcher                 *nonIODispatcher;
-    Flusher                    *flusher;
-    Flusher                    **allFlusher;
+    Flusher                    **flusher;
     InvalidItemDbPager         *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;

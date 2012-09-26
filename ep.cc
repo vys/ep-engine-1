@@ -367,7 +367,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     roDispatcher = new Dispatcher *[numKVStores];
     rwUnderlying = new KVStore *[numKVStores];
     roUnderlying = new KVStore *[numKVStores];
-    allFlusher = new Flusher *[numKVStores];
+    flusher = new Flusher *[numKVStores];
     tctx = new TransactionContext *[numKVStores];
     storageProperties = new StorageProperties *[numKVStores];
 
@@ -378,7 +378,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
             it != theEngine.kvstoreConfigMap->end(); it++, i++) {
         rwUnderlying[i] = t[i];
         dispatcher[i] = new Dispatcher(theEngine);
-        allFlusher[i] = new Flusher(this, dispatcher[i], i);
+        flusher[i] = new Flusher(this, dispatcher[i], i);
         tctx[i] = new TransactionContext(stats, t[i], 
                                          theEngine.syncRegistry, i);
 
@@ -400,7 +400,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
                          storageProperties[i]->maxReaders(),
                          storageProperties[i]->maxWriters());
     }
-    flusher = allFlusher[0];
+   // flusher = allFlusher[0];
 
     nonIODispatcher = new Dispatcher(theEngine);
     invalidItemDbPager = new InvalidItemDbPager(this, stats, engine.getVbDelChunkSize());
@@ -451,14 +451,14 @@ EventuallyPersistentStore::~EventuallyPersistentStore() {
             delete roDispatcher[i];
             delete roUnderlying[i];
         }
-        delete allFlusher[i];
+        delete flusher[i];
         delete dispatcher[i];
         delete tctx[i];
     }
 
     nonIODispatcher->stop(forceShutdown);
 
-    delete []allFlusher;
+    delete []flusher;
     delete []dispatcher;
     delete []tctx;
     delete []roUnderlying;
@@ -479,20 +479,20 @@ void EventuallyPersistentStore::startNonIODispatcher() {
 }
 
 const Flusher* EventuallyPersistentStore::getFlusher(int id) {
-    return allFlusher[id];
+    return flusher[id];
 }
 
 void EventuallyPersistentStore::startFlusher() {
     for (int i = 0 ; i < numKVStores; ++i) {
-        allFlusher[i]->start();
+        flusher[i]->start();
     }
 }
 
 void EventuallyPersistentStore::stopFlusher() {
     for (int i = 0 ; i < numKVStores; ++i) {
-        bool rv = allFlusher[i]->stop(engine.isForceShutdown());
+        bool rv = flusher[i]->stop(engine.isForceShutdown());
         if (rv && !engine.isForceShutdown()) {
-            allFlusher[i]->wait();
+            flusher[i]->wait();
         }
     }
 }
@@ -500,14 +500,14 @@ void EventuallyPersistentStore::stopFlusher() {
 bool EventuallyPersistentStore::pauseFlusher() {
     for (int i = 0 ; i < numKVStores; ++i) {
         tctx[i]->commitSoon();
-        allFlusher[i]->pause();
+        flusher[i]->pause();
     }
     return true;
 }
 
 bool EventuallyPersistentStore::resumeFlusher() {
     for (int i = 0 ; i < numKVStores; ++i) {
-        allFlusher[i]->resume();
+        flusher[i]->resume();
     }
     return true;
 }
@@ -1554,10 +1554,10 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
             }
 #endif
             // Grab all the items from online restore.
-            getRestoreItems(vbid, allFlusher[id]->getFilter(), item_list);
+            getRestoreItems(vbid, flusher[id]->getFilter(), item_list);
 
             // Grab all the backfill items if exist.
-            vb->getBackfillItems(item_list, allFlusher[id]->getFilter());
+            vb->getBackfillItems(item_list, flusher[id]->getFilter());
 
             // Get all dirty items from the checkpoint.
             size_t upperThreshold = (size_t)-1;
