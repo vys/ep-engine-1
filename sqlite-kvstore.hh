@@ -139,10 +139,6 @@ public:
         return strategy->getDbShardId(key, vbid);
     }
 
-    size_t getShardId(const QueuedItem &i) {
-        return strategy->getDbShardId(i);
-    }
-
     void optimizeWrites(std::vector<FlushEntry> &items) {
         strategy->optimizeWrites(items);
     }

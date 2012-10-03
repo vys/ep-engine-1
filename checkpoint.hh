@@ -255,11 +255,6 @@ public:
         isCollapsedCheckpoint(false), doOnlineUpdate(false), doHotReload(false) {
 
         addNewCheckpoint(checkpointId);
-#if 0
-        for (int i = 0 ; i < numPersistenceCursors; ++i) {
-            registerPersistenceCursor(i);
-        }
-#endif
     }
 
     ~CheckpointManager();

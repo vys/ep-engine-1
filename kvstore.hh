@@ -301,9 +301,8 @@ public:
     virtual size_t getNumShards() = 0;
 
     /**
-     * get the shard ID for the given queued item.
+     * get the shard ID for the given key, vbucket
      */
-    virtual size_t getShardId(const QueuedItem &i) = 0;
 
     virtual size_t getShardId(const std::string &key, uint16_t vbid) = 0;
 

@@ -544,7 +544,7 @@ public:
             if (v && v->isExpired(startTime)) {
                 value_t value(NULL);
                 uint64_t cas = v->getCas();
-                bool wasDirty = v->isDirty(); 
+                bool wasDirty = v->isDirty();
                 vb->ht.unlocked_softDelete(vk.second, 0, bucket_num);
                 if (!wasDirty) {
                     e->queueFlusher(vb->getId(), v, queue_op_del);

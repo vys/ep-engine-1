@@ -35,10 +35,6 @@ public:
         return shardCount;
     }
 
-    virtual uint16_t getDbShardId(const QueuedItem &qi) {
-        return getDbShardIdForKey(qi.getKey());
-    }
-
     virtual uint16_t getDbShardId(const std::string &key, uint16_t vbid) {
         (void) vbid;
         return getDbShardIdForKey(key);
@@ -498,10 +494,6 @@ public:
     uint16_t getDbShardId(const std::string &key, uint16_t vbid) {
         (void)key;
         return getShardForVBucket(vbid);
-    }
-
-    uint16_t getDbShardId(const QueuedItem &qi) {
-        return getShardForVBucket(qi.getVBucketId());
     }
 
     virtual ~ShardedByVBucketSqliteStrategy() { }
