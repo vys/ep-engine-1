@@ -6,6 +6,7 @@
 #include "ep.hh"
 #include "dispatcher.hh"
 #include "kvstore-mapper.hh"
+#include "flush_entry.hh"
 
 enum flusher_state {
     initializing,
@@ -90,6 +91,7 @@ public:
     const char * stateName() const;
 
     QueuedItemFilter &getFilter() {return filter;}
+    void queueFlusher(uint16_t vb, StoredValue *s); 
 private:
     bool transition_state(enum flusher_state to);
     int doFlush();
@@ -109,8 +111,8 @@ private:
     int                      flushRv;
     int                      prevFlushRv;
     double                   minSleepTime;
-    std::queue<queued_item> *flushQueue;
-    std::queue<queued_item> *rejectQueue;
+    std::queue<FlushEntry>   *flushQueue;
+    std::queue<FlushEntry>   *rejectQueue;
     rel_time_t               flushStart;
     Atomic<bool>             vbStateLoaded;
     Atomic<bool>             forceShutdownReceived;

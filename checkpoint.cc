@@ -586,6 +586,9 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(const RCPtr<VBucket> &vbu
         if ((*it)->getNumberOfCursors() > 0) {
             break;
         } else {
+            if (getOpenCheckpointId_UNLOCKED() == (*it)->getId()) {
+                break;
+            }
             numUnrefItems += (*it)->getNumItems() + 2; // 2 is for checkpoint start and end items.
             ++numCheckpointsRemoved;
             if (keepClosedCheckpoints &&

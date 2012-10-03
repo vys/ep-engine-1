@@ -16,6 +16,7 @@
 #include "atomic.hh"
 #include "stored-value.hh"
 #include "checkpoint.hh"
+#include "flush_entry.hh"
 
 const size_t BASE_VBUCKET_SIZE=1024;
 
@@ -97,6 +98,7 @@ private:
 
 class EventuallyPersistentEngine;
 class QueuedItemFilter;
+class FlushEntry;
 
 /**
  * An individual vbucket.
@@ -105,9 +107,8 @@ class VBucket : public RCValue {
 public:
 
     VBucket(int i, vbucket_state_t newState, EPStats &st,
-            int numPersistenceCursors = 1,
             vbucket_state_t initState = vbucket_state_dead, uint64_t checkpointId = 1):
-        ht(st), checkpointManager(st, i, checkpointId, numPersistenceCursors),
+        ht(st), checkpointManager(st, i, checkpointId),
         id(i), state(newState), initialState(initState), stats(st) {
         backfill.isBackfillPhase = false;
         pendingOpsStart = 0;
@@ -153,8 +154,8 @@ public:
         return true;
     }
 
-    void doStatsForQueueing(QueuedItem& item, size_t itemBytes);
-    void doStatsForFlushing(QueuedItem& item, size_t itemBytes);
+    void doStatsForQueueing(size_t queueMem, size_t itemBytes, uint64_t queued);
+    void doStatsForFlushing(size_t queueMem, size_t itemBytes, uint64_t queued);
     void resetStats();
 
     // Get age sum in millisecond

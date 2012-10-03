@@ -130,30 +130,32 @@ void VBucket::setState(vbucket_state_t to, SERVER_HANDLE_V1 *sapi) {
     state = to;
 }
 
-void VBucket::doStatsForQueueing(QueuedItem& item, size_t itemBytes)
+void VBucket::doStatsForQueueing(size_t queueMem, size_t itemBytes,
+                                 uint64_t queued)
 {
     ++dirtyQueueSize;
-    dirtyQueueMem.incr(sizeof(QueuedItem));
+    dirtyQueueMem.incr(queueMem);
     ++dirtyQueueFill;
-    dirtyQueueAge.incr(item.getQueuedTime());
+    dirtyQueueAge.incr(queued);
     dirtyQueuePendingWrites.incr(itemBytes);
 }
 
 
-void VBucket::doStatsForFlushing(QueuedItem& item, size_t itemBytes)
+void VBucket::doStatsForFlushing(size_t queueMem, size_t itemBytes,
+                                 uint64_t queued)
 {
     if (dirtyQueueSize > 0) {
         --dirtyQueueSize;
     }
-    if (dirtyQueueMem > sizeof(QueuedItem)) {
-        dirtyQueueMem.decr(sizeof(QueuedItem));
+    if (dirtyQueueMem > queueMem) {
+        dirtyQueueMem.decr(queueMem);
     } else {
         dirtyQueueMem.set(0);
     }
     ++dirtyQueueDrain;
 
-    if (dirtyQueueAge > item.getQueuedTime()) {
-        dirtyQueueAge.decr(item.getQueuedTime());
+    if (dirtyQueueAge > queued) {
+        dirtyQueueAge.decr(queued);
     } else {
         dirtyQueueAge.set(0);
     }

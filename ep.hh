@@ -49,6 +49,7 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #include "vbucket.hh"
 #include "item_pager.hh"
 #include "eviction.hh"
+#include "flush_entry.hh"
 #include "crc32.hh"
 
 #define DEFAULT_TXN_SIZE 10000
@@ -857,6 +858,9 @@ private:
                     int64_t rowid = -1, const std::string &cksum = "", bool
                     tapBackfill = false);
 
+    void queueFlusher(uint16_t vbid, StoredValue *v, enum queue_operation op); 
+
+    std::vector<FlushEntry> *getFlushQueue(int kvid);
     /**
      * Retrieve a StoredValue and invoke a method on it.
      *
@@ -891,22 +895,22 @@ private:
         return v != NULL;
     }
 
-    std::queue<queued_item> *beginFlush(int id);
-    void pushToOutgoingQueue(std::vector<queued_item> *dbShardQueues,
-                             std::queue<queued_item> *flushQueue, int id);
-    void requeueRejectedItems(std::queue<queued_item> *rejects,
-                              std::queue<queued_item> *flushQueue);
+    std::queue<FlushEntry> *beginFlush(int id);
+    void pushToOutgoingQueue(std::vector<FlushEntry> *dbShardQueues,
+                             std::queue<FlushEntry> *flushQueue, int id);
+    void requeueRejectedItems(std::queue<FlushEntry> *rejects,
+                              std::queue<FlushEntry> *flushQueue);
     void completeFlush(rel_time_t flush_start, int id);
 
     void enqueueCommit();
-    int flushSome(std::queue<queued_item> *q,
-                  std::queue<queued_item> *rejectQueue,
+    int flushSome(std::queue<FlushEntry> *q,
+                  std::queue<FlushEntry> *rejectQueue,
                   int id);
-    int flushOne(std::queue<queued_item> *q,
-                 std::queue<queued_item> *rejectQueue,
+    int flushOne(std::queue<FlushEntry> *q,
+                 std::queue<FlushEntry> *rejectQueue,
                  int id);
     int flushOneDeleteAll(int id);
-    int flushOneDelOrSet(const queued_item &qi, std::queue<queued_item> *rejectQueue, int id);
+    int flushOneDelOrSet(const FlushEntry &fe, std::queue<FlushEntry> *rejectQueue, int id);
 
     StoredValue *fetchValidValue(RCPtr<VBucket> vb, const std::string &key,
                                  int bucket_num, bool wantsDeleted=false);
@@ -940,6 +944,8 @@ private:
     Dispatcher                 **roDispatcher;
     Dispatcher                 *nonIODispatcher;
     Flusher                    **flusher;
+    std::vector<std::vector<FlushEntry> > toFlush;
+    Mutex                      flushQueueMutex;
     InvalidItemDbPager         *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;

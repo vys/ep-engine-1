@@ -249,15 +249,17 @@ class CheckpointManager {
     friend class TapConsumer;
 public:
 
-    CheckpointManager(EPStats &st, uint16_t vbucket, uint64_t checkpointId = 1, int numPersistenceCursors = 1) :
+    CheckpointManager(EPStats &st, uint16_t vbucket, uint64_t checkpointId = 1) :
         stats(st), vbucketId(vbucket), numItems(0),
         mutationCounter(0), onlineUpdateCursor("online_update"),
         isCollapsedCheckpoint(false), doOnlineUpdate(false), doHotReload(false) {
 
         addNewCheckpoint(checkpointId);
+#if 0
         for (int i = 0 ; i < numPersistenceCursors; ++i) {
             registerPersistenceCursor(i);
         }
+#endif
     }
 
     ~CheckpointManager();
