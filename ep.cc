@@ -669,7 +669,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
     case WAS_CLEAN:
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
                    item.getFlags(), item.getExptime(), item.getCas(), row_id,
-                   item.getCksum());
+                   item.getCksum(), false, item.getQueuedTime());
         break;
     case INVALID_VBUCKET:
         ret = ENGINE_NOT_MY_VBUCKET;
@@ -753,7 +753,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
     case WAS_CLEAN:
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
                    item.getFlags(), item.getExptime(), item.getCas(), row_id,
-                   item.getCksum(), true);
+                   item.getCksum(), true, item.getQueuedTime());
         break;
     case INVALID_VBUCKET:
         ret = ENGINE_NOT_MY_VBUCKET;
@@ -2182,17 +2182,18 @@ void EventuallyPersistentStore::queueDirty(const std::string &key,
                                            uint64_t cas,
                                            int64_t rowid,
                                            const std::string &cksum,
-                                           bool tapBackfill) {
+                                           bool tapBackfill,
+                                           time_t queued) {
     if (doPersistence) {
         RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
         if (vb) {
             QueuedItem *qi = NULL;
             if (op == queue_op_set) {
                 qi = new QueuedItem(key, value, vbid, op, vbuckets.getBucketVersion(vbid),
-                                    rowid, flags, exptime, cas, cksum);
+                                    rowid, flags, exptime, cas, cksum, queued);
             } else {
                 qi = new QueuedItem(key, vbid, op, vbuckets.getBucketVersion(vbid), rowid, flags,
-                                    exptime, cas, cksum);
+                                    exptime, cas, cksum, queued);
             }
 
             queued_item item(qi);

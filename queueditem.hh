@@ -32,17 +32,17 @@ class QueuedItem : public RCValue {
 public:
     QueuedItem(const std::string &k, const uint16_t vb, enum queue_operation o,
                const uint16_t vb_version = -1, const int64_t rid = -1, const uint32_t f = 0,
-               const time_t expiry_time = 0, const uint64_t cv = 0, std::string ck = "")
-        : op(o),vbucket_version(vb_version), queued(ep_current_time()),
-          item(k, f, expiry_time, NULL, 0, ck, cv, rid, vb) {
+               const time_t expiry_time = 0, const uint64_t cv = 0, std::string ck = "", const time_t qtime = -1)
+        : op(o),vbucket_version(vb_version), queued(qtime == -1 ? ep_current_time() : qtime),
+          item(k, f, expiry_time, NULL, 0, ck, cv, rid, vb, queued) {
         ObjectRegistry::onCreateQueuedItem(this);
     }
 
     QueuedItem(const std::string &k, const value_t &v, const uint16_t vb, enum queue_operation o,
                const uint16_t vb_version = -1, const int64_t rid = -1, const uint32_t f = 0,
-               const time_t expiry_time = 0, const uint64_t cv = 0, std::string ck = "")
-        : op(o), vbucket_version(vb_version), queued(ep_current_time()),
-          item(k, f, expiry_time, v, ck, cv, rid, vb)
+               const time_t expiry_time = 0, const uint64_t cv = 0, std::string ck = "", const time_t qtime = -1)
+        : op(o), vbucket_version(vb_version), queued(qtime == -1 ? ep_current_time() : qtime),
+          item(k, f, expiry_time, v, ck, cv, rid, vb, queued)
     {
         ObjectRegistry::onCreateQueuedItem(this);
     }

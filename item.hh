@@ -137,8 +137,8 @@ class Item {
 public:
     Item(const void* k, const size_t nk, const size_t nb,
          const uint32_t fl, const time_t exp, const std::string &_cksum, 
-         uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0) :
-        flags(fl), exptime(exp), cas(theCas), id(i), 
+         uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0, const time_t qtime = -1) :
+        flags(fl), queued(qtime), exptime(exp), cas(theCas), id(i),
         vbucketId(vbid)
     {
         cksum.assign(_cksum);
@@ -150,8 +150,8 @@ public:
    
     Item(const void* k, const size_t nk, const size_t nb,
         const uint32_t fl, const time_t exp, const char *_cksum, const size_t nck,
-        uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0) :
-        flags(fl), exptime(exp), cas(theCas), id(i), 
+        uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0, const time_t qtime = -1) :
+        flags(fl), queued(qtime), exptime(exp), cas(theCas), id(i),
         vbucketId(vbid)
     {
         if (nck > 0) {
@@ -167,8 +167,8 @@ public:
 
     Item(const std::string &k, const uint32_t fl, const time_t exp,
          const void *dta, const size_t nb, const std::string &_cksum, 
-         uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0) :
-        flags(fl), exptime(exp), cas(theCas), id(i), 
+         uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0, const time_t qtime = -1) :
+        flags(fl), queued(qtime), exptime(exp), cas(theCas), id(i),
         vbucketId(vbid)
     {
         cksum.assign(_cksum);
@@ -180,8 +180,8 @@ public:
 
     Item(const std::string &k, const uint32_t fl, const time_t exp,
          const value_t &val, const std::string &_cksum, uint64_t theCas = 0,  
-         int64_t i = -1, uint16_t vbid = 0) :
-        flags(fl), exptime(exp), value(val), cas(theCas), id(i), vbucketId(vbid)
+         int64_t i = -1, uint16_t vbid = 0, const time_t qtime = -1) :
+        flags(fl), queued(qtime), exptime(exp), value(val), cas(theCas), id(i), vbucketId(vbid)
     {
         cksum.assign(_cksum);
         assert(id != 0);
@@ -191,8 +191,8 @@ public:
 
     Item(const void *k, uint16_t nk, const uint32_t fl, const time_t exp,
          const void *dta, const size_t nb, const void *_cksum, const size_t cb,
-         uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0) :
-        flags(fl), exptime(exp), cas(theCas), id(i), vbucketId(vbid)
+         uint64_t theCas = 0, int64_t i = -1, uint16_t vbid = 0, const time_t qtime = -1) :
+        flags(fl), queued(qtime), exptime(exp), cas(theCas), id(i), vbucketId(vbid)
     {
         cksum.assign(static_cast<const char*>(_cksum), cb);
         assert(id != 0);
@@ -231,6 +231,14 @@ public:
 
     uint32_t getNBytes() const {
         return static_cast<uint32_t>(value->length());
+    }
+
+    time_t getQueuedTime() const {
+        return queued;
+    }
+
+    void setQueuedTime(time_t to) {
+        queued = to;
     }
 
     time_t getExptime() const {
@@ -356,6 +364,7 @@ private:
     }
 
     uint32_t flags;
+    time_t queued;
     time_t exptime;
     std::string key;
     value_t value;

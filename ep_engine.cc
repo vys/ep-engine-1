@@ -1014,6 +1014,7 @@ extern "C" {
                                           const void *key,
                                           size_t nkey,
                                           uint32_t flags,
+                                          uint32_t queued,
                                           uint32_t exptime,
                                           uint64_t cas,
                                           const void *data,
@@ -1023,7 +1024,7 @@ extern "C" {
     {
         return getHandle(handle)->tapNotify(cookie, engine_specific, nengine,
                                             ttl, tap_flags, tap_event,
-                                            tap_seqno, key, nkey, flags,
+                                            tap_seqno, key, nkey, flags, queued,
                                             exptime, cas, data, ndata,
                                             vbucket, cksum);
     }
@@ -1117,6 +1118,7 @@ extern "C" {
         item_info->exptime = it->getExptime();
         item_info->nbytes = it->getNBytes();
         item_info->flags = it->getFlags();
+        item_info->queued = it->getQueuedTime();
         item_info->clsid = 0;
         item_info->nkey = static_cast<uint16_t>(it->getNKey());
         item_info->nvalue = 1;
@@ -1829,6 +1831,7 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
             ENGINE_ERROR_CODE r = gv.getStatus();
             if (r == ENGINE_SUCCESS) {
                 assert(gv.getStoredValue() != NULL);
+                gv.getValue()->setQueuedTime(qi->getQueuedTime());
                 *itm = gv.getValue();
                 ret = TAP_MUTATION;
 
@@ -1888,7 +1891,7 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
             if (qi->getOperation() == queue_op_set) {
                 Item *item = new Item(qi->getKey(), qi->getFlags(), qi->getExpiryTime(),
                                   qi->getValue(), qi->getCksum(), qi->getCas(), qi->getRowId(), 
-                                  qi->getVBucketId());
+                                  qi->getVBucketId(), qi->getQueuedTime());
                 *itm = item;
                 ret = TAP_MUTATION;
 
@@ -2153,6 +2156,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
                                                         const void *key,
                                                         size_t nkey,
                                                         uint32_t flags,
+                                                        uint32_t queued,
                                                         uint32_t exptime,
                                                         uint64_t, // cas
                                                         const void *data,
@@ -2263,7 +2267,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
             BlockTimer timer(&stats.tapMutationHisto);
             TapConsumer *tc = dynamic_cast<TapConsumer*>(connection);
             RCPtr<Blob> vblob(Blob::New(static_cast<const char*>(data), ndata));
-            Item *item = new Item(k, flags, exptime, vblob, cksum);
+            Item *item = new Item(k, flags, exptime, vblob, cksum, 0, -1, 0, queued);
             item->setVBucketId(vbucket);
 
             if (tc) {

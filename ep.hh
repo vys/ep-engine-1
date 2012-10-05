@@ -855,7 +855,7 @@ private:
                     enum queue_operation op, const value_t &value,
                     uint32_t flags = 0, time_t exptime = 0, uint64_t cas = 0,
                     int64_t rowid = -1, const std::string &cksum = "", bool
-                    tapBackfill = false);
+                    tapBackfill = false, time_t queued = -1);
 
     /**
      * Retrieve a StoredValue and invoke a method on it.
