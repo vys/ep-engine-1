@@ -171,28 +171,6 @@ public:
         return v.size;
     }
 
-    size_t getBackfillSize() {
-        LockHolder lh(backfill.mutex);
-        return backfill.items.size();
-    }
-    bool queueBackfillItem(const queued_item &qi) {
-        LockHolder lh(backfill.mutex);
-        backfill.items.push_back(qi);
-        return true;
-    }
-    void getBackfillItems(std::vector<queued_item> &items,
-                          QueuedItemFilter &filter) {
-        LockHolder lh(backfill.mutex);
-        std::list<queued_item>::iterator it = backfill.items.begin();
-        while (it != backfill.items.end()) {
-            if (filter(*it)) {
-                items.push_back(*it);
-                backfill.items.erase(it);
-            }
-            ++it;
-        }
-    }
-
     bool isBackfillPhase() {
         LockHolder lh(backfill.mutex);
         return backfill.isBackfillPhase;
@@ -206,7 +184,6 @@ public:
     CheckpointManager checkpointManager;
     struct {
         Mutex mutex;
-        std::list<queued_item> items;
         bool isBackfillPhase;
     } backfill;
 

@@ -830,24 +830,6 @@ public:
     std::queue<FlushEntry> *beginFlush(int id);
 private:
 
-    void getRestoreItems(uint16_t vbid, QueuedItemFilter &filter, 
-                         std::vector<queued_item> &item_list) {
-        LockHolder rlh(restore.mutex);
-        std::map<uint16_t, std::list<queued_item> >::iterator rit = restore.items.find(vbid);
-        if (rit == restore.items.end()) {
-            return;
-        }
-        std::list<queued_item>::iterator it = rit->second.begin();
-        while (it != rit->second.end()) {
-            if (filter(*it)) {
-                item_list.push_back(*it);
-                it = rit->second.erase(it);
-            } else {
-                it++;
-            }
-        }
-    }
-
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
 
     RCPtr<VBucket> getVBucket(uint16_t vbid, vbucket_state_t wanted_state);
@@ -856,8 +838,7 @@ private:
     void queueDirty(const std::string &key, uint16_t vbid,
                     enum queue_operation op, const value_t &value,
                     uint32_t flags = 0, time_t exptime = 0, uint64_t cas = 0,
-                    int64_t rowid = -1, const std::string &cksum = "", bool
-                    tapBackfill = false);
+                    int64_t rowid = -1, const std::string &cksum = "");
 
     void queueFlusher(RCPtr<VBucket> vb, StoredValue *v, enum queue_operation op); 
 
@@ -965,7 +946,6 @@ private:
     // This is solved by using a separate list for those objects.
     struct {
         Mutex mutex;
-        std::map<uint16_t, std::list<queued_item> > items;
         // Maintain the list of deleted keys that are received from the upstream
         // master via TAP or from the normal clients during online restore.
         // As an alternative to std::set, we can consider boost::unordered_set later.
