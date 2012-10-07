@@ -7,16 +7,15 @@
 
 /* 
    Structure used by flusher and the persistent layer to pass mutations.
-   This assumes that the StoredValue structure cannot disappear while
-   it is referred to by FlushEntry. 
-*/   
-
+   Pointer to StoredValue structure is used as it cannot disappear from
+   underneath flusher.
+*/
 class FlushEntry {
 public:
     FlushEntry(StoredValue *s, uint16_t vb, 
               enum queue_operation o, uint16_t vv) : 
-              sv(s), vbucketId(vb), op(o), vbucket_version(vv),
-              queued(ep_current_time()) {}
+              sv(s), vbucketId(vb), vbucket_version(vv),
+              queued(ep_current_time()), op(o) {}
 
     StoredValue * getStoredValue () const { return sv; }
     uint16_t getVBucketId() const {return vbucketId; }
@@ -30,9 +29,9 @@ public:
 private:
     StoredValue *sv;
     uint16_t    vbucketId;
-    enum queue_operation op;
     uint16_t vbucket_version;
     uint32_t queued;
+    enum queue_operation op;
 };
 
 #endif /* FLUSHENTRY_HH */

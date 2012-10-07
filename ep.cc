@@ -370,7 +370,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     flusher = new Flusher *[numKVStores];
     tctx = new TransactionContext *[numKVStores];
     storageProperties = new StorageProperties *[numKVStores];
-    toFlush.resize(numKVStores);
+    toFlush = new AtomicQueue<FlushEntry> [numKVStores];
 
     KVStoreMapper::createKVMapper(numKVStores, stats.kvstoreMapVbuckets);
 
@@ -1648,7 +1648,7 @@ std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
         }
         size_t queue_size = getWriteQueueSize();
         stats.flusherDedup[id] += dedup;
-        stats.flusher_todos[id].set(flushing->size());
+        stats.flusher_todos[id].incr(flushQueue->size());
         stats.queue_size.set(queue_size);
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Flusher Id %d flushing %d items with %d still in queue\n",
@@ -2589,17 +2589,15 @@ void EventuallyPersistentStore::queueFlusher(uint16_t vbid, StoredValue *v,
                                              enum queue_operation op) {
     int kvid = KVStoreMapper::getKVStoreId(v->getKey(), vbid);
     FlushEntry fe(v, vbid, op, getVBucketVersion(vbid));
-    LockHolder lh(flushQueueMutex);
 
     RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
     vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
 
-    toFlush.at(kvid).push_back(fe);
+    toFlush[kvid].push(fe);
 }
 
 std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) {
-    LockHolder lh(flushQueueMutex);
     std::vector<FlushEntry> *flushing = new std::vector<FlushEntry>();
-    flushing->swap(toFlush[kvid]);
+    toFlush[kvid].toArray(*flushing);
     return flushing;
 }

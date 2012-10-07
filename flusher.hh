@@ -43,6 +43,40 @@ private:
     Flusher *flusher;
 };
 
+/*
+ * FlusherHelper class uses a separate thread to do preprocessing of mutations
+ * before flusher executes them.
+ */
+class FlusherHelper {
+public:
+    FlusherHelper(int kv, EventuallyPersistentStore *st) : kvid(kv), store(st) {
+        start();
+    }
+
+    ~FlusherHelper() {
+        printf("Dying");
+//        exit(0);
+    }
+
+    std::queue<FlushEntry> *getFlushQueue() {
+        if (!queue) {
+            return NULL;
+        }
+        std::queue<FlushEntry> *ret = queue;
+        queue = NULL;
+        return ret;
+    }
+
+    void start();
+
+    int kvid;
+    EventuallyPersistentStore *store;
+    std::queue<FlushEntry> *queue;
+
+private:
+    pthread_t myId;
+};
+
 /**
  * Manage persistence of data for an EventuallyPersistentStore.
  */
@@ -55,7 +89,8 @@ public:
         flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false),
         forceShutdownReceived(false), filter(i), rejectedItemsRequeued(false),
         last_min_data_age(-1) {
-    }
+            helper = new FlusherHelper(flusherId, store);
+        }
 
     ~Flusher() {
         if (_state != stopped) {
@@ -120,6 +155,7 @@ private:
     bool                     rejectedItemsRequeued;
     timeval                  waketime;
     int                      last_min_data_age;
+    FlusherHelper            *helper;
 
     DISALLOW_COPY_AND_ASSIGN(Flusher);
 };

@@ -241,7 +241,7 @@ int Flusher::doFlush() {
     // On a fresh entry, flushQueue is null and we need to build one.
     if (!flushQueue) {
         flushRv = store->stats.min_data_age;
-        flushQueue = store->beginFlush(flusherId);
+        flushQueue = helper->getFlushQueue();
         if (flushQueue && !flushQueue->empty()) {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                              "Beginning a write queue flush.\n");
@@ -264,7 +264,7 @@ int Flusher::doFlush() {
             if (rejectQueue && !rejectQueue->empty()) {
                 // Requeue the rejects.
                 store->requeueRejectedItems(rejectQueue, flushQueue);
-                store->stats.flusher_todos[flusherId].set(flushQueue->size());
+                store->stats.flusher_todos[flusherId].incr(flushQueue->size());
                 rejectedItemsRequeued = true;
             } else {
                 store->completeFlush(flushStart, flusherId);
@@ -281,4 +281,28 @@ int Flusher::doFlush() {
     }
 
     return flushRv;
+}
+
+extern "C" {
+    static void* flusher_helper(void* args);
+}
+
+static void* flusher_helper(void *args) {
+    FlusherHelper *data = (FlusherHelper *)args;
+    while (1) {
+        const Flusher *flusher = data->store->getFlusher(data->kvid);
+        if (flusher->state() == running && !data->queue) {
+            data->queue = data->store->beginFlush(data->kvid);
+        }
+        usleep(1000);
+    }
+
+    // For compiler
+    return NULL;
+}
+
+void FlusherHelper::start() {
+    if (pthread_create(&myId, NULL, flusher_helper, this) != 0) {
+        throw std::runtime_error("Error creating flusher helper thread ");
+    }
 }

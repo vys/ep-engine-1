@@ -827,6 +827,7 @@ public:
         return storageProperties[kvid];
     }
 
+    std::queue<FlushEntry> *beginFlush(int id);
 private:
 
     void getRestoreItems(uint16_t vbid, QueuedItemFilter &filter, 
@@ -895,7 +896,6 @@ private:
         return v != NULL;
     }
 
-    std::queue<FlushEntry> *beginFlush(int id);
     void pushToOutgoingQueue(std::vector<FlushEntry> *dbShardQueues,
                              std::queue<FlushEntry> *flushQueue, int id);
     void requeueRejectedItems(std::queue<FlushEntry> *rejects,
@@ -944,8 +944,7 @@ private:
     Dispatcher                 **roDispatcher;
     Dispatcher                 *nonIODispatcher;
     Flusher                    **flusher;
-    std::vector<std::vector<FlushEntry> > toFlush;
-    Mutex                      flushQueueMutex;
+    AtomicQueue<FlushEntry >    *toFlush;
     InvalidItemDbPager         *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;
