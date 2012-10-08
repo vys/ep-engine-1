@@ -253,6 +253,12 @@ int Flusher::doFlush() {
     // Now do the every pass thing.
     if (flushQueue) {
         if (!flushQueue->empty()) {
+#if 0
+            if (shouldFlushAll) {
+                store->flushOneDeleteAll(flusherId);
+                setFlushAll(false);
+            }
+#endif
             int n = store->flushSome(flushQueue, rejectQueue, flusherId);
             if (_state == pausing) {
                 transition_state(paused);
@@ -294,10 +300,12 @@ static void* flusher_helper(void *args) {
         if (flusher->state() == running && !data->queue) {
             data->queue = data->store->beginFlush(data->kvid);
         }
+        if (flusher->state() == stopped) {
+            break;
+        }
         usleep(1000);
     }
 
-    // For compiler
     return NULL;
 }
 

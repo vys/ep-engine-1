@@ -54,8 +54,7 @@ public:
     }
 
     ~FlusherHelper() {
-        printf("Dying");
-//        exit(0);
+        pthread_join(myId, NULL);
     }
 
     std::queue<FlushEntry> *getFlushQueue() {
@@ -105,6 +104,8 @@ public:
                              rejectQueue->size());
             delete rejectQueue;
         }
+
+        delete helper;
     }
 
     bool stop(bool isForceShutdown = false);
@@ -126,7 +127,7 @@ public:
     const char * stateName() const;
 
     QueuedItemFilter &getFilter() {return filter;}
-    void queueFlusher(uint16_t vb, StoredValue *s); 
+
 private:
     bool transition_state(enum flusher_state to);
     int doFlush();

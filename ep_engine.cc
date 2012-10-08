@@ -3167,9 +3167,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doCheckpointStats(const void *cook
             add_casted_stat(buf, vb->checkpointManager.getNumItems(), add_stat, cookie);
             snprintf(buf, sizeof(buf), "vb_%d:num_checkpoints", vbid);
             add_casted_stat(buf, vb->checkpointManager.getNumCheckpoints(), add_stat, cookie);
-            snprintf(buf, sizeof(buf), "vb_%d:num_items_for_persistence", vbid);
-            add_casted_stat(buf, vb->checkpointManager.getNumItemsForPersistence(),
-                            add_stat, cookie);
             std::list<std::string> tapcursor_names = vb->checkpointManager.getTAPCursorNames();
             std::list<std::string>::iterator tap_it = tapcursor_names.begin();
             for (;tap_it != tapcursor_names.end(); ++tap_it) {
