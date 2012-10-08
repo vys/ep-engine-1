@@ -775,7 +775,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
         }
         // FALLTHROUGH
     case WAS_CLEAN:
-        queueFlusher(vb->getId(), v, queue_op_set);
+        queueFlusher(vb, v, queue_op_set);
         break;
     case INVALID_VBUCKET:
         ret = ENGINE_NOT_MY_VBUCKET;
@@ -2284,7 +2284,7 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
         vb->ht.unlocked_restoreItem(itm, op, bucket_num)) {
         StoredValue *v = fetchValidValue(vb, itm.getKey(), bucket_num, true);
         lh.unlock();
-        queueFlusher(vb->getId(), v, op);
+        queueFlusher(vb, v, op);
         return 0;
     }
 
