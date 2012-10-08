@@ -859,7 +859,7 @@ private:
                     int64_t rowid = -1, const std::string &cksum = "", bool
                     tapBackfill = false);
 
-    void queueFlusher(uint16_t vbid, StoredValue *v, enum queue_operation op); 
+    void queueFlusher(RCPtr<VBucket> vb, StoredValue *v, enum queue_operation op); 
 
     std::vector<FlushEntry> *getFlushQueue(int kvid);
     /**
