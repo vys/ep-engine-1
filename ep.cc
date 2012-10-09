@@ -659,7 +659,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
     int bucket_num(0);
     LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
-    StoredValue *v = fetchValidValue(vb, item.getKey(), bucket_num, false);
+    StoredValue *v = vb->ht.unlocked_find(item.getKey(), bucket_num, false);
 
     switch (mtype) {
     case NOMEM:
@@ -728,7 +728,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::add(const Item &item,
     case ADD_UNDEL:
         int bucket_num(0);
         LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
-        StoredValue *v = fetchValidValue(vb, item.getKey(), bucket_num, true);
+        StoredValue *v = vb->ht.unlocked_find(item.getKey(), bucket_num, false);
         if (v) {
             queueFlusher(vb, v, queue_op_set);
         }
@@ -757,7 +757,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
     int bucket_num(0);
     LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
-    StoredValue *v = fetchValidValue(vb, item.getKey(), bucket_num, true);
+    StoredValue *v = vb->ht.unlocked_find(item.getKey(), bucket_num, false);
 
     switch (mtype) {
     case NOMEM:
@@ -1883,7 +1883,7 @@ public:
                 StoredValue *v = store->fetchValidValue(vb, flushEntry.getKey(),
                                                         bucket_num, true);
                 assert(v == flushEntry.getStoredValue());
-                if (v && v->isDeleted()) {
+                if (v && !v->isDirty()) {
                     if (store->isRestoreEnabled()) {
                         LockHolder rlh(store->restore.mutex);
                         store->restore.itemsDeleted.insert(flushEntry.getKey());
@@ -2051,6 +2051,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
             }
         }
     } else if (deleted) {
+        v->markClean(NULL);
         lh.unlock();
         BlockTimer timer(&stats.diskDelHisto);
         PersistenceCallback cb(fe, rejectQueue, this, queued, dirtied, &stats);
@@ -2165,8 +2166,7 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
     LockHolder rlh(restore.mutex);
     if (restore.itemsDeleted.find(key) == restore.itemsDeleted.end() &&
         vb->ht.unlocked_restoreItem(itm, op, bucket_num)) {
-        StoredValue *v = fetchValidValue(vb, itm.getKey(), bucket_num, true);
-        lh.unlock();
+        StoredValue *v = vb->ht.unlocked_find(itm.getKey(), bucket_num, false);
         queueFlusher(vb, v, op);
         return 0;
     }
