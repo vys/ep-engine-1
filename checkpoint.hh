@@ -494,6 +494,18 @@ public:
         return keepClosedCheckpoints;
     }
 
+    static size_t getCheckpointPeriod() {
+        return checkpointPeriod;
+    }
+
+    static size_t getCheckpointMaxItems() {
+        return checkpointMaxItems;
+    }
+
+    static size_t  getMaxCheckpoints() {
+        return maxCheckpoints;
+    }
+
 private:
 
     void registerPersistenceCursor(int i);

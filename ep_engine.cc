@@ -151,6 +151,22 @@ extern "C" {
         return getHandle(handle)->getStats(cookie, stat_key, nkey, add_stat);
     }
 
+    static void EvpUpdateFrontEndStats(ENGINE_HANDLE* handle,
+                                         char *stat_keys[],
+                                         uint64_t *values, 
+                                        int count)
+    {
+        getHandle(handle)->updateFrontEndStats(stat_keys, values, count);
+    }
+
+    static void EvpUpdateExtensionStats(ENGINE_HANDLE* handle,
+                                         char *stat_keys[],
+                                         uint64_t *values, 
+                                        int count)
+    {
+        getHandle(handle)->updateExtensionStats(stat_keys, values, count);
+    }
+
     static ENGINE_ERROR_CODE EvpStore(ENGINE_HANDLE* handle,
                                       const void *cookie,
                                       item* item,
@@ -1155,6 +1171,8 @@ EventuallyPersistentEngine::EventuallyPersistentEngine(GET_SERVER_API get_server
     ENGINE_HANDLE_V1::get_stats_struct = NULL;
     ENGINE_HANDLE_V1::errinfo = NULL;
     ENGINE_HANDLE_V1::aggregate_stats = NULL;
+    ENGINE_HANDLE_V1::update_stats = EvpUpdateFrontEndStats;
+    ENGINE_HANDLE_V1::update_extension_stats = EvpUpdateExtensionStats;
 
     serverApi = getServerApiFunc();
     extensionApi = serverApi->extension;
@@ -2684,9 +2702,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.flushHits, add_stat, cookie);
     size_t getl_misses = epstats.getl_misses_notmyvbuckets
                          + epstats.getl_misses_locked
-                         + epstats.getl_misses_notfound;
+                         + epstats.getl_misses_notfound;                      
     add_casted_stat("cmd_getl",
-                    epstats.getl_hits + getl_misses, add_stat, cookie);
+                    epstats.getl_hits + getl_misses, add_stat, cookie);                    
     add_casted_stat("getl_hits",
                     epstats.getl_hits, add_stat, cookie);
     add_casted_stat("getl_misses",
@@ -2997,7 +3015,20 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     add_stat, cookie);
     add_casted_stat("ep_keep_closed_checkpoints", CheckpointManager::isKeepingClosedCheckpoints(),
                     add_stat, cookie);
+    add_casted_stat("ep_max_checkpoints", CheckpointManager::getMaxCheckpoints(),
+                    add_stat, cookie);
+    add_casted_stat("ep_checkpoint_period", CheckpointManager::getCheckpointPeriod(),
+                    add_stat, cookie);
+    add_casted_stat("ep_checkpoint_max_items", CheckpointManager::getCheckpointMaxItems(),
+                    add_stat, cookie);
 
+    StatsMap smap = festats.getStats();                    
+    StatsMap::iterator iter;
+    for(iter = smap.begin(); iter != smap.end(); iter++) {
+        std::string stat_key = iter->first;
+        Histogram<hrtime_t> *h = iter->second;
+        add_casted_stat(stat_key.c_str(), h->total(), add_stat, cookie);
+    }
     return ENGINE_SUCCESS;
 }
 
@@ -3637,6 +3668,15 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,
 
     add_casted_stat("online_update_revert", stats.checkpointRevertHisto, add_stat, cookie);
 
+    StatsMap smap = festats.getStats();                    
+    StatsMap::iterator iter;
+    for(iter = smap.begin(); iter != smap.end(); iter++) {
+        std::string stat_key = iter->first;
+        Histogram<hrtime_t> *h = iter->second;
+        add_casted_stat(stat_key.c_str(), *h, add_stat, cookie);
+    }
+
+
     return ENGINE_SUCCESS;
 }
 
@@ -3768,6 +3808,34 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
     }
 
     return rv;
+}
+
+void EventuallyPersistentEngine::updateFrontEndStats(char *stat_keys[], 
+                                                     uint64_t *values, 
+                                                    int count) {
+    int i;
+    for (i = 0; i < count; i++) {
+        festats.add(std::string(stat_keys[i]), values[i]);
+    }
+}
+
+void EventuallyPersistentEngine::updateExtensionStats(char *stat_keys[], 
+                                                     uint64_t *values, 
+                                                    int count) {
+    int i;
+    std::string key;
+
+    for (i = 0; i < count; i++) {
+        if ((strcmp(stat_keys[i], "getl") == 0) ||
+                (atoi(stat_keys[i]) == CMD_GET_LOCKED)) {
+            key.assign("getl");
+        }
+        else if ((strcmp(stat_keys[i], "options") == 0) ||
+                (atoi(stat_keys[i]) == CMD_DI_OPTIONS)) {
+            key.assign("options");
+        }
+        festats.add(key, values[i]);
+    }
 }
 
 void EventuallyPersistentEngine::notifyTapIoThread(void) {
