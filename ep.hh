@@ -49,6 +49,7 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #include "vbucket.hh"
 #include "item_pager.hh"
 #include "eviction.hh"
+#include "flush_entry.hh"
 #include "crc32.hh"
 
 #define DEFAULT_TXN_SIZE 10000
@@ -826,25 +827,8 @@ public:
         return storageProperties[kvid];
     }
 
+    std::queue<FlushEntry> *beginFlush(int id);
 private:
-
-    void getRestoreItems(uint16_t vbid, QueuedItemFilter &filter, 
-                         std::vector<queued_item> &item_list) {
-        LockHolder rlh(restore.mutex);
-        std::map<uint16_t, std::list<queued_item> >::iterator rit = restore.items.find(vbid);
-        if (rit == restore.items.end()) {
-            return;
-        }
-        std::list<queued_item>::iterator it = rit->second.begin();
-        while (it != rit->second.end()) {
-            if (filter(*it)) {
-                item_list.push_back(*it);
-                it = rit->second.erase(it);
-            } else {
-                it++;
-            }
-        }
-    }
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
 
@@ -854,9 +838,12 @@ private:
     void queueDirty(const std::string &key, uint16_t vbid,
                     enum queue_operation op, const value_t &value,
                     uint32_t flags = 0, time_t exptime = 0, uint64_t cas = 0,
-                    int64_t rowid = -1, const std::string &cksum = "", bool
-                    tapBackfill = false, time_t queued = -1);
+                    int64_t rowid = -1, const std::string &cksum = "",
+                    time_t queued = -1);
 
+    void queueFlusher(RCPtr<VBucket> vb, StoredValue *v, enum queue_operation op, time_t queued = -1); 
+
+    std::vector<FlushEntry> *getFlushQueue(int kvid);
     /**
      * Retrieve a StoredValue and invoke a method on it.
      *
@@ -891,22 +878,21 @@ private:
         return v != NULL;
     }
 
-    std::queue<queued_item> *beginFlush(int id);
-    void pushToOutgoingQueue(std::vector<queued_item> *dbShardQueues,
-                             std::queue<queued_item> *flushQueue, int id);
-    void requeueRejectedItems(std::queue<queued_item> *rejects,
-                              std::queue<queued_item> *flushQueue);
+    void pushToOutgoingQueue(std::vector<FlushEntry> *dbShardQueues,
+                             std::queue<FlushEntry> *flushQueue, int id);
+    void requeueRejectedItems(std::queue<FlushEntry> *rejects,
+                              std::queue<FlushEntry> *flushQueue);
     void completeFlush(rel_time_t flush_start, int id);
 
     void enqueueCommit();
-    int flushSome(std::queue<queued_item> *q,
-                  std::queue<queued_item> *rejectQueue,
+    int flushSome(std::queue<FlushEntry> *q,
+                  std::queue<FlushEntry> *rejectQueue,
                   int id);
-    int flushOne(std::queue<queued_item> *q,
-                 std::queue<queued_item> *rejectQueue,
+    int flushOne(std::queue<FlushEntry> *q,
+                 std::queue<FlushEntry> *rejectQueue,
                  int id);
     int flushOneDeleteAll(int id);
-    int flushOneDelOrSet(const queued_item &qi, std::queue<queued_item> *rejectQueue, int id);
+    int flushOneDelOrSet(const FlushEntry &fe, std::queue<FlushEntry> *rejectQueue, int id);
 
     StoredValue *fetchValidValue(RCPtr<VBucket> vb, const std::string &key,
                                  int bucket_num, bool wantsDeleted=false);
@@ -939,8 +925,8 @@ private:
     Dispatcher                 **dispatcher;
     Dispatcher                 **roDispatcher;
     Dispatcher                 *nonIODispatcher;
-    Flusher                    *flusher;
-    Flusher                    **allFlusher;
+    Flusher                    **flusher;
+    AtomicQueue<FlushEntry >    *toFlush;
     InvalidItemDbPager         *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;
@@ -961,7 +947,6 @@ private:
     // This is solved by using a separate list for those objects.
     struct {
         Mutex mutex;
-        std::map<uint16_t, std::list<queued_item> > items;
         // Maintain the list of deleted keys that are received from the upstream
         // master via TAP or from the normal clients during online restore.
         // As an alternative to std::set, we can consider boost::unordered_set later.

@@ -9,6 +9,7 @@
 #include "common.hh"
 #include "queueditem.hh"
 #include "sqlite-pst.hh"
+#include "flush_entry.hh"
 
 class EventuallyPersistentEngine;
 
@@ -34,8 +35,9 @@ public:
         return shardCount;
     }
 
-    virtual uint16_t getDbShardId(const QueuedItem &qi) {
-        return getDbShardIdForKey(qi.getKey());
+    virtual uint16_t getDbShardId(const std::string &key, uint16_t vbid) {
+        (void) vbid;
+        return getDbShardIdForKey(key);
     }
 
     virtual const std::vector<Statements *> &allStatements() = 0;
@@ -90,6 +92,9 @@ public:
         (void)vbucket;
     }
 
+    virtual void optimizeWrites(std::vector<FlushEntry> &items) {
+        (void)items;
+    }
     virtual void optimizeWrites(std::vector<queued_item> &items) {
         (void)items;
     }
@@ -193,6 +198,23 @@ public:
     void destroyStatements();
     virtual void destroyTables();
     virtual void destroyInvalidTables(bool destroyOnlyOne = false);
+
+/**
+ * Order QueuedItem objects by their row ids.
+ */
+class CompareFlushEntryByRowId {
+public:
+    CompareFlushEntryByRowId() {}
+    bool operator()(const FlushEntry &i1, const FlushEntry &i2) {
+        return i1.getId() < i2.getId();
+    }
+};
+
+    void optimizeWrites(std::vector<FlushEntry> &items) {
+        // Sort all the queued items for each db shard by their row ids
+        CompareFlushEntryByRowId cq;
+        std::sort(items.begin(), items.end(), cq);
+    }
 
     void optimizeWrites(std::vector<queued_item> &items) {
         // Sort all the queued items for each db shard by their row ids
@@ -347,6 +369,24 @@ public:
                       std::mem_fun(&PreparedStatement::reset));
     }
 
+/**
+ * Order QueuedItem objects by their vbucket then row ids.
+ */
+class CompareFlushEntryByVBAndRowId {
+public:
+    CompareFlushEntryByVBAndRowId() {}
+    bool operator()(const FlushEntry &i1, const FlushEntry &i2) {
+        return i1.getVBucketId() == i2.getVBucketId()
+            ? i1.getId() < i2.getId()
+            : i1.getVBucketId() < i2.getVBucketId();
+    }
+};
+    void optimizeWrites(std::vector<FlushEntry> &items) {
+        // Sort all the queued items for each db shard by its vbucket
+        // ID and then its row ids
+        CompareFlushEntryByVBAndRowId cq;
+        std::sort(items.begin(), items.end(), cq);
+    }
     void optimizeWrites(std::vector<queued_item> &items) {
         // Sort all the queued items for each db shard by its vbucket
         // ID and then its row ids
@@ -451,8 +491,9 @@ public:
         assert(filename);
     }
 
-    uint16_t getDbShardId(const QueuedItem &qi) {
-        return getShardForVBucket(qi.getVBucketId());
+    uint16_t getDbShardId(const std::string &key, uint16_t vbid) {
+        (void)key;
+        return getShardForVBucket(vbid);
     }
 
     virtual ~ShardedByVBucketSqliteStrategy() { }

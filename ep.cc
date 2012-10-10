@@ -367,9 +367,10 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     roDispatcher = new Dispatcher *[numKVStores];
     rwUnderlying = new KVStore *[numKVStores];
     roUnderlying = new KVStore *[numKVStores];
-    allFlusher = new Flusher *[numKVStores];
+    flusher = new Flusher *[numKVStores];
     tctx = new TransactionContext *[numKVStores];
     storageProperties = new StorageProperties *[numKVStores];
+    toFlush = new AtomicQueue<FlushEntry> [numKVStores];
 
     KVStoreMapper::createKVMapper(numKVStores, stats.kvstoreMapVbuckets);
 
@@ -378,7 +379,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
             it != theEngine.kvstoreConfigMap->end(); it++, i++) {
         rwUnderlying[i] = t[i];
         dispatcher[i] = new Dispatcher(theEngine);
-        allFlusher[i] = new Flusher(this, dispatcher[i], i);
+        flusher[i] = new Flusher(this, dispatcher[i], i);
         tctx[i] = new TransactionContext(stats, t[i], 
                                          theEngine.syncRegistry, i);
 
@@ -400,7 +401,6 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
                          storageProperties[i]->maxReaders(),
                          storageProperties[i]->maxWriters());
     }
-    flusher = allFlusher[0];
 
     nonIODispatcher = new Dispatcher(theEngine);
     invalidItemDbPager = new InvalidItemDbPager(this, stats, engine.getVbDelChunkSize());
@@ -411,7 +411,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     diskFlushAll.resize(numKVStores);
 
     if (startVb0) {
-        RCPtr<VBucket> vb(new VBucket(0, vbucket_state_active, stats, numKVStores));
+        RCPtr<VBucket> vb(new VBucket(0, vbucket_state_active, stats));
         vbuckets.addBucket(vb);
         vbuckets.setBucketVersion(0, 0);
     }
@@ -451,14 +451,14 @@ EventuallyPersistentStore::~EventuallyPersistentStore() {
             delete roDispatcher[i];
             delete roUnderlying[i];
         }
-        delete allFlusher[i];
+        delete flusher[i];
         delete dispatcher[i];
         delete tctx[i];
     }
 
     nonIODispatcher->stop(forceShutdown);
 
-    delete []allFlusher;
+    delete []flusher;
     delete []dispatcher;
     delete []tctx;
     delete []roUnderlying;
@@ -479,20 +479,20 @@ void EventuallyPersistentStore::startNonIODispatcher() {
 }
 
 const Flusher* EventuallyPersistentStore::getFlusher(int id) {
-    return allFlusher[id];
+    return flusher[id];
 }
 
 void EventuallyPersistentStore::startFlusher() {
     for (int i = 0 ; i < numKVStores; ++i) {
-        allFlusher[i]->start();
+        flusher[i]->start();
     }
 }
 
 void EventuallyPersistentStore::stopFlusher() {
     for (int i = 0 ; i < numKVStores; ++i) {
-        bool rv = allFlusher[i]->stop(engine.isForceShutdown());
+        bool rv = flusher[i]->stop(engine.isForceShutdown());
         if (rv && !engine.isForceShutdown()) {
-            allFlusher[i]->wait();
+            flusher[i]->wait();
         }
     }
 }
@@ -500,14 +500,14 @@ void EventuallyPersistentStore::stopFlusher() {
 bool EventuallyPersistentStore::pauseFlusher() {
     for (int i = 0 ; i < numKVStores; ++i) {
         tctx[i]->commitSoon();
-        allFlusher[i]->pause();
+        flusher[i]->pause();
     }
     return true;
 }
 
 bool EventuallyPersistentStore::resumeFlusher() {
     for (int i = 0 ; i < numKVStores; ++i) {
-        allFlusher[i]->resume();
+        flusher[i]->resume();
     }
     return true;
 }
@@ -544,7 +544,11 @@ public:
             if (v && v->isExpired(startTime)) {
                 value_t value(NULL);
                 uint64_t cas = v->getCas();
+                bool wasDirty = v->isDirty();
                 vb->ht.unlocked_softDelete(vk.second, 0, bucket_num);
+                if (!wasDirty) {
+                    e->queueFlusher(vb, v, queue_op_del);
+                }
                 e->queueDirty(vk.second, vb->getId(), queue_op_del, value,
                               v->getFlags(), v->getExptime(), cas, v->getId());
             }
@@ -573,7 +577,11 @@ StoredValue *EventuallyPersistentStore::fetchValidValue(RCPtr<VBucket> vb,
             ++stats.expired;
             value_t value(NULL);
             uint64_t cas = v->getCas();
+            bool wasDirty = v->isDirty(); 
             vb->ht.unlocked_softDelete(key, 0, bucket_num);
+            if (!wasDirty) {
+                queueFlusher(vb, v, queue_op_del);
+            }
             queueDirty(key, vb->getId(), queue_op_del, value,
                        v->getFlags(), v->getExptime(), cas, v->getId());
             return NULL;
@@ -649,6 +657,9 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
     int64_t row_id = -1;
     mutation_type_t mtype = vb->ht.set(item, row_id);
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
+    int bucket_num(0);
+    LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
+    StoredValue *v = vb->ht.unlocked_find(item.getKey(), bucket_num, false);
 
     switch (mtype) {
     case NOMEM:
@@ -667,9 +678,14 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
     case WAS_DIRTY:
         // Even if the item was dirty, push it into the vbucket's open checkpoint.
     case WAS_CLEAN:
+        if (v && mtype != WAS_DIRTY) {
+            queueFlusher(vb, v, queue_op_set);
+        }
+        lh.unlock();
+
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
                    item.getFlags(), item.getExptime(), item.getCas(), row_id,
-                   item.getCksum(), false, item.getQueuedTime());
+                   item.getCksum(), item.getQueuedTime());
         break;
     case INVALID_VBUCKET:
         ret = ENGINE_NOT_MY_VBUCKET;
@@ -710,6 +726,13 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::add(const Item &item,
         return ENGINE_NOT_STORED;
     case ADD_SUCCESS:
     case ADD_UNDEL:
+        int bucket_num(0);
+        LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
+        StoredValue *v = vb->ht.unlocked_find(item.getKey(), bucket_num, false);
+        if (v) {
+            queueFlusher(vb, v, queue_op_set);
+        }
+        lh.unlock();
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
                    item.getFlags(), item.getExptime(), item.getCas(), -1, item.getCksum());
     }
@@ -732,6 +755,9 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
     int64_t row_id = -1;
     mutation_type_t mtype = vb->ht.set(item, row_id);
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
+    int bucket_num(0);
+    LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
+    StoredValue *v = vb->ht.unlocked_find(item.getKey(), bucket_num, false);
 
     switch (mtype) {
     case NOMEM:
@@ -751,9 +777,9 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
         }
         // FALLTHROUGH
     case WAS_CLEAN:
-        queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
-                   item.getFlags(), item.getExptime(), item.getCas(), row_id,
-                   item.getCksum(), true, item.getQueuedTime());
+        if (v) {
+            queueFlusher(vb, v, queue_op_set);
+        }
         break;
     case INVALID_VBUCKET:
         ret = ENGINE_NOT_MY_VBUCKET;
@@ -1471,6 +1497,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
         rowid = v->getId();
     }
 
+    bool wasDirty = v->isDirty();
     mutation_type_t delrv = vb->ht.unlocked_softDelete(key, cas, bucket_num);
     ENGINE_ERROR_CODE rv;
     bool expired = false;
@@ -1485,13 +1512,16 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
     } else { // WAS_CLEAN or WAS_DIRTY
         rv = ENGINE_SUCCESS;
     }
-    lh.unlock();
 
     if (delrv == WAS_CLEAN ||
         delrv == WAS_DIRTY ||
         (delrv == NOT_FOUND && (expired || isRestoreEnabled()))) {
         // As replication is interleaved with online restore, deletion of items that might
         // exist in the restore backup files should be queued and replicated.
+        if (!wasDirty) {
+            queueFlusher(vb, v, queue_op_del);
+        }
+        lh.unlock();
         queueDirty(key, vbucket, queue_op_del, value_t(NULL), 0, 0, cas, rowid);
     }
     return rv;
@@ -1512,107 +1542,42 @@ void EventuallyPersistentStore::reset() {
     }
     for (int i = 0; i < numKVStores; ++i) {
         if (diskFlushAll[i].cas(false, true)) {
+//            flusher[i]->setFlushAll(true);
             // Increase the write queue size by 1 as flusher will execute flush_all as a single task.
             stats.queue_size.set(getWriteQueueSize() + 1);
         }
     }
 }
 
-std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
-    if (hasItemsForPersistence(id) || diskFlushAll[id]) {
-        std::queue<queued_item> *flushQueue = new std::queue<queued_item>();
-        size_t num_shards = rwUnderlying[id]->getNumShards();
-        std::vector<queued_item>  *dbShardQueues;
-        dbShardQueues = new std::vector<queued_item>[num_shards];
-
-        assert(rwUnderlying);
-        if (diskFlushAll[id]) {
-            queued_item qi(new QueuedItem("", 0xffff, queue_op_flush));
-            flushQueue->push(qi);
-        }
-
-        std::vector<queued_item> item_list;
-        std::set<queued_item, CompareQueuedItemsByKey> item_set;
-        size_t dedup = 0;
+// This works on the premise that the stored value is only freed by flusher
+std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
+    if (hasItemsForPersistence(id)) {
+        std::vector<FlushEntry> *dbShardQueues;
+        dbShardQueues = new std::vector<FlushEntry>[rwUnderlying[id]->getNumShards()];
         size_t num_items = 0;
-        size_t numOfVBuckets = vbuckets.getSize();
+        size_t shard_id = 0;
 
-        item_list.reserve(DEFAULT_TXN_SIZE);
-        assert(numOfVBuckets <= std::numeric_limits<uint16_t>::max());
-
-        for (size_t i = 0; i < numOfVBuckets; ++i) {
-            uint16_t vbid = static_cast<uint16_t>(i);
-            RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
-            if (!vb || vb->getState() == vbucket_state_dead) {
-                continue;
-            }
-
-#if 0
-            // Not my vbucket
-            if (KVStoreMapper::getVBucketToKVId(vbid) != id) {
-                continue;
-            }
-#endif
-            // Grab all the items from online restore.
-            getRestoreItems(vbid, allFlusher[id]->getFilter(), item_list);
-
-            // Grab all the backfill items if exist.
-            vb->getBackfillItems(item_list, allFlusher[id]->getFilter());
-
-            // Get all dirty items from the checkpoint.
-            size_t upperThreshold = (size_t)-1;
-            if (engine.shutdown) {
-                upperThreshold = 0;
-            } else if (vb->checkpointManager.getNumItemsForPersistence() >= getItemsLowerThreshold
-                       || (++getItemsThresholdChecks >= maxGetItemsChecks)) {
-                upperThreshold = getItemsUpperThreshold;
-            }
-            if (upperThreshold != (size_t)-1) {
-                uint64_t checkpointId = vb->checkpointManager.getAllItemsForPersistence(item_list, id, upperThreshold);
-                persistenceCheckpointIds[vbid] = checkpointId;
-                getItemsThresholdChecks = 0;
-            }
-
-            std::vector<queued_item>::reverse_iterator reverse_it = item_list.rbegin();
-            // Perform further deduplication here by removing duplicate mutations for each key.
-            for (; reverse_it != item_list.rend(); ++reverse_it) {
-                queued_item qi = *reverse_it;
-                switch (qi->getOperation()) {
-                case queue_op_set:
-                case queue_op_del:
-                    if (!(item_set.insert(qi).second)) {
-                        ++dedup;
-                        vb->doStatsForFlushing(*qi, qi->size());
-                    }
-                default:
-                    // Ignore
-                    ;
-                }
-            }
-
-            uint16_t shard_id = 0;
-            std::set<queued_item, CompareQueuedItemsByKey>::iterator sit = item_set.begin();
-            for (; sit != item_set.end(); ++sit) {
-                const queued_item &qitem = *sit;
-                shard_id = rwUnderlying[id]->getShardId(*qitem);
-                dbShardQueues[shard_id].push_back(*sit);
-            }
-            num_items += item_set.size();
-            item_list.clear();
-            item_set.clear();
+        std::vector<FlushEntry> *flushing = getFlushQueue(id);
+        std::vector<FlushEntry>::iterator it = flushing->begin();
+        for (; it != flushing->end(); ++it) {
+            const FlushEntry &ent = *it;
+            shard_id = rwUnderlying[id]->getShardId(ent.getKey(), ent.getVBucketId());
+            dbShardQueues[shard_id].push_back(ent);
+            num_items++;
         }
+        
+        std::queue<FlushEntry> *flushQueue = new std::queue<FlushEntry>();
+        pushToOutgoingQueue(dbShardQueues, flushQueue, id);
 
-        if (num_items > 0) {
-            pushToOutgoingQueue(dbShardQueues, flushQueue, id);
-        }
         size_t queue_size = getWriteQueueSize();
-        stats.flusherDedup[id] += dedup;
-        stats.flusher_todos[id].set(flushQueue->size());
+        stats.flusher_todos[id].incr(num_items);
         stats.queue_size.set(queue_size);
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Flusher Id %d flushing %d items with %d still in queue\n",
-                         id, flushQueue->size(), queue_size);
+                         id, num_items, queue_size);
+        flushing->clear();
         delete []dbShardQueues;
+        delete flushing;
         return flushQueue;
     } else {
         stats.dirtyAge = 0;
@@ -1634,15 +1599,15 @@ std::queue<queued_item> *EventuallyPersistentStore::beginFlush(int id) {
 }
 
 void EventuallyPersistentStore::pushToOutgoingQueue(
-                                std::vector<queued_item> *dbShardQueues,
-                                std::queue<queued_item>* flushQ, int id) {
+                                std::vector<FlushEntry> *dbShardQueues,
+                                std::queue<FlushEntry>* flushQ, int id) {
     size_t num_shards = rwUnderlying[id]->getNumShards();
     for (size_t i = 0; i < num_shards; ++i) {
         if (dbShardQueues[i].empty()) {
             continue;
         }
         rwUnderlying[id]->optimizeWrites(dbShardQueues[i]);
-        std::vector<queued_item>::iterator it = dbShardQueues[i].begin();
+        std::vector<FlushEntry>::iterator it = dbShardQueues[i].begin();
         for(; it != dbShardQueues[i].end(); ++it) {
             flushQ->push(*it);
         }
@@ -1650,7 +1615,7 @@ void EventuallyPersistentStore::pushToOutgoingQueue(
     }
 }
 
-void EventuallyPersistentStore::requeueRejectedItems(std::queue<queued_item> *rej, std::queue<queued_item> *flushQ) {
+void EventuallyPersistentStore::requeueRejectedItems(std::queue<FlushEntry> *rej, std::queue<FlushEntry> *flushQ) {
     // Requeue the rejects.
     while (!rej->empty()) {
         flushQ->push(rej->front());
@@ -1693,8 +1658,8 @@ void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
     stats.cumulativeFlushTimes[id].incr(time_diff);
 }
 
-int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
-                                         std::queue<queued_item> *rejectQueue,
+int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
+                                         std::queue<FlushEntry> *rejectQueue,
                                          int id) {
     if (!tctx[id]->enter()) {
         ++stats.beginFailed[id];
@@ -1730,37 +1695,14 @@ int EventuallyPersistentStore::flushSome(std::queue<queued_item> *q,
 
 size_t EventuallyPersistentStore::getWriteQueueSize(void) {
     size_t size = 0;
-    size_t numOfVBuckets = vbuckets.getSize();
-    for (size_t i = 0; i < numOfVBuckets; ++i) {
-        assert(i <= std::numeric_limits<uint16_t>::max());
-        uint16_t vbid = static_cast<uint16_t>(i);
-        RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
-        if (vb && (vb->getState() != vbucket_state_dead)) {
-            size += vb->checkpointManager.getNumItemsForPersistence() + vb->getBackfillSize();
-        }
+    for (int i = 0; i < numKVStores; ++i) {
+        size += toFlush[i].size();
     }
     return size;
 }
 
 bool EventuallyPersistentStore::hasItemsForPersistence(int kvid) {
-    bool hasItems = false;
-    size_t numOfVBuckets = vbuckets.getSize();
-    for (size_t i = 0; i < numOfVBuckets; ++i) {
-        assert(i <= std::numeric_limits<uint16_t>::max());
-        uint16_t vbid = static_cast<uint16_t>(i);
-        RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
-        if (vb && (vb->getState() != vbucket_state_dead)) {
-            LockHolder rlh(restore.mutex);
-            std::map<uint16_t, std::list<queued_item> >::iterator it = restore.items.find(vbid);
-            if (vb->checkpointManager.hasNextForPersistence(kvid) ||
-                vb->getBackfillSize() > 0 ||
-                (it != restore.items.end() && !it->second.empty())) {
-                hasItems = true;
-                break;
-            }
-        }
-    }
-    return hasItems;
+    return !toFlush[kvid].empty();
 }
 
 void EventuallyPersistentStore::setPersistenceCheckpointId(uint16_t vbid, uint64_t checkpointId) {
@@ -1768,7 +1710,7 @@ void EventuallyPersistentStore::setPersistenceCheckpointId(uint16_t vbid, uint64
     vbuckets.setPersistenceCheckpointId(vbid, checkpointId);
 }
 
-
+// VANDANA: Caution. This is no longer safe to use with the new flusher
 protocol_binary_response_status EventuallyPersistentStore::revertOnlineUpdate(RCPtr<VBucket> vb) {
     protocol_binary_response_status rv(PROTOCOL_BINARY_RESPONSE_SUCCESS);
 
@@ -1812,7 +1754,7 @@ protocol_binary_response_status EventuallyPersistentStore::revertOnlineUpdate(RC
 
         ret = item_set.insert(item);
 
-        vb->doStatsForFlushing(*item, item->size());
+        vb->doStatsForFlushing(sizeof(FlushEntry), item->size(), item->getQueuedTime());
     }
     item_list.assign(item_set.begin(), item_set.end());
 
@@ -1860,10 +1802,10 @@ class PersistenceCallback : public Callback<mutation_result>,
                             public Callback<int> {
 public:
 
-    PersistenceCallback(const queued_item &qi, std::queue<queued_item> *q,
+    PersistenceCallback(const FlushEntry &fe, std::queue<FlushEntry> *q,
                         EventuallyPersistentStore *st,
                         rel_time_t qd, rel_time_t d, EPStats *s) :
-        queuedItem(qi), rq(q), store(st), queued(qd), dirtied(d), stats(s) {
+        flushEntry(fe), rq(q), store(st), queued(qd), dirtied(d), stats(s) {
         assert(rq);
         assert(s);
     }
@@ -1875,13 +1817,14 @@ public:
                 ++stats->newItems;
                 setId(value.second);
             }
-            RCPtr<VBucket> vb = store->getVBucket(queuedItem->getVBucketId());
+            RCPtr<VBucket> vb = store->getVBucket(flushEntry.getVBucketId());
             if (vb && vb->getState() != vbucket_state_active &&
                 vb->getState() != vbucket_state_pending) {
                 int bucket_num(0);
-                LockHolder lh = vb->ht.getLockedBucket(queuedItem->getKey(), &bucket_num);
-                StoredValue *v = store->fetchValidValue(vb, queuedItem->getKey(),
+                LockHolder lh = vb->ht.getLockedBucket(flushEntry.getKey(), &bucket_num);
+                StoredValue *v = store->fetchValidValue(vb, flushEntry.getKey(),
                                                         bucket_num, true);
+                assert(v == flushEntry.getStoredValue());
                 double current = static_cast<double>(StoredValue::getCurrentSize(*stats));
                 double lower = static_cast<double>(stats->mem_low_wat);
                 if (v && current > lower) {
@@ -1894,21 +1837,22 @@ public:
             // If the return was 0 here, we're in a bad state because
             // we do not know the rowid of this object.
             if (value.first == 0) {
-                RCPtr<VBucket> vb = store->getVBucket(queuedItem->getVBucketId());
+                RCPtr<VBucket> vb = store->getVBucket(flushEntry.getVBucketId());
                 int bucket_num(0);
-                LockHolder lh = vb->ht.getLockedBucket(queuedItem->getKey(), &bucket_num);
-                StoredValue *v = store->fetchValidValue(vb, queuedItem->getKey(),
+                LockHolder lh = vb->ht.getLockedBucket(flushEntry.getKey(), &bucket_num);
+                StoredValue *v = store->fetchValidValue(vb, flushEntry.getKey(),
                                                         bucket_num, true);
+                assert(v == flushEntry.getStoredValue());
                 if (v) {
                     std::stringstream ss;
-                    ss << "Persisting ``" << queuedItem->getKey() << "'' on vb"
-                       << queuedItem->getVBucketId() << " (rowid=" << v->getId()
+                    ss << "Persisting ``" << flushEntry.getKey() << "'' on vb"
+                       << flushEntry.getVBucketId() << " (rowid=" << v->getId()
                        << ") returned 0 updates\n";
                     getLogger()->log(EXTENSION_LOG_WARNING, NULL, "%s", ss.str().c_str());
                 } else {
                     getLogger()->log(EXTENSION_LOG_INFO, NULL,
                                      "Error persisting now missing ``%s'' from vb%d\n",
-                                     queuedItem->getKey().c_str(), queuedItem->getVBucketId());
+                                     flushEntry.getKey().c_str(), flushEntry.getVBucketId());
                 }
             } else {
                 redirty();
@@ -1932,18 +1876,19 @@ public:
             }
             // We have succesfully removed an item from the disk, we
             // may now remove it from the hash table.
-            RCPtr<VBucket> vb = store->getVBucket(queuedItem->getVBucketId());
+            RCPtr<VBucket> vb = store->getVBucket(flushEntry.getVBucketId());
             if (vb) {
                 int bucket_num(0);
-                LockHolder lh = vb->ht.getLockedBucket(queuedItem->getKey(), &bucket_num);
-                StoredValue *v = store->fetchValidValue(vb, queuedItem->getKey(),
+                LockHolder lh = vb->ht.getLockedBucket(flushEntry.getKey(), &bucket_num);
+                StoredValue *v = store->fetchValidValue(vb, flushEntry.getKey(),
                                                         bucket_num, true);
-                if (v && v->isDeleted()) {
+                assert(v == flushEntry.getStoredValue());
+                if (v && !v->isDirty()) {
                     if (store->isRestoreEnabled()) {
                         LockHolder rlh(store->restore.mutex);
-                        store->restore.itemsDeleted.insert(queuedItem->getKey());
+                        store->restore.itemsDeleted.insert(flushEntry.getKey());
                     }
-                    bool deleted = vb->ht.unlocked_del(queuedItem->getKey(),
+                    bool deleted = vb->ht.unlocked_del(flushEntry.getKey(),
                                                        bucket_num);
                     assert(deleted);
                 } else if (v) {
@@ -1958,28 +1903,28 @@ public:
 private:
 
     void setId(int64_t id) {
-        bool did = store->invokeOnLockedStoredValue(queuedItem->getKey(),
-                                                    queuedItem->getVBucketId(),
+        bool did = store->invokeOnLockedStoredValue(flushEntry.getKey(),
+                                                    flushEntry.getVBucketId(),
                                                     &StoredValue::setId,
                                                     id);
         if (!did) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                              "Failed to set id on vb%d ``%s''\n",
-                             queuedItem->getVBucketId(), queuedItem->getKey().c_str());
+                             flushEntry.getVBucketId(), flushEntry.getKey().c_str());
         }
     }
 
     void redirty() {
         ++stats->flushFailed;
-        store->invokeOnLockedStoredValue(queuedItem->getKey(),
-                                         queuedItem->getVBucketId(),
+        store->invokeOnLockedStoredValue(flushEntry.getKey(),
+                                         flushEntry.getVBucketId(),
                                          &StoredValue::reDirty,
                                          dirtied);
-        rq->push(queuedItem);
+        rq->push(flushEntry);
     }
 
-    const queued_item queuedItem;
-    std::queue<queued_item> *rq;
+    const FlushEntry flushEntry;
+    std::queue<FlushEntry> *rq;
     EventuallyPersistentStore *store;
     rel_time_t queued;
     rel_time_t dirtied;
@@ -1996,27 +1941,29 @@ int EventuallyPersistentStore::flushOneDeleteAll(int id) {
 // While I actually know whether a delete or set was intended, I'm
 // still a bit better off running the older code that figures it out
 // based on what's in memory.
-int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
-                                           std::queue<queued_item> *rejectQueue,
+int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
+                                           std::queue<FlushEntry> *rejectQueue,
                                            int id) {
 
-    RCPtr<VBucket> vb = getVBucket(qi->getVBucketId());
+    RCPtr<VBucket> vb = getVBucket(fe.getVBucketId());
     if (!vb) {
         return 0;
     }
 
     int bucket_num(0);
-    LockHolder lh = vb->ht.getLockedBucket(qi->getKey(), &bucket_num);
-    StoredValue *v = fetchValidValue(vb, qi->getKey(), bucket_num, true);
+    LockHolder lh = vb->ht.getLockedBucket(fe.getKey(), &bucket_num);
+    StoredValue *v = fetchValidValue(vb, fe.getKey(), bucket_num, true);
+    Item *itm = NULL;
 
-    size_t itemBytes = qi->size();
-    vb->doStatsForFlushing(*qi, itemBytes);
+    assert(fe.getStoredValue() == v);
+
+    vb->doStatsForFlushing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
 
     bool found = v != NULL;
     int64_t rowid = found ? v->getId() : -1;
     bool deleted = found && v->isDeleted();
     bool isDirty = found && v->isDirty();
-    rel_time_t queued(qi->getQueuedTime()), dirtied(0);
+    rel_time_t queued(fe.getQueuedTime()), dirtied(0);
 
     int ret = 0;
 
@@ -2028,7 +1975,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
         // from hashtable and remove the old item from database.
         v->clearId();
         deleted = true;
-        qi->setOperation(queue_op_del);
+// FIXME::        fe.setOperation(queue_op_del);
     }
 
     if (isDirty) {
@@ -2063,16 +2010,6 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
 
             if (!deleted) {
                 assert(rowid == v->getId());
-                qi->getItem().setId(rowid);
-                if (qi->getCas() != v->getCas()) {
-                    // New mutation was received while this item was waiting in the queue.
-                    // Update the item's value and meta data with the ones in cache.
-                    qi->getItem().setValue(v->getValue());
-                    qi->getItem().setFlags(v->getFlags());
-                    qi->getItem().setCas(v->getCas());
-                    qi->getItem().setExpTime(v->getExptime());
-                    qi->getItem().setCksum(v->getCksum());
-                }
             }
 
             if (rowid == -1) {
@@ -2081,13 +2018,13 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
         } else {
             isDirty = false;
             v->reDirty(dirtied);
-            rejectQueue->push(qi);
+            rejectQueue->push(fe);
             ++vb->opsReject;
         }
     }
 
     if (isDirty && !deleted) {
-        if (qi->getVBucketVersion() != vbuckets.getBucketVersion(qi->getVBucketId())) {
+        if (fe.getVBucketVersion() != vbuckets.getBucketVersion(fe.getVBucketId())) {
             lh.unlock();
         } else {
             // If a vbucket snapshot task with the high priority is currently scheduled,
@@ -2095,15 +2032,17 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
             if (vbuckets.isHighPriorityVbSnapshotScheduled()) {
                 v->clearPendingId();
                 lh.unlock();
-                rejectQueue->push(qi);
+                rejectQueue->push(fe);
                 ++vb->opsReject;
             } else {
+                itm = new Item (v->getKey(), v->getFlags(), v->getExptime(), v->getValue(),
+                                v->getCksum(), v->getCas(), v->getId(), vb->getId());
                 v->markClean(NULL);
                 lh.unlock();
                 BlockTimer timer(rowid == -1 ?
                                  &stats.diskInsertHisto : &stats.diskUpdateHisto);
-                PersistenceCallback cb(qi, rejectQueue, this, queued, dirtied, &stats);
-                rwUnderlying[id]->set(qi->getItem(), qi->getVBucketVersion(), cb);
+                PersistenceCallback cb(fe, rejectQueue, this, queued, dirtied, &stats);
+                rwUnderlying[id]->set(*itm, fe.getVBucketVersion(), cb);
                 if (rowid == -1)  {
                     ++vb->opsCreate;
                 } else {
@@ -2112,13 +2051,14 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
             }
         }
     } else if (deleted) {
+        v->markClean(NULL);
         lh.unlock();
         BlockTimer timer(&stats.diskDelHisto);
-        PersistenceCallback cb(qi, rejectQueue, this, queued, dirtied, &stats);
+        PersistenceCallback cb(fe, rejectQueue, this, queued, dirtied, &stats);
         if (rowid > 0) {
-            uint16_t vbid(qi->getVBucketId());
+            uint16_t vbid(fe.getVBucketId());
             uint16_t vbver(vbuckets.getBucketVersion(vbid));
-            rwUnderlying[id]->del(qi->getKey(), rowid, vbid, vbver, cb);
+            rwUnderlying[id]->del(fe.getKey(), rowid, vbid, vbver, cb);
             ++vb->opsDelete;
         } else {
             // bypass deletion if missing items, but still call the
@@ -2128,29 +2068,32 @@ int EventuallyPersistentStore::flushOneDelOrSet(const queued_item &qi,
         }
     }
 
+    if (itm) {
+        delete itm;
+    }
     return ret;
 }
 
-int EventuallyPersistentStore::flushOne(std::queue<queued_item> *q,
-                                        std::queue<queued_item> *rejectQueue,
+int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
+                                        std::queue<FlushEntry> *rejectQueue,
                                         int id) {
 
-    queued_item qi = q->front();
+    FlushEntry qi = q->front();
     q->pop();
 
     int rv = 0;
-    switch (qi->getOperation()) {
+    switch (qi.getOperation()) {
     case queue_op_flush:
         rv = flushOneDeleteAll(id);
         break;
     case queue_op_set:
-        if (qi->getVBucketVersion() == vbuckets.getBucketVersion(qi->getVBucketId())) {
+        if (qi.getVBucketVersion() == vbuckets.getBucketVersion(qi.getVBucketId())) {
             size_t prevRejectCount = rejectQueue->size();
 
             rv = flushOneDelOrSet(qi, rejectQueue, id);
             if (rejectQueue->size() == prevRejectCount) {
                 // flush operation was not rejected
-                tctx[id]->addUncommittedItem(qi);
+//                tctx[id]->addUncommittedItem(qi);
             }
         }
         break;
@@ -2182,29 +2125,22 @@ void EventuallyPersistentStore::queueDirty(const std::string &key,
                                            uint64_t cas,
                                            int64_t rowid,
                                            const std::string &cksum,
-                                           bool tapBackfill,
                                            time_t queued) {
-    if (doPersistence) {
-        RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
-        if (vb) {
-            QueuedItem *qi = NULL;
-            if (op == queue_op_set) {
-                qi = new QueuedItem(key, value, vbid, op, vbuckets.getBucketVersion(vbid),
-                                    rowid, flags, exptime, cas, cksum, queued);
-            } else {
-                qi = new QueuedItem(key, vbid, op, vbuckets.getBucketVersion(vbid), rowid, flags,
-                                    exptime, cas, cksum, queued);
-            }
 
-            queued_item item(qi);
-            bool rv = tapBackfill ?
-                      vb->queueBackfillItem(item) : vb->checkpointManager.queueDirty(item, vb);
-            if (rv) {
-                ++stats.queue_size;
-                ++stats.totalEnqueued;
-                vb->doStatsForQueueing(*item, item->size());
-            }
+    RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
+    if (vb) {
+        QueuedItem *qi = NULL;
+        if (op == queue_op_set) {
+            qi = new QueuedItem(key, value, vbid, op, vbuckets.getBucketVersion(vbid),
+                                rowid, flags, exptime, cas, cksum, queued);
+        } else {
+            qi = new QueuedItem(key, vbid, op, vbuckets.getBucketVersion(vbid), rowid, flags,
+                                exptime, cas, cksum, queued);
         }
+
+        queued_item item(qi);
+        vb->checkpointManager.queueDirty(item, vb);
+
     }
 }
 
@@ -2231,21 +2167,8 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
     LockHolder rlh(restore.mutex);
     if (restore.itemsDeleted.find(key) == restore.itemsDeleted.end() &&
         vb->ht.unlocked_restoreItem(itm, op, bucket_num)) {
-
-        lh.unlock();
-        queued_item qi(new QueuedItem(key, itm.getValue(),
-                                      vbid, op,
-                                      vbuckets.getBucketVersion(vbid),
-                                      -1, itm.getFlags(),
-                                      itm.getExptime(), itm.getCas(), itm.getCksum()));
-        std::map<uint16_t, std::list<queued_item> >::iterator it = restore.items.find(vbid);
-        if (it != restore.items.end()) {
-            it->second.push_back(qi);
-        } else {
-            std::list<queued_item> vb_items;
-            vb_items.push_back(qi);
-            restore.items[vbid] = vb_items;
-        }
+        StoredValue *v = vb->ht.unlocked_find(itm.getKey(), bucket_num, false);
+        queueFlusher(vb, v, op);
         return 0;
     }
 
@@ -2441,13 +2364,14 @@ void TransactionContext::commit() {
     stats.cumulativeCommitTime.incr(time_diff);
     stats.cumulativeCommitTimes[id].incr(time_diff);
     intxn = false;
-    syncRegistry.itemsPersisted(uncommittedItems);
+    //syncRegistry.itemsPersisted(uncommittedItems);
     uncommittedItems.clear();
     numUncommittedItems = 0;
 }
 
 void TransactionContext::addUncommittedItem(const queued_item &item) {
-    uncommittedItems.push_back(item);
+    //uncommittedItems.push_back(item);
+    (void) item;
     ++numUncommittedItems;
 }
 
@@ -2504,4 +2428,21 @@ size_t EventuallyPersistentStore::getBlobSize(const std::string &key,
         return 0;
     }
     return v->valLength();
+}
+
+void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
+                                             enum queue_operation op, time_t queued) {
+    uint16_t vbid = vb->getId();
+    int kvid = KVStoreMapper::getKVStoreId(v->getKey(), vbid);
+    FlushEntry fe(v, vbid, op, getVBucketVersion(vbid), queued);
+    toFlush[kvid].push(fe);
+    vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
+    ++stats.queue_size;
+    ++stats.totalEnqueued;
+}
+
+std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) {
+    std::vector<FlushEntry> *flushing = new std::vector<FlushEntry>();
+    toFlush[kvid].toArray(*flushing);
+    return flushing;
 }
