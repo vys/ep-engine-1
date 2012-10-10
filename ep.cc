@@ -566,7 +566,8 @@ StoredValue *EventuallyPersistentStore::fetchValidValue(RCPtr<VBucket> vb,
                                                         int bucket_num,
                                                         bool wantDeleted) {
     StoredValue *v = vb->ht.unlocked_find(key, bucket_num, wantDeleted);
-    if (v && !v->isDeleted()) { // In the deleted case, we ignore expiration time.
+    if (!CheckpointManager::isInconsistentSlaveCheckpoint() &&
+            v && !v->isDeleted()) { // In the deleted case, we ignore expiration time.
         if (v->isExpired(ep_real_time())) {
             ++stats.expired;
             value_t value(NULL);
