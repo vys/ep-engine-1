@@ -87,7 +87,7 @@ public:
         flushRv(0), prevFlushRv(0), minSleepTime(0.1),
         flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false),
         forceShutdownReceived(false), filter(i), rejectedItemsRequeued(false),
-        last_min_data_age(-1) {
+        last_min_data_age(-1), shouldFlushAll(false) {
             helper = new FlusherHelper(flusherId, store);
         }
 
@@ -128,6 +128,10 @@ public:
 
     QueuedItemFilter &getFilter() {return filter;}
 
+    void setFlushAll(bool flag) {
+        shouldFlushAll = flag;
+    }
+
 private:
     bool transition_state(enum flusher_state to);
     int doFlush();
@@ -157,6 +161,7 @@ private:
     timeval                  waketime;
     int                      last_min_data_age;
     FlusherHelper            *helper;
+    bool                     shouldFlushAll;
 
     DISALLOW_COPY_AND_ASSIGN(Flusher);
 };

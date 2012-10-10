@@ -1536,7 +1536,7 @@ void EventuallyPersistentStore::reset() {
     }
     for (int i = 0; i < numKVStores; ++i) {
         if (diskFlushAll[i].cas(false, true)) {
-//            flusher[i]->setFlushAll(true);
+            flusher[i]->setFlushAll(true);
             // Increase the write queue size by 1 as flusher will execute flush_all as a single task.
             stats.queue_size.set(getWriteQueueSize() + 1);
         }
@@ -2084,9 +2084,6 @@ int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
 
     int rv = 0;
     switch (qi.getOperation()) {
-    case queue_op_flush:
-        rv = flushOneDeleteAll(id);
-        break;
     case queue_op_set:
         if (qi.getVBucketVersion() == vbuckets.getBucketVersion(qi.getVBucketId())) {
             size_t prevRejectCount = rejectQueue->size();
