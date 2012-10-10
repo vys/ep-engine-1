@@ -1954,7 +1954,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
 
     int bucket_num(0);
     LockHolder lh = vb->ht.getLockedBucket(fe.getKey(), &bucket_num);
-    StoredValue *v = fetchValidValue(vb, fe.getKey(), bucket_num, true);
+    StoredValue *v = vb->ht.unlocked_find(fe.getKey(), bucket_num, true);
     Item *itm = NULL;
 
     assert(fe.getStoredValue() == v);
@@ -1972,12 +1972,10 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
     if (!deleted && isDirty && v->isExpired(ep_real_time() + engine.getItemExpiryWindow())) {
         ++stats.flushExpired;
         v->markClean(&dirtied);
-        isDirty = false;
         // If the new item is expired within current_time + expiry_window, clear the row id
         // from hashtable and remove the old item from database.
         v->clearId();
-        deleted = true;
-// FIXME::        fe.setOperation(queue_op_del);
+        isDirty = false;
     }
 
     if (isDirty) {
