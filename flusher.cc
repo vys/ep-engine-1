@@ -250,15 +250,14 @@ int Flusher::doFlush() {
         }
     }
 
+    if (shouldFlushAll) {
+        store->flushOneDeleteAll(flusherId);
+        setFlushAll(false);
+    }
+
     // Now do the every pass thing.
     if (flushQueue) {
         if (!flushQueue->empty()) {
-#if 0
-            if (shouldFlushAll) {
-                store->flushOneDeleteAll(flusherId);
-                setFlushAll(false);
-            }
-#endif
             int n = store->flushSome(flushQueue, rejectQueue, flusherId);
             if (_state == pausing) {
                 transition_state(paused);

@@ -43,6 +43,20 @@ public:
         return std::abs(h) % (int)instance->numKVStores;
     }
 
+    static std::vector<uint16_t> getVBucketsForKVStore(int kvid, std::vector<int> vbs) {
+        assert(instance != NULL);
+        std::vector<uint16_t> kvstore_vbs;
+
+        std::vector<int>::iterator it = vbs.begin();
+        for (; it != vbs.end(); it++) {
+            if (!instance->mapVBuckets || *it % instance->numKVStores == kvid) {
+                kvstore_vbs.push_back(static_cast<uint16_t>(*it));
+            }
+        }
+
+        return kvstore_vbs;
+    }
+
 private:
     KVStoreMapper(int numKV, bool mapVB) : numKVStores(numKV), mapVBuckets(mapVB) {}
 
@@ -51,22 +65,4 @@ private:
     bool mapVBuckets;
 };
 
-/*
- * Filter to map queued_item to kvstore id
- */
-class QueuedItemFilter {
-public:
-    QueuedItemFilter(int _kvid, bool _alwaysPass = false) :
-        kvid(_kvid),
-        alwaysPass(_alwaysPass)
-    {}
-
-    bool operator () (queued_item &itm) {
-        return alwaysPass || (KVStoreMapper::getKVStoreId(itm->getKey(), itm->getVBucketId()) == kvid);
-    }
-
-private:
-    int kvid;
-    bool alwaysPass;
-};
 #endif

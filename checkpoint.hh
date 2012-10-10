@@ -529,7 +529,6 @@ private:
     uint64_t getAllItemsFromCurrentPosition(CheckpointCursor &cursor,
                                             uint64_t barrier,
                                             std::vector<queued_item> &items,
-                                            QueuedItemFilter &filter,
                                             size_t upperThreshold = 0,
                                             size_t *itemsShifted = NULL);
 

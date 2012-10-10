@@ -321,6 +321,36 @@ public:
      */
     virtual void destroyInvalidVBuckets(bool destroyOnlyOne = false) = 0;
 
+    /**
+     * Update vbucket to checkpointId mapping for items picked up by the flusher
+     */
+    void setPersistenceCheckpointId(uint16_t vbid, uint64_t cpid) {
+        persistedCheckpoints[vbid] = cpid;
+    }
+
+    /**
+     * Read persisted checkpointId for given vbucket
+     */
+    uint64_t getPersistenceCheckpointId(uint16_t vbid) {
+        std::map<uint16_t, uint64_t>::iterator it = persistedCheckpoints.find(vbid);
+        if (it != persistedCheckpoints.end()) {
+            return (*it).second;
+        } else {
+            return 0;
+        }
+    }
+
+    /**
+     * Reset vbucket to checkpointId map when flusher has completed execution
+     */
+    void clearPersistenceCheckpointIds() {
+        persistedCheckpoints.clear();
+    }
+
+
+private:
+    std::map<uint16_t, uint64_t> persistedCheckpoints;
+
 };
 
 #endif // KVSTORE_HH
