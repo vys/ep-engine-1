@@ -579,7 +579,7 @@ StoredValue *EventuallyPersistentStore::fetchValidValue(RCPtr<VBucket> vb,
             }
             queueDirty(key, vb->getId(), queue_op_del, value,
                        v->getFlags(), v->getExptime(), cas, v->getId());
-            return NULL;
+            return (wantDeleted ? v : NULL);
         }
         v->touch();
     }
@@ -1954,7 +1954,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
 
     int bucket_num(0);
     LockHolder lh = vb->ht.getLockedBucket(fe.getKey(), &bucket_num);
-    StoredValue *v = vb->ht.unlocked_find(fe.getKey(), bucket_num, true);
+    StoredValue *v = fetchValidValue(vb, fe.getKey(), bucket_num, true);
     Item *itm = NULL;
 
     assert(fe.getStoredValue() == v);
