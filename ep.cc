@@ -2080,16 +2080,15 @@ int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
                                         std::queue<FlushEntry> *rejectQueue,
                                         int id) {
 
-    FlushEntry qi = q->front();
+    size_t prevRejectCount = rejectQueue->size();
+    FlushEntry fe = q->front();
     q->pop();
 
     int rv = 0;
-    switch (qi.getOperation()) {
+    switch (fe.getOperation()) {
     case queue_op_set:
-        if (qi.getVBucketVersion() == vbuckets.getBucketVersion(qi.getVBucketId())) {
-            size_t prevRejectCount = rejectQueue->size();
-
-            rv = flushOneDelOrSet(qi, rejectQueue, id);
+        if (fe.getVBucketVersion() == vbuckets.getBucketVersion(fe.getVBucketId())) {
+            rv = flushOneDelOrSet(fe, rejectQueue, id);
             if (rejectQueue->size() == prevRejectCount) {
                 // flush operation was not rejected
 //                tctx[id]->addUncommittedItem(qi);
@@ -2097,7 +2096,7 @@ int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
         }
         break;
     case queue_op_del:
-        rv = flushOneDelOrSet(qi, rejectQueue, id);
+        rv = flushOneDelOrSet(fe, rejectQueue, id);
         break;
     case queue_op_commit:
         tctx[id]->commit();
@@ -2110,6 +2109,9 @@ int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
         break;
     }
     stats.flusher_todos[id]--;
+    if (rejectQueue->size() == prevRejectCount) {
+        stats.memOverhead.decr(sizeof(FlushEntry));
+    }
 
     return rv;
 
@@ -2434,9 +2436,11 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
     int kvid = KVStoreMapper::getKVStoreId(v->getKey(), vbid);
     FlushEntry fe(v, vbid, op, getVBucketVersion(vbid));
     toFlush[kvid].push(fe);
+
     vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
     ++stats.queue_size;
     ++stats.totalEnqueued;
+    stats.memOverhead.incr(sizeof(FlushEntry));
 }
 
 std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) {
