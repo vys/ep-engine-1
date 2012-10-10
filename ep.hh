@@ -935,7 +935,6 @@ private:
     TransactionContext         **tctx;
     Mutex                      vbsetMutex;
     uint32_t                   bgFetchDelay;
-    uint64_t                   *persistenceCheckpointIds;
     size_t                     getItemsUpperThreshold;
     size_t                     getItemsLowerThreshold;
     size_t                     maxGetItemsChecks;

@@ -416,11 +416,6 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
         vbuckets.setBucketVersion(0, 0);
     }
 
-    persistenceCheckpointIds = new uint64_t[BASE_VBUCKET_SIZE];
-    for (size_t j = 0; j < BASE_VBUCKET_SIZE; ++j) {
-        persistenceCheckpointIds[j] = 0;
-    }
-
     startDispatcher();
     startFlusher();
     startNonIODispatcher();
@@ -465,7 +460,6 @@ EventuallyPersistentStore::~EventuallyPersistentStore() {
     delete []roDispatcher;
 
     delete nonIODispatcher;
-    delete []persistenceCheckpointIds;
 }
 
 void EventuallyPersistentStore::startDispatcher() {
@@ -1551,11 +1545,19 @@ void EventuallyPersistentStore::reset() {
 
 // This works on the premise that the stored value is only freed by flusher
 std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
+    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(id, vbuckets.getBuckets());
+    std::vector<uint16_t>::iterator vb_it = vblist.begin();
+
     if (hasItemsForPersistence(id)) {
         std::vector<FlushEntry> *dbShardQueues;
         dbShardQueues = new std::vector<FlushEntry>[rwUnderlying[id]->getNumShards()];
         size_t num_items = 0;
         size_t shard_id = 0;
+
+        for (; vb_it != vblist.end(); vb_it++) {
+            RCPtr<VBucket> vb = getVBucket(*vb_it);
+            rwUnderlying[id]->setPersistenceCheckpointId(*vb_it, vb->checkpointManager.getOpenCheckpointId());
+        }
 
         std::vector<FlushEntry> *flushing = getFlushQueue(id);
         std::vector<FlushEntry>::iterator it = flushing->begin();
@@ -1565,7 +1567,7 @@ std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
             dbShardQueues[shard_id].push_back(ent);
             num_items++;
         }
-        
+
         std::queue<FlushEntry> *flushQueue = new std::queue<FlushEntry>();
         pushToOutgoingQueue(dbShardQueues, flushQueue, id);
 
@@ -1582,11 +1584,8 @@ std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
     } else {
         stats.dirtyAge = 0;
         // If the persistence queue is empty, reset queue-related stats for each vbucket.
-        size_t numOfVBuckets = vbuckets.getSize();
-        for (size_t i = 0; i < numOfVBuckets; ++i) {
-            assert(i <= std::numeric_limits<uint16_t>::max());
-            uint16_t vbid = static_cast<uint16_t>(i);
-            RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
+        for (; vb_it != vblist.end(); vb_it++) {
+            RCPtr<VBucket> vb = vbuckets.getBucket(*vb_it);
             if (vb && vb->checkpointManager.getNumItemsForPersistence() == 0) {
                 vb->dirtyQueueSize.set(0);
                 vb->dirtyQueueMem.set(0);
@@ -1626,18 +1625,20 @@ void EventuallyPersistentStore::requeueRejectedItems(std::queue<FlushEntry> *rej
 
 void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
     LockHolder lh(vbsetMutex);
-    size_t numOfVBuckets = vbuckets.getSize();
-    for (size_t i = 0; i < numOfVBuckets; ++i) {
-        assert(i <= std::numeric_limits<uint16_t>::max());
-        uint16_t vbid = static_cast<uint16_t>(i);
-        RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
+
+    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(id, vbuckets.getBuckets());
+    std::vector<uint16_t>::iterator vb_it = vblist.begin();
+    for (; vb_it != vblist.end(); vb_it++) {
+        RCPtr<VBucket> vb = getVBucket(*vb_it);
         if (!vb || vb->getState() == vbucket_state_dead) {
             continue;
         }
-        if (persistenceCheckpointIds[vbid] > 0) {
-            vbuckets.setPersistenceCheckpointId(vbid, persistenceCheckpointIds[vbid]);
+        uint64_t persistedCheckpointId = rwUnderlying[id]->getPersistenceCheckpointId(*vb_it);
+        if (persistedCheckpointId > vbuckets.getPersistenceCheckpointId(*vb_it)) {
+            vbuckets.setPersistenceCheckpointId(*vb_it, persistedCheckpointId);
         }
     }
+    rwUnderlying[id]->clearPersistenceCheckpointIds();
     lh.unlock();
 
     // Schedule the vbucket state snapshot task to record the latest checkpoint Id
