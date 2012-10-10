@@ -65,22 +65,4 @@ private:
     bool mapVBuckets;
 };
 
-/*
- * Filter to map queued_item to kvstore id
- */
-class QueuedItemFilter {
-public:
-    QueuedItemFilter(int _kvid, bool _alwaysPass = false) :
-        kvid(_kvid),
-        alwaysPass(_alwaysPass)
-    {}
-
-    bool operator () (queued_item &itm) {
-        return alwaysPass || (KVStoreMapper::getKVStoreId(itm->getKey(), itm->getVBucketId()) == kvid);
-    }
-
-private:
-    int kvid;
-    bool alwaysPass;
-};
 #endif

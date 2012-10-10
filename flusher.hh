@@ -86,7 +86,7 @@ public:
         store(st), _state(initializing), dispatcher(d), flusherId(i),
         flushRv(0), prevFlushRv(0), minSleepTime(0.1),
         flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false),
-        forceShutdownReceived(false), filter(i), rejectedItemsRequeued(false),
+        forceShutdownReceived(false), rejectedItemsRequeued(false),
         last_min_data_age(-1), shouldFlushAll(false) {
             helper = new FlusherHelper(flusherId, store);
         }
@@ -126,8 +126,6 @@ public:
     enum flusher_state state() const;
     const char * stateName() const;
 
-    QueuedItemFilter &getFilter() {return filter;}
-
     void setFlushAll(bool flag) {
         shouldFlushAll = flag;
     }
@@ -156,7 +154,6 @@ private:
     rel_time_t               flushStart;
     Atomic<bool>             vbStateLoaded;
     Atomic<bool>             forceShutdownReceived;
-    QueuedItemFilter         filter; 
     bool                     rejectedItemsRequeued;
     timeval                  waketime;
     int                      last_min_data_age;

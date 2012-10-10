@@ -97,7 +97,6 @@ private:
 };
 
 class EventuallyPersistentEngine;
-class QueuedItemFilter;
 class FlushEntry;
 
 /**
