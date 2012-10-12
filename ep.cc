@@ -539,9 +539,11 @@ public:
                 value_t value(NULL);
                 uint64_t cas = v->getCas();
                 bool wasDirty = v->isDirty();
-                vb->ht.unlocked_softDelete(vk.second, 0, bucket_num);
-                if (!wasDirty) {
-                    e->queueFlusher(vb, v, queue_op_del);
+                mutation_type_t delrv = vb->ht.unlocked_softDelete(vk.second, 0, bucket_num);
+                if (delrv == WAS_CLEAN || delrv == WAS_DIRTY || delrv == NOT_FOUND ) {
+                    if (!wasDirty) {
+                        e->queueFlusher(vb, v, queue_op_del);
+                    }
                 }
                 e->queueDirty(vk.second, vb->getId(), queue_op_del, value,
                               v->getFlags(), v->getExptime(), cas, v->getId());
@@ -573,9 +575,13 @@ StoredValue *EventuallyPersistentStore::fetchValidValue(RCPtr<VBucket> vb,
             value_t value(NULL);
             uint64_t cas = v->getCas();
             bool wasDirty = v->isDirty(); 
-            vb->ht.unlocked_softDelete(key, 0, bucket_num);
-            if (!wasDirty) {
-                queueFlusher(vb, v, queue_op_del);
+            mutation_type_t delrv = vb->ht.unlocked_softDelete(key, 0, bucket_num);
+            if (delrv == WAS_CLEAN || delrv == WAS_DIRTY || delrv == NOT_FOUND ) {
+                // As replication is interleaved with online restore, deletion of items that might
+                // exist in the restore backup files should be queued and replicated.
+                if (!wasDirty) {
+                    queueFlusher(vb, v, queue_op_del);
+                }
             }
             queueDirty(key, vb->getId(), queue_op_del, value,
                        v->getFlags(), v->getExptime(), cas, v->getId());
@@ -1493,6 +1499,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
     }
 
     bool wasDirty = v->isDirty();
+    assert(v->isDeleted() == false);
     mutation_type_t delrv = vb->ht.unlocked_softDelete(key, cas, bucket_num);
     ENGINE_ERROR_CODE rv;
     bool expired = false;
@@ -1954,7 +1961,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
 
     int bucket_num(0);
     LockHolder lh = vb->ht.getLockedBucket(fe.getKey(), &bucket_num);
-    StoredValue *v = fetchValidValue(vb, fe.getKey(), bucket_num, true);
+    StoredValue *v = vb->ht.unlocked_find(fe.getKey(), bucket_num, true);
     Item *itm = NULL;
 
     assert(fe.getStoredValue() == v);
@@ -1970,6 +1977,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
     int ret = 0;
 
     if (!deleted && isDirty && v->isExpired(ep_real_time() + engine.getItemExpiryWindow())) {
+        assert (v->isDeleted() == false);
         ++stats.flushExpired;
         v->markClean(&dirtied);
         // If the new item is expired within current_time + expiry_window, clear the row id
@@ -2435,6 +2443,7 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
     uint16_t vbid = vb->getId();
     int kvid = KVStoreMapper::getKVStoreId(v->getKey(), vbid);
     FlushEntry fe(v, vbid, op, getVBucketVersion(vbid), queued);
+    assert(v->isDirty());
     toFlush[kvid].push(fe);
 
     vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
