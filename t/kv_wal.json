@@ -1,0 +1,7 @@
+{
+    "kvstores" : {
+        "kvstore" : {
+            "initfile" : "t/wal.sql"
+        }
+    }
+}

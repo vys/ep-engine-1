@@ -81,7 +81,7 @@ bool abort_msg(const char *expr, const char *msg, int line);
 
 #define WHITESPACE_DB "whitespace sucks.db"
 #define MULTI_DISPATCHER_CONFIG \
-    "initfile=t/wal.sql;ht_size=129;ht_locks=3;chk_remover_stime=1;chk_period=60"
+    "kvstore_config_file=t/kv_wal.json;ht_size=129;ht_locks=3;chk_remover_stime=1;chk_period=60"
 
 protocol_binary_response_status last_status(static_cast<protocol_binary_response_status>(0));
 char *last_key = NULL;
@@ -812,10 +812,10 @@ static enum test_result test_init_fail(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     // Restart once to ensure written to disk.
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
-                              "dbname=/non/existent/path/dbname",
+                              "kvstore_config_file=t/kv_non_existent_path.json",
                               false, false);
 
-    check(h1->initialize(h, "dbname=/non/existent/path/dbname")
+    check(h1->initialize(h, "kvstore_config_file=t/kv_non_existent_path.json")
           == ENGINE_FAILED, "Failed to fail to initialize");
 
     // This test will crash *after* this if it can't successfully
@@ -5815,7 +5815,7 @@ engine_test_t* get_tests(void) {
         {"eviction: lru queue", test_lru_queue, NULL, teardown, "eviction_policy=lru"},
         {"eviction: pause and switch", test_eviction_pause_and_switch, NULL, teardown, NULL},
         {"validate engine handle", test_validate_engine_handle, NULL, teardown,
-         "db_strategy=singleDB;dbname=:memory:"},
+         "kvstore_config_file=t/kv_single_memory.json"},
         // basic tests
         {"test alloc limit", test_alloc_limit, NULL, teardown, NULL},
         {"test init failure", test_init_fail, NULL, teardown, NULL},
@@ -5824,13 +5824,13 @@ engine_test_t* get_tests(void) {
         {"test max_size changes", test_max_size_settings, NULL, teardown,
          "max_size=1000;ht_locks=1;ht_size=3"},
         {"test whitespace dbname", test_whitespace_db, NULL, teardown,
-         "dbname=" WHITESPACE_DB ";ht_locks=1;ht_size=3"},
+         "kvstore_config_file=t/kv_white.json;ht_locks=1;ht_size=3"},
         {"test db shards", test_db_shards, NULL, teardown,
-         "db_shards=5;db_strategy=multiDB"},
+         "kvstore_config_file=t/kv_multi_5.json"},
         //{"test single db strategy", test_single_db_strategy,
         // NULL, teardown, "db_strategy=singleDB"},
         {"test single in-memory db strategy", test_single_db_strategy,
-         NULL, teardown, "db_strategy=singleDB;dbname=:memory:"},
+         NULL, teardown, "kvstore_config_file=t/kv_single_memory.json"},
         {"get miss", test_get_miss, NULL, teardown, NULL},
         {"set", test_set, NULL, teardown, NULL},
         {"set with cksum", test_set_with_cksum, NULL, teardown, NULL},
@@ -5862,19 +5862,19 @@ engine_test_t* get_tests(void) {
         {"vbucket deletion doesn't affect new data", test_bug2761,
          NULL, teardown, NULL},
         {"vbucket deletion doesn't affect new data (table per vbucket)", test_bug2761,
-         NULL, teardown, "db_strategy=multiMTVBDB"},
+         NULL, teardown, "kvstore_config_file=t/kv_multimtvb.json"},
         {"start transaction failure handling", test_bug2830, NULL, teardown,
-         "db_shards=1;ht_size=13;ht_locks=7;db_strategy=multiDB"},
+         "ht_size=13;ht_locks=7;kvstore_config_file=t/kv_multi_1.json"},
         {"non-resident decrementers", test_mb3169, NULL, teardown, NULL},
         {"flush", test_flush, NULL, teardown, NULL},
         {"flush with stats", test_flush_stats, NULL, teardown, "chk_remover_stime=1;chk_period=60"},
         {"flush multi vbuckets", test_flush_multiv, NULL, teardown, NULL},
         {"flush multi vbuckets single mt", test_flush_multiv, NULL, teardown,
-         "db_strategy=singleMTDB;max_vbuckets=16;ht_size=7;ht_locks=3"},
+         "kvstore_config_file=t/kv_singlemt.json;max_vbuckets=16;ht_size=7;ht_locks=3"},
         {"flush multi vbuckets multi mt", test_flush_multiv, NULL, teardown,
-         "db_strategy=multiMTDB;max_vbuckets=16;ht_size=7;ht_locks=3"},
+         "kvstore_config_file=t/kv_multimt.json;max_vbuckets=16;ht_size=7;ht_locks=3"},
         {"flush multi vbuckets multi mt vb", test_flush_multiv, NULL, teardown,
-         "db_strategy=multiMTVBDB;max_vbuckets=16;ht_size=7;ht_locks=3"},
+         "kvstore_config_file=t/kv_multimtvb.json;max_vbuckets=16;ht_size=7;ht_locks=3"},
         {"expiry", test_expiry, NULL, teardown, NULL},
         {"expiry_loader", test_expiry_loader, NULL, teardown, NULL},
         {"expiry_flush", test_expiry_flush, NULL, teardown, NULL},
@@ -6017,7 +6017,7 @@ engine_test_t* get_tests(void) {
         {"test vbucket create", test_vbucket_create, NULL, teardown, NULL},
         {"test vbucket destroy", test_vbucket_destroy, NULL, teardown, NULL},
         {"test vbucket destroy (multitable)", test_vbucket_destroy, NULL, teardown,
-         "db_strategy=multiMTVBDB;max_vbuckets=16;ht_size=7;ht_locks=3"},
+         "kvstore_config_file=t/kv_multimtvb.json;max_vbuckets=16;ht_size=7;ht_locks=3"},
         {"test vbucket destroy stats", test_vbucket_destroy_stats,
          NULL, teardown, "chk_remover_stime=1;chk_period=60"},
         {"test vbucket destroy restart", test_vbucket_destroy_restart,
@@ -6040,23 +6040,23 @@ engine_test_t* get_tests(void) {
 
         // Restore tests
         {"restore: not enabled", test_restore_not_enabled, NULL, teardown,
-         "db_strategy=singleDB;dbname=:memory:"},
+         "kvstore_config_file=t/kv_single_memory.json"},
         {"restore: no such file", test_restore_no_such_file, NULL, teardown,
-         "db_strategy=singleDB;dbname=:memory:;restore_mode=true"},
+         "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
         {"restore: invalid file", test_restore_invalid_file, NULL, teardown,
-         "db_strategy=singleDB;dbname=:memory:;restore_mode=true"},
+         "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
         {"restore: data miss during restore", test_restore_data_miss, NULL, teardown,
-         "db_strategy=singleDB;dbname=:memory:;restore_mode=true"},
+         "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
         {"restore: no data in there", test_restore_clean, NULL, teardown,
          "restore_mode=true"},
         {"restore: no data in there (with partial vbucket list)",
          test_restore_clean_vbucket_subset, NULL, teardown,
          "restore_mode=true"},
         {"restore: with keys", test_restore_with_data, NULL, teardown,
-         "db_strategy=singleDB;dbname=:memory:;restore_mode=true"},
+         "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
 #ifdef future
         {"restore: multiple incrementalfiles", test_restore_multi, NULL, teardown,
-         "db_strategy=singleDB;dbname=:memory:;restore_mode=true"},
+         "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
 #endif
         {NULL, NULL, NULL, NULL, NULL}
     };

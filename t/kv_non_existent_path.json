@@ -1,0 +1,7 @@
+{
+    "kvstores" : {
+        "kvstore" : {
+            "dbname" : "/non/existent/path/dbname"
+        }
+    }
+}

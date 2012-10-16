@@ -1,0 +1,8 @@
+{
+    "kvstores" : {
+        "kvstore" : {
+            "db_strategy" : "multiDB",
+            "db_shards" : 1
+        }
+    }
+}

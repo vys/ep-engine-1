@@ -1,0 +1,7 @@
+{
+    "kvstores" : {
+        "kvstore" : {
+            "db_strategy" : "multiMTDB"
+        }
+    }
+}

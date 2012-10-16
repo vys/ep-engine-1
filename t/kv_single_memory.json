@@ -1,0 +1,8 @@
+{
+    "kvstores" : {
+        "kvstore" : {
+            "db_strategy" : "singleDB",
+            "dbname" : ":memory:"
+        }
+    }
+}

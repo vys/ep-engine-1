@@ -383,7 +383,7 @@ mbbackup-0002.mbb: $(top_srcdir)/t/generate-mbbackup
 engine_tests: ep.la ep_testsuite.la mbbackup-0002.mbb
 	$(ENGINE_TESTAPP) -E .libs/ep.so -t $(TEST_TIMEOUT) \
 		-T .libs/ep_testsuite.so \
-		-e 'ht_size=13;ht_locks=7;initfile=t/test_pragma.sql;min_data_age=0;db_strategy=multiDB'
+		-e 'ht_size=13;ht_locks=7;kvstore_config_file=t/kv_default.json;min_data_age=0'
 
 test: all check-TESTS engine_tests sizes
 	./sizes
