@@ -218,6 +218,7 @@ public:
             default:
                 throw std::string("Invalid version number");
         }
+        (void)sqlite3_finalize(statement);
 
         if (sqlite3_prepare_v2(db, query[query_index],
                     strlen(query[query_index]),
