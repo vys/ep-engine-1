@@ -1029,7 +1029,7 @@ extern "C" {
                     params->h1->tap_notify(params->h, cookie, NULL, 0, 0,
                                            PROTOCOL_BINARY_RESPONSE_SUCCESS,
                                            TAP_ACK, seqno, NULL, 0, 0,
-                                           0, 0, 0, NULL, 0, 0 ,0);
+                                           0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
                     testHarness.lock_cookie(cookie);
                 }
                 break;
@@ -2681,7 +2681,7 @@ static enum test_result test_tap_rcvr_mutate(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 
         memset(data, 'x', i);
         check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
                              1, 0, TAP_MUTATION, 1, "key", 3, 828, std::numeric_limits<uint32_t>::max(), 0, 0,
-                             data, i, 0, 0) == ENGINE_SUCCESS,
+                             data, i, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
         std::stringstream ss;
         ss << "failed key at " << i;
@@ -2701,11 +2701,11 @@ static enum test_result test_tap_rcvr_checkpoint(ENGINE_HANDLE *h, ENGINE_HANDLE
         ss << i;
         check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
                              1, 0, TAP_CHECKPOINT_START, 1, "", 0, 828, 0, 0, 0,
-                             ss.str().c_str(), ss.str().length(), 1, 0) == ENGINE_SUCCESS,
+                             ss.str().c_str(), ss.str().length(), 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
         check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
                              1, 0, TAP_CHECKPOINT_END, 1, "", 0, 828, 0, 0, 0,
-                             ss.str().c_str(), ss.str().length(), 1, 0) == ENGINE_SUCCESS,
+                             ss.str().c_str(), ss.str().length(), 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
     }
     return SUCCESS;
@@ -2715,7 +2715,7 @@ static enum test_result test_tap_rcvr_mutate_dead(ENGINE_HANDLE *h, ENGINE_HANDL
     char eng_specific[1];
     check(h1->tap_notify(h, NULL, eng_specific, 1,
                          1, 0, TAP_MUTATION, 1, "key", 3, 828, std::numeric_limits<uint32_t>::max(), 0, 0,
-                         "data", 4, 1, 0) == ENGINE_NOT_MY_VBUCKET,
+                         "data", 4, 1, DI_CKSUM_DISABLED_STR) == ENGINE_NOT_MY_VBUCKET,
           "Expected not my vbucket.");
     return SUCCESS;
 }
@@ -2725,7 +2725,7 @@ static enum test_result test_tap_rcvr_mutate_pending(ENGINE_HANDLE *h, ENGINE_HA
     char eng_specific[1];
     check(h1->tap_notify(h, NULL, eng_specific, 1,
                          1, 0, TAP_MUTATION, 1, "key", 3, 828, std::numeric_limits<uint32_t>::max(), 0, 0,
-                         "data", 4, 1, 0) == ENGINE_SUCCESS,
+                         "data", 4, 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Expected expected success.");
     return SUCCESS;
 }
@@ -2735,7 +2735,7 @@ static enum test_result test_tap_rcvr_mutate_replica(ENGINE_HANDLE *h, ENGINE_HA
     char eng_specific[1];
     check(h1->tap_notify(h, NULL, eng_specific, 1,
                          1, 0, TAP_MUTATION, 1, "key", 3, 828, std::numeric_limits<uint32_t>::max(), 0, 0,
-                         "data", 4, 1, 0) == ENGINE_SUCCESS,
+                         "data", 4, 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Expected expected success.");
     return SUCCESS;
 }
@@ -2743,7 +2743,7 @@ static enum test_result test_tap_rcvr_mutate_replica(ENGINE_HANDLE *h, ENGINE_HA
 static enum test_result test_tap_rcvr_delete(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(h1->tap_notify(h, NULL, NULL, 0,
                          1, 0, TAP_DELETION, 0, "key", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0,
-                         0, 0, 0, 0) == ENGINE_SUCCESS,
+                         0, 0, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Failed tap notify.");
     return SUCCESS;
 }
@@ -2751,7 +2751,7 @@ static enum test_result test_tap_rcvr_delete(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 
 static enum test_result test_tap_rcvr_delete_dead(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(h1->tap_notify(h, NULL, NULL, 0,
                          1, 0, TAP_DELETION, 1, "key", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0,
-                         NULL, 0, 1, 0) == ENGINE_NOT_MY_VBUCKET,
+                         NULL, 0, 1, DI_CKSUM_DISABLED_STR) == ENGINE_NOT_MY_VBUCKET,
           "Expected not my vbucket.");
     return SUCCESS;
 }
@@ -2760,7 +2760,7 @@ static enum test_result test_tap_rcvr_delete_pending(ENGINE_HANDLE *h, ENGINE_HA
     check(set_vbucket_state(h, h1, 1, vbucket_state_pending), "Failed to set vbucket state.");
     check(h1->tap_notify(h, NULL, NULL, 0,
                          1, 0, TAP_DELETION, 1, "key", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0,
-                         NULL, 0, 1, 0) == ENGINE_SUCCESS,
+                         NULL, 0, 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Expected expected success.");
     return SUCCESS;
 }
@@ -2769,7 +2769,7 @@ static enum test_result test_tap_rcvr_delete_replica(ENGINE_HANDLE *h, ENGINE_HA
     check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
     check(h1->tap_notify(h, NULL, NULL, 0,
                          1, 0, TAP_DELETION, 1, "key", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0,
-                         NULL, 0, 1, 0) == ENGINE_SUCCESS,
+                         NULL, 0, 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Expected expected success.");
     return SUCCESS;
 }
@@ -3297,7 +3297,7 @@ static enum test_result test_tap_ack_stream(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
             h1->tap_notify(h, cookie, NULL, 0, 0,
                            PROTOCOL_BINARY_RESPONSE_SUCCESS,
                            TAP_ACK, seqno, NULL, 0, 0,
-                           0, 0, 0, NULL, 0, 0 ,0);
+                           0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
             testHarness.lock_cookie(cookie);
             break;
         case TAP_NOOP:
@@ -3313,13 +3313,13 @@ static enum test_result test_tap_ack_stream(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
                 h1->tap_notify(h, cookie, NULL, 0, 0,
                                PROTOCOL_BINARY_RESPONSE_ETMPFAIL,
                                TAP_ACK, seqno, key.c_str(), key.length(),
-                               0, 0, 0, 0, NULL, 0, 0 ,0);
+                               0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
             } else {
                 receivedKeys[index] = true;
                 h1->tap_notify(h, cookie, NULL, 0, 0,
                                PROTOCOL_BINARY_RESPONSE_SUCCESS,
                                TAP_ACK, seqno, key.c_str(), key.length(),
-                               0, 0, 0, 0, NULL, 0, 0 ,0);
+                               0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
             }
             testHarness.lock_cookie(cookie);
             h1->release(h, cookie, it);
@@ -3330,7 +3330,7 @@ static enum test_result test_tap_ack_stream(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
             h1->tap_notify(h, cookie, NULL, 0, 0,
                            PROTOCOL_BINARY_RESPONSE_SUCCESS,
                            TAP_ACK, seqno, key.c_str(), key.length(),
-                           0, 0, 0, 0, NULL, 0, 0 ,0);
+                           0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
             testHarness.lock_cookie(cookie);
             h1->release(h, cookie, it);
             break;
@@ -3339,7 +3339,7 @@ static enum test_result test_tap_ack_stream(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
             h1->tap_notify(h, cookie, NULL, 0, 0,
                            PROTOCOL_BINARY_RESPONSE_SUCCESS,
                            TAP_ACK, seqno, key.c_str(), key.length(),
-                           0, 0, 0, 0, NULL, 0, 0 ,0);
+                           0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
             testHarness.lock_cookie(cookie);
             h1->release(h, cookie, it);
             break;
@@ -3422,14 +3422,14 @@ static enum test_result test_tap_implicit_ack_stream(ENGINE_HANDLE *h, ENGINE_HA
                 h1->tap_notify(h, cookie, NULL, 0, 0,
                                PROTOCOL_BINARY_RESPONSE_SUCCESS,
                                TAP_ACK, seqno, NULL, 0,
-                               0, 0, 0, 0, NULL, 0, 0 ,0);
+                               0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
                 testHarness.lock_cookie(cookie);
             } else if (flags == TAP_FLAG_ACK) {
                 testHarness.unlock_cookie(cookie);
                 h1->tap_notify(h, cookie, NULL, 0, 0,
                                PROTOCOL_BINARY_RESPONSE_SUCCESS,
                                TAP_ACK, seqno, NULL, 0,
-                               0, 0, 0, 0, NULL, 0, 0 ,0);
+                               0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
                 testHarness.lock_cookie(cookie);
             }
         }
@@ -3451,14 +3451,14 @@ static enum test_result test_tap_implicit_ack_stream(ENGINE_HANDLE *h, ENGINE_HA
                 h1->tap_notify(h, cookie, NULL, 0, 0,
                                PROTOCOL_BINARY_RESPONSE_ETMPFAIL,
                                TAP_ACK, seqno, key.c_str(), key.length(),
-                               0, 0, 0, 0, NULL, 0, 0 ,0);
+                               0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
                 testHarness.lock_cookie(cookie);
             } else if (flags == TAP_FLAG_ACK) {
                 testHarness.unlock_cookie(cookie);
                 h1->tap_notify(h, cookie, NULL, 0, 0,
                                PROTOCOL_BINARY_RESPONSE_SUCCESS,
                                TAP_ACK, seqno, NULL, 0,
-                               0, 0, 0, 0, NULL, 0, 0 ,0);
+                               0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
                 testHarness.lock_cookie(cookie);
             }
         }
@@ -3483,7 +3483,7 @@ static enum test_result test_tap_implicit_ack_stream(ENGINE_HANDLE *h, ENGINE_HA
                 h1->tap_notify(h, cookie, NULL, 0, 0,
                                PROTOCOL_BINARY_RESPONSE_SUCCESS,
                                TAP_ACK, seqno, NULL, 0,
-                               0, 0, 0, 0, NULL, 0, 0 ,0);
+                               0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
                 testHarness.lock_cookie(cookie);
             }
         }
@@ -3541,17 +3541,17 @@ static enum test_result test_tap_notify(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1)
         std::string key = ss.str();
 
         r = h1->tap_notify(h, cookie, NULL, 0, 1, 0, TAP_MUTATION, 0,
-                           key.c_str(), key.length(), 0, std::numeric_limits<uint32_t>::max(), 0, 0, buffer, 1024, 0, 0);
+                           key.c_str(), key.length(), 0, std::numeric_limits<uint32_t>::max(), 0, 0, buffer, 1024, 0, DI_CKSUM_DISABLED_STR);
     } while (r == ENGINE_SUCCESS);
     check(r == ENGINE_DISCONNECT, "should disconnect non-acking streams");
 
     uint32_t auto_nack = 0; // TAP_OPAQUE_ENABLE_AUTO_NACK
     r = h1->tap_notify(h, cookie, &auto_nack, sizeof(auto_nack), 1, 0,
-                       TAP_OPAQUE, 0, NULL, 0, 0, 0, 0, 0, NULL, 0, 0 ,0);
+                       TAP_OPAQUE, 0, NULL, 0, 0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
     check(r == ENGINE_SUCCESS, "Enable auto nack'ing");
 
     r = h1->tap_notify(h, cookie, NULL, 0, 1, 0, TAP_MUTATION, 0,
-                       "foo", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0, buffer, 1024, 0, 0);
+                       "foo", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0, buffer, 1024, 0, DI_CKSUM_DISABLED_STR);
     check(r == ENGINE_TMPFAIL, "non-acking streams should etmpfail");
 
     testHarness.destroy_cookie(cookie);
