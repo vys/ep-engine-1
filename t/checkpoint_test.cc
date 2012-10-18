@@ -40,44 +40,6 @@ time_t ep_real_time() {
     return time(NULL);
 }
 
-static void *launch_persistence_thread(void *arg) {
-    struct thread_args *args = static_cast<struct thread_args *>(arg);
-    LockHolder lh(*(args->mutex));
-    LockHolder lhg(*(args->gate));
-    ++(*(args->counter));
-    lhg.unlock();
-    args->gate->notify();
-    args->mutex->wait();
-    lh.unlock();
-
-    bool flush = false;
-    while(true) {
-        size_t itemPos;
-        std::vector<queued_item> items;
-        args->checkpoint_manager->getAllItemsForPersistence(items);
-        for(itemPos = 0; itemPos < items.size(); ++itemPos) {
-            queued_item qi = items.at(itemPos);
-            if (qi->getOperation() == queue_op_flush) {
-                flush = true;
-                break;
-            }
-        }
-        if (flush) {
-	    // Checkpoint start and end operations may have been introduced in
-	    // the items queue after the "flush" operation was added. Ignore
-	    // these. Anything else will be considered an error.
-            for(size_t i = itemPos + 1; i < items.size(); ++i) {
-                queued_item qi = items.at(i);
-                assert(queue_op_checkpoint_start == qi->getOperation() ||
-                       queue_op_checkpoint_end == qi->getOperation());
-            }
-            break;
-        }
-    }
-    assert(flush == true);
-    assert(args->checkpoint_manager->getNumItemsForPersistence() == 0);
-    return NULL;
-}
 
 static void *launch_tap_client_thread(void *arg) {
     struct thread_args *args = static_cast<struct thread_args *>(arg);
@@ -159,7 +121,6 @@ int main(int argc, char **argv) {
 
     pthread_t tap_threads[NUM_TAP_THREADS];
     pthread_t set_threads[NUM_SET_THREADS];
-    pthread_t persistence_thread;
     pthread_t checkpoint_cleanup_thread;
     int i(0), rc(0);
 
@@ -187,9 +148,6 @@ int main(int argc, char **argv) {
     // reasonable amount of time
     alarm(60);
 
-    rc = pthread_create(&persistence_thread, NULL, launch_persistence_thread, &t_args);
-    assert(rc == 0);
-
     rc = pthread_create(&checkpoint_cleanup_thread, NULL,
                         launch_checkpoint_cleanup_thread, &t_args);
     assert(rc == 0);
@@ -208,6 +166,7 @@ int main(int argc, char **argv) {
     while (true) {
         LockHolder lh(*gate);
         if (*counter == (NUM_TAP_THREADS + NUM_SET_THREADS + 2)) {
+            std::cout<<*counter<<std::endl;
             break;
         }
         gate->wait();
@@ -223,9 +182,6 @@ int main(int argc, char **argv) {
     // Push the flush command into the queue so that all other threads can be terminated.
     queued_item qi(new QueuedItem ("flush", 0xffff, queue_op_flush));
     checkpoint_manager->queueDirty(qi, vbucket);
-
-    rc = pthread_join(persistence_thread, NULL);
-    assert(rc == 0);
 
     for (i = 0; i < NUM_TAP_THREADS; ++i) {
         rc = pthread_join(tap_threads[i], NULL);
