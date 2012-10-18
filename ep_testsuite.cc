@@ -5866,6 +5866,53 @@ static enum test_result test_kvconf_fail(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1)
 
     check(h1->initialize(h, "kvstore_config_file=t/kv_multikv_fail.json")
           == ENGINE_FAILED, "Failed to fail to initialize");
+    return SUCCESS;
+}
+
+static enum test_result test_tap_rcv_backfill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    char eng_specific[64];
+    uint32_t tap_flag;
+    memset(eng_specific, 0, sizeof(eng_specific));
+    const void *cookie = testHarness.create_cookie();
+
+    tap_flag = htonl(TAP_OPAQUE_ENABLE_CHECKPOINT_SYNC);
+    check(h1->tap_notify(h, cookie, &tap_flag, sizeof(uint32_t),1,
+            0, TAP_OPAQUE, 1, "", 0, 828, 0, 0, 0, "",0, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+        "Failed tap notify.");
+
+    tap_flag = htonl(TAP_OPAQUE_INITIAL_VBUCKET_STREAM);
+    check(h1->tap_notify(h, cookie, &tap_flag, sizeof(uint32_t),1,
+            0, TAP_OPAQUE, 1, "", 0, 828, 0, 0, 0, "",0, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+        "Failed tap notify.");
+
+    check(h1->get_stats(h, NULL, "checkpoint", strlen("checkpoint"), add_stats) == ENGINE_SUCCESS,
+            "Failed to get stats.");
+    check(vals["vb_0:backfillphase"] == "true", "Expected backfill mode");
+
+    for (size_t i = 0; i < 8192; ++i) {
+        std::stringstream ss;
+        ss<<"key_"<<i;
+        char *data = static_cast<char *>(malloc(i));
+        memset(data, 'x', i);
+        check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
+                             1, 0, TAP_MUTATION, 1, ss.str().c_str(), ss.str().length(), 828, std::numeric_limits<uint32_t>::max(), 0, 0,
+                             data, i, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+              "Failed tap notify.");
+        free(data);
+    }
+
+    tap_flag = htonl(TAP_OPAQUE_CLOSE_BACKFILL);
+    check(h1->tap_notify(h, cookie, &tap_flag, sizeof(uint32_t),1,
+            0, TAP_OPAQUE, 1, "", 0, 828, 0, 0, 0, "",0, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+        "Failed tap notify.");
+
+    check(h1->get_stats(h, NULL, "checkpoint", strlen("checkpoint"), add_stats) == ENGINE_SUCCESS,
+            "Failed to get stats.");
+    check(vals["vb_0:backfillphase"] == "false", "Expected checkpoint mode");
+
+    wait_for_flusher_to_settle(h, h1);
+    check(get_int_stat(h, h1, "ep_total_persisted") == 8192, "Expected to persist all backfilled items");
+    testHarness.destroy_cookie(cookie);
 
     return SUCCESS;
 }
@@ -6000,6 +6047,8 @@ engine_test_t* get_tests(void) {
          "tap_keepalive=100;ht_size=129;ht_locks=3;tap_backoff_period=0.05;tap_ack_initial_sequence_number=4294967290;chk_max_items=500"},
         {"tap notify", test_tap_notify, NULL, teardown,
          "max_size=1048576"},
+        {"tap backfill: receive and persist data", test_tap_rcv_backfill, NULL, teardown,
+        "inconsistent_slave_chk=true"},
         // restart tests
         {"test restart", test_restart, NULL, teardown, NULL},
         {"set+get+restart+hit (bin)", test_restart_bin_val, NULL, teardown, NULL},

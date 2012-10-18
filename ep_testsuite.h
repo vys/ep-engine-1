@@ -3,6 +3,7 @@
 
 #include <memcached/engine.h>
 #include <memcached/engine_testapp.h>
+#include "tapconnection.hh"
 
 #ifdef __cplusplus
 extern "C" {
