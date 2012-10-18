@@ -5816,6 +5816,27 @@ static enum test_result test_lru_eviction(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     return SUCCESS;
 }
 
+static enum test_result test_kvconf_basic(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    vals.clear();
+    check(h1->get_stats(h, NULL, "kvstore", strlen("kvstore"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    std::map<std::string, std::string> tvals(vals);
+    check(tvals.find("num_kvstores") != tvals.end(), "Missing stat");
+    check(tvals.find("kvstore:dbname") != tvals.end(), "Missing stat");
+    check(tvals.find("kvstore:shardpattern") != tvals.end(), "Missing stat");
+    check(tvals.find("kvstore:initfile") != tvals.end(), "Missing stat");
+    check(tvals.find("kvstore:postInitfile") != tvals.end(), "Missing stat");
+    check(tvals.find("kvstore:db_strategy") != tvals.end(), "Missing stat");
+    check(tvals.find("kvstore:data_dbs") != tvals.end(), "Missing stat");
+
+    int shards = get_int_stat(h, h1, "kvstore:db_shards", "kvstore");
+    std::string key("kvstore:db_shard");
+    for (int i = 0; i < shards; i++) {
+        check(tvals.find(key + char('0' + i)) != tvals.end(), "Missing stat");
+    }
+    return SUCCESS;
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
@@ -5895,6 +5916,8 @@ engine_test_t* get_tests(void) {
         {"stats vkey", test_vkey_stats, NULL, teardown, NULL},
         {"warmup stats", test_warmup_stats, NULL, teardown, NULL},
         {"stats curr_items", test_curr_items, NULL, teardown, NULL},
+        // kvstore config tests
+        {"kvstore config: config generation test", test_kvconf_basic, NULL, teardown, NULL},
         // eviction
         {"value eviction", test_value_eviction, NULL, teardown, NULL},
         {"eviction: lru evictions", test_lru_eviction, NULL, teardown, 
