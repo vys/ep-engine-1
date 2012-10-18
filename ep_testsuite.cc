@@ -3687,6 +3687,7 @@ static enum test_result test_key_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
 
     // stat for key "k1" and vbucket "0"
     const char *statkey1 = "key k1 0";
+    vals.clear();
     check(h1->get_stats(h, cookie, statkey1, strlen(statkey1), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("key_is_dirty") != vals.end(), "Found no key_is_dirty");
@@ -3701,6 +3702,7 @@ static enum test_result test_key_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
 
     // stat for key "k2" and vbucket "1"
     const char *statkey2 = "key k2 1";
+    vals.clear();
     check(h1->get_stats(h, cookie, statkey2, strlen(statkey2), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("key_is_dirty") != vals.end(), "Found no key_is_dirty");
@@ -5597,6 +5599,7 @@ static enum test_result test_eviction_policy_switch(ENGINE_HANDLE *h, ENGINE_HAN
 
     sleep(2 * pager_time);
 
+    vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("eviction_policy") != vals.end(), "Missing stat");
@@ -5608,6 +5611,7 @@ static enum test_result test_eviction_policy_switch(ENGINE_HANDLE *h, ENGINE_HAN
 
     sleep(2 * pager_time);
 
+    vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("eviction_policy") != vals.end(), "Missing stat");
@@ -5635,6 +5639,7 @@ static enum test_result test_eviction_pause(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
 
     sleep(2 * pager_time);
 
+    vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("evpolicy_job_start_timestamp") != vals.end(), "Missing stat");
@@ -5644,6 +5649,7 @@ static enum test_result test_eviction_pause(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
 
     sleep(2 * pager_time);
 
+    vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("evpolicy_job_start_timestamp") != vals.end(), "Missing stat");
@@ -5657,6 +5663,7 @@ static enum test_result test_eviction_pause(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
 
     sleep(2 * pager_time);
 
+    vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("evpolicy_job_start_timestamp") != vals.end(), "Missing stat");
@@ -5716,6 +5723,7 @@ static enum test_result test_lru_queue(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     wait_for_flusher_to_settle(h, h1);
     sleep(5);
 
+    vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("lru_policy_ev_queue_size") != vals.end(), "Missing stat");
@@ -5725,6 +5733,7 @@ static enum test_result test_lru_queue(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     evict_key(h, h1, "key1");
     sleep(5);
 
+    vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("lru_policy_ev_queue_size") != vals.end(), "Missing stat");
@@ -5738,6 +5747,7 @@ static void check_eviction_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int exp
     std::string s;
     int val;
 
+    vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("eviction_keys_evicted") != vals.end(), "Missing stat");
