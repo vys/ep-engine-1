@@ -5820,10 +5820,6 @@ MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
     static engine_test_t tests[]  = {
-        {"eviction: lru evictions", test_lru_eviction, NULL, teardown, 
-         "eviction_policy=lru;max_size=10000; exp_pager_stime=2;eviction_headroom=1000;chk_period=60;ht_size=3;ht_locks=1"},
-        {"eviction: lru queue", test_lru_queue, NULL, teardown, "eviction_policy=lru"},
-        {"eviction: pause and switch", test_eviction_pause_and_switch, NULL, teardown, NULL},
         {"validate engine handle", test_validate_engine_handle, NULL, teardown,
          "kvstore_config_file=t/kv_single_memory.json"},
         // basic tests
@@ -5901,6 +5897,10 @@ engine_test_t* get_tests(void) {
         {"stats curr_items", test_curr_items, NULL, teardown, NULL},
         // eviction
         {"value eviction", test_value_eviction, NULL, teardown, NULL},
+        {"eviction: lru evictions", test_lru_eviction, NULL, teardown, 
+         "eviction_policy=lru;max_size=10000; exp_pager_stime=2;eviction_headroom=1000;chk_period=60;ht_size=3;ht_locks=1"},
+        {"eviction: lru queue", test_lru_queue, NULL, teardown, "eviction_policy=lru"},
+        {"eviction: pause and switch", test_eviction_pause_and_switch, NULL, teardown, NULL},
         // duplicate items on disk
         {"duplicate items on disk", test_duplicate_items_disk, NULL, teardown, NULL},
         // tap tests
