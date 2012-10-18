@@ -5837,6 +5837,39 @@ static enum test_result test_kvconf_basic(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     return SUCCESS;
 }
 
+static enum test_result test_kvconf_multikv(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    vals.clear();
+    check(h1->get_stats(h, NULL, "kvstore", strlen("kvstore"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    std::map<std::string, std::string> tvals(vals);
+    check(tvals.find("num_kvstores") != tvals.end(), "Missing stat");
+    check(tvals["num_kvstores"] == "3", "Wrong stat value");
+    check(tvals.find("kvstore1:dbname") != tvals.end(), "Missing stat");
+    check(tvals.find("kvstore2:dbname") != tvals.end(), "Missing stat");
+    check(tvals.find("kvstore3:dbname") != tvals.end(), "Missing stat");
+
+    int shards = get_int_stat(h, h1, "kvstore1:db_shards", "kvstore");
+    std::string key("kvstore2:db_shard");
+    std::set<std::string> val;
+    for (int i = 0; i < shards; i++) {
+        check(tvals.find(key + char('0' + i)) != tvals.end(), "Missing stat");
+        val.insert(tvals[key + char('0' + i)]);
+    }
+    check((int) val.size() == shards, "db_shard names not unique");
+    return SUCCESS;
+}
+
+static enum test_result test_kvconf_fail(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    testHarness.reload_engine(&h, &h1,
+                              testHarness.engine_path, NULL,
+                              false, false);
+
+    check(h1->initialize(h, "kvstore_config_file=t/kv_multikv_fail.json")
+          == ENGINE_FAILED, "Failed to fail to initialize");
+
+    return SUCCESS;
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
@@ -5918,6 +5951,8 @@ engine_test_t* get_tests(void) {
         {"stats curr_items", test_curr_items, NULL, teardown, NULL},
         // kvstore config tests
         {"kvstore config: config generation test", test_kvconf_basic, NULL, teardown, NULL},
+        {"kvstore config: multiple kvstore config", test_kvconf_multikv, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
+        {"kvstore config: unique dbname failure", test_kvconf_fail, NULL, teardown, NULL},
         // eviction
         {"value eviction", test_value_eviction, NULL, teardown, NULL},
         {"eviction: lru evictions", test_lru_eviction, NULL, teardown, 

@@ -1,0 +1,17 @@
+{
+    "kvstores" : {
+        "kvstore1" : {
+            "db_strategy" : "multiDB",
+            "dbname" : "/tmp/db1.db"
+        },
+        "kvstore2" : {
+            "db_strategy" : "multiDB",
+            "dbname" : "/tmp/db1.db-2.sqlite",
+            "db_shards" : 8
+        },
+        "kvstore3" : {
+            "db_strategy" : "multiDB",
+            "dbname" : "/tmp/db3.db"
+        }
+    }
+}
