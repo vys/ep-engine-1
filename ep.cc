@@ -2166,7 +2166,8 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
     LockHolder rlh(restore.mutex);
     if (restore.itemsDeleted.find(key) == restore.itemsDeleted.end() &&
         vb->ht.unlocked_restoreItem(itm, op, bucket_num)) {
-        StoredValue *v = vb->ht.unlocked_find(itm.getKey(), bucket_num, false);
+        StoredValue *v = vb->ht.unlocked_find(itm.getKey(), bucket_num, true);
+        assert(v);
         queueFlusher(vb, v, op);
         return 0;
     }
