@@ -165,8 +165,7 @@ int main(int argc, char **argv) {
     // Wait for all threads to reach the starting gate
     while (true) {
         LockHolder lh(*gate);
-        if (*counter == (NUM_TAP_THREADS + NUM_SET_THREADS + 2)) {
-            std::cout<<*counter<<std::endl;
+        if (*counter == (NUM_TAP_THREADS + NUM_SET_THREADS + 1)) {
             break;
         }
         gate->wait();
