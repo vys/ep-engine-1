@@ -54,6 +54,7 @@
 #include "command_ids.h"
 #include "sync_registry.hh"
 #include "crc32.hh"
+#include "tapconnection.hh"
 
 #ifdef linux
 /* /usr/include/netinet/in.h defines macros from ntohs() to _bswap_nn to
@@ -5950,6 +5951,63 @@ static enum test_result test_restore_vb0_persistence(ENGINE_HANDLE *h, ENGINE_HA
     return SUCCESS;
 }
 
+static int get_persisted_cpid_vb0_fromdb() {
+
+    sqlite3 *db;
+    const char * fn = "/tmp/test.db";
+    if(sqlite3_open_v2(fn, &db, SQLITE_OPEN_READONLY, NULL) !=  SQLITE_OK) {
+        throw std::runtime_error("Error initializing sqlite3");
+    }
+
+    PreparedStatement pst(db, "select checkpoint_id from vbucket_states where vbid=0;");
+    if (pst.fetch()) {
+        return pst.column_int64(0);
+    }
+    sqlite3_close(db);
+
+    return -1;
+}
+
+static enum test_result test_checkpoint_vb0_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    uint64_t checkpointId;
+
+    char eng_specific[64];
+    memset(eng_specific, 0, sizeof(eng_specific));
+    check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
+    for (int i = 1; i < 5; ++i) {
+        checkpointId = htonll(i);
+
+        check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+                             1, 0, TAP_CHECKPOINT_START, 1, "", 0, 828, 0, 0, 0,
+                             &checkpointId, sizeof(checkpointId), 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+              "Failed tap notify.");
+
+        for (size_t j = 0; j < 100; ++j) {
+            std::stringstream ss;
+            ss << j;
+            check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+                                 1, 0, TAP_MUTATION, 1, ss.str().c_str(), ss.str().length(), 828, std::numeric_limits<uint32_t>::max(), 0, 0,
+                                 "test_value", 10, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+                  "Failed tap notify.");
+        }
+        wait_for_flusher_to_settle(h, h1);
+        wait_for_flusher_to_settle(h, h1);
+        vals.clear();
+        check(h1->get_stats(h, NULL, "checkpoint", strlen("checkpoint"), add_stats) == ENGINE_SUCCESS,
+            "Failed to get stats.");
+        check(atoi(vals["vb_0:persisted_checkpoint_id"].c_str()) == i, "checkpoint should be persisted after flusher runs");
+
+        check(get_persisted_cpid_vb0_fromdb() == i, "vbucket_states table should be updated with latest persisted checkpoint_id");
+
+        check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+                             1, 0, TAP_CHECKPOINT_END, 1, "", 0, 828, 0, 0, 0,
+                             &checkpointId, sizeof(checkpointId), 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+              "Failed tap notify.");
+    }
+
+    return SUCCESS;
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
@@ -6210,6 +6268,9 @@ engine_test_t* get_tests(void) {
 #endif
         {"restore: vb0 mode with persistence", test_restore_vb0_persistence, NULL, teardown,
          "restore_mode=true"},
+
+        {"persistence: vb0 checkpoint_id persistence (stats & vbucket_states table)", test_checkpoint_vb0_persistence, NULL, teardown,
+        "inconsistent_slave_chk=true"},
         {NULL, NULL, NULL, NULL, NULL}
     };
     return tests;
