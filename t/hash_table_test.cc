@@ -61,7 +61,7 @@ static int count(HashTable &h, bool verify=true) {
 }
 
 static void store(HashTable &h, std::string &k) {
-    Item i(k, 0, 0, k.c_str(), k.length());
+    Item i(k, 0, 0, k.c_str(), k.length(), "0001:");
     int64_t row_id = -1;
     assert(h.set(i, row_id) == NOT_FOUND);
 }
@@ -79,7 +79,7 @@ static void addMany(HashTable &h, std::vector<std::string> &keys,
     std::vector<std::string>::iterator it;
     for (it = keys.begin(); it != keys.end(); it++) {
         std::string k = *it;
-        Item i(k, 0, 0, k.c_str(), k.length());
+        Item i(k, 0, 0, k.c_str(), k.length(), "0001:");
         add_type_t v = h.add(i);
         assert(expect == v);
     }
@@ -108,7 +108,7 @@ void assertEquals(T a, T b) {
 
 static void add(HashTable &h, const std::string &k, add_type_t expect,
                 int expiry=0) {
-    Item i(k, 0, expiry, k.c_str(), k.length());
+    Item i(k, 0, expiry, k.c_str(), k.length(), "0001:");
     add_type_t v = h.add(i);
     assertEquals(expect, v);
 }
@@ -360,7 +360,7 @@ static void testAdd() {
     assert(!h.find(keys[0]));
     assert(count(h) == nkeys - 1);
 
-    Item i(keys[0], 0, 0, "newtest", 7);
+    Item i(keys[0], 0, 0, "newtest", 7, "0001:");
     assert(h.add(i) == ADD_UNDEL);
     assert(count(h, false) == nkeys);
 }
