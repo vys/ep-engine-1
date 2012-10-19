@@ -5917,6 +5917,39 @@ static enum test_result test_tap_rcv_backfill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     return SUCCESS;
 }
 
+static enum test_result test_restore_vb0_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    char cwd[1024];
+    if (!getcwd(cwd, sizeof(cwd))) {
+        fprintf(stderr, "Invoking getcwd failed!!!\n");
+        return FAIL;
+    }
+    strcat(cwd, "/mbbackup-0003.mbb");
+    ensure_file(cwd);
+    protocol_binary_request_header *req = create_restore_file_packet(cwd);
+
+    ENGINE_ERROR_CODE r;
+
+    r = h1->unknown_command(h, NULL, req, add_response, NULL);
+    check(r == ENGINE_SUCCESS, "The server should know the command");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "The server should start the backup");
+    free(req);
+    waitfor_restore_state(h, h1, "zombie", 2000);
+
+    vals.clear();
+    check(h1->get_stats(h, NULL, "restore", 7, add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    check(vals.find("ep_restore:last_error") == vals.end(),
+          "I shouldn't get an error message");
+
+    int restored = atoi(vals["ep_restore:number_restored"].c_str());
+    complete_restore(h, h1);
+    wait_for_flusher_to_settle(h, h1);
+    check(get_int_stat(h, h1, "ep_total_persisted") == restored, "Expected to persist all restored items");
+
+    return SUCCESS;
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
@@ -6175,6 +6208,8 @@ engine_test_t* get_tests(void) {
         {"restore: multiple incrementalfiles", test_restore_multi, NULL, teardown,
          "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
 #endif
+        {"restore: vb0 mode with persistence", test_restore_vb0_persistence, NULL, teardown,
+         "restore_mode=true"},
         {NULL, NULL, NULL, NULL, NULL}
     };
     return tests;

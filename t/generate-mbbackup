@@ -26,14 +26,20 @@ def main():
     createSchema(db)
     generate(db, 10, 1000, 2000, 10000, 32767)
     db.close()
+    print 'Generating mbbackup-0003.mbb'
+    db = sqlite3.connect('mbbackup-0003.mbb')
+    db.text_factory = str
+    createSchema(db)
+    generate(db, 1, 0, 200, 5000, 32767, False)
+    db.close()
 
-def generate(db, maxvbid, cpointoffset,  maxcheckpoints, maxoperations, maxsize):
+def generate(db, maxvbid, cpointoffset,  maxcheckpoints, maxoperations, maxsize, deletes = True):
     insert_cpoint_state = "INSERT into cpoint_state" \
                 "(vbucket_id, cpoint_id, prev_cpoint_id, state, source, updated_at)" \
                 " VALUES (?, ?, ?, ?, ?, ?)"
     insert_cpoint_op = "INSERT into cpoint_op" \
-            "(vbucket_id, cpoint_id, seq, op, key, flg, exp, cas, val)" \
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "(vbucket_id, cpoint_id, seq, op, key, flg, exp, cas, cksum, val)" \
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     for vbucketId in range(maxvbid):
         cid = cpointoffset
         while cid < maxcheckpoints:
@@ -46,14 +52,19 @@ def generate(db, maxvbid, cpointoffset,  maxcheckpoints, maxoperations, maxsize)
         db.commit()
 
     seq = 0
+    non_di_cksum = "0001:"
     while seq < maxoperations:
-        vbucketId = random.randint(0, maxvbid)
+        if maxvbid == 1:
+            vbucketId = 0
+        else:
+            vbucketId = random.randint(0, maxvbid)
+
         checkpointId = random.randint(cpointoffset, maxcheckpoints)
         seq = seq + 1
         cmdOp = 'm'
         key = ''.join(random.choice(string.letters + string.digits) for i in xrange(random.randint(1, 250)))
         val = ''.zfill(random.randint(0, maxsize))
-        if random.randint(0, 1000) == 666:
+        if deletes and random.randint(0, 1000) == 666:
             cmdOp = 'd'
             value = ''
 
@@ -62,19 +73,20 @@ def generate(db, maxvbid, cpointoffset,  maxcheckpoints, maxoperations, maxsize)
         cas = random.randint(0, 10000000)
 
         db.execute(insert_cpoint_op, (vbucketId, checkpointId, seq, cmdOp,
-                       key, flg, exp, cas, val))
+                       key, flg, exp, cas, non_di_cksum, val))
         if seq % 100 == 0:
             db.commit()
 
     # Add some extra well know items I can update in the test
     db.execute(insert_cpoint_op, (0, maxcheckpoints - 1, seq, 'm',
-                       'mykey1', 0xdeadbeef, 0, 0xcafecafe, ''.zfill(1024)))
-    db.execute(insert_cpoint_op, (0, maxcheckpoints - 1, seq + 1, 'd',
-                       'mykey2', 0xdeadbeef, 0, 0xcafecafe, ''))
+                       'mykey1', 0xdeadbeef, 0, 0xcafecafe, non_di_cksum,''.zfill(1024)))
+    if deletes:
+        db.execute(insert_cpoint_op, (0, maxcheckpoints - 1, seq + 1, 'd',
+                       'mykey2', 0xdeadbeef, 0, 0xcafecafe, non_di_cksum, ''))
     db.execute(insert_cpoint_op, (0, maxcheckpoints - 1, seq + 2, 'm',
-                       'mykey3', 0xdeadbeef, 0, 0xcafecafe, ''.zfill(1)))
+                       'mykey3', 0xdeadbeef, 0, 0xcafecafe, non_di_cksum, ''.zfill(1)))
     db.execute(insert_cpoint_op, (0, maxcheckpoints - 1, seq + 3, 'm',
-                       'mykey4', 0xdeadbeef, 1, 0xcafecafe, ''.zfill(1)))
+                       'mykey4', 0xdeadbeef, 1, 0xcafecafe, non_di_cksum,''.zfill(1)))
     db.commit()
 
 def createSchema(db):
@@ -83,10 +95,10 @@ BEGIN;
 DROP TABLE IF EXISTS cpoint_op;
 DROP TABLE IF EXISTS cpoint_state;
 CREATE TABLE cpoint_op
-  (vbucket_id integer, cpoint_id text, seq integer, op text,
-   key varchar(250), flg integer, exp integer, cas integer, val text);
+  (vbucket_id integer, cpoint_id integer, seq integer, op text,
+   key varchar(250), flg integer, exp integer, cas integer, cksum varchar(100), val blob);
 CREATE TABLE cpoint_state
-  (vbucket_id integer, cpoint_id text, prev_cpoint_id text, state varchar(1),
+  (vbucket_id integer, cpoint_id integer, prev_cpoint_id integer, state varchar(1),
    source varchar(250), updated_at text);
 COMMIT;
 """)
