@@ -158,7 +158,9 @@ static ENGINE_ERROR_CODE storeCasVb11(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
     rv = h1->allocate(h, cookie, &it,
                       key, strlen(key),
                       vlen, flags, 3600, 0, 0);
-    check(rv == ENGINE_SUCCESS, "Allocation failed.");
+    if (rv != ENGINE_SUCCESS) {
+        return rv;
+    }
 
     item_info info;
     info.nvalue = 1;
@@ -1367,6 +1369,12 @@ static enum test_result test_flush(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(store(h, h1, NULL, OPERATION_SET, "key", "somevalue", &i) == ENGINE_SUCCESS,
           "Failed set.");
     check_key_value(h, h1, "key", "somevalue", 9);
+
+    // Try flush without enabling flush all.. Should fail
+    check(h1->flush(h, NULL, 0) == ENGINE_ENOTSUP,
+          "Failed to fail flush");
+
+    set_flush_param(h, h1, "enable_flushall", "true");
     check(h1->flush(h, NULL, 0) == ENGINE_SUCCESS,
           "Failed to flush");
     check(ENGINE_KEY_ENOENT == verify_key(h, h1, "key"), "Expected missing key");
@@ -1411,6 +1419,11 @@ static enum test_result test_flush_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1)
     // due to the checkpoint overhead
     assert(mem_used2 - overhead2 > cacheSize2);
 
+    // Try flush without enabling flush all.. Should fail
+    check(h1->flush(h, NULL, 0) == ENGINE_ENOTSUP,
+          "Failed to fail flush");
+
+    set_flush_param(h, h1, "enable_flushall", "true");
     check(h1->flush(h, NULL, 0) == ENGINE_SUCCESS, "Failed to flush");
     check(ENGINE_KEY_ENOENT == verify_key(h, h1, "key"), "Expected missing key");
     check(ENGINE_KEY_ENOENT == verify_key(h, h1, "key2"), "Expected missing key");
@@ -1445,6 +1458,11 @@ static enum test_result test_flush_multiv(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     check_key_value(h, h1, "key", "somevalue", 9);
     check_key_value(h, h1, "key2", "somevalue", 9, 2);
 
+    // Try flush without enabling flush all.. Should fail
+    check(h1->flush(h, NULL, 0) == ENGINE_ENOTSUP,
+          "Failed to fail flush");
+
+    set_flush_param(h, h1, "enable_flushall", "true");
     check(h1->flush(h, NULL, 0) == ENGINE_SUCCESS, "Failed to flush");
 
     vals.clear();
@@ -1475,7 +1493,11 @@ static enum test_result test_flush_restart(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h
 
     // Read value from disk.
     check_key_value(h, h1, "key", "somevalue", 9);
+    // Try flush without enabling flush all.. Should fail
+    check(h1->flush(h, NULL, 0) == ENGINE_ENOTSUP,
+          "Failed to fail flush");
 
+    set_flush_param(h, h1, "enable_flushall", "true");
     // Flush
     check(h1->flush(h, NULL, 0) == ENGINE_SUCCESS,
           "Failed to flush");
@@ -1519,6 +1541,11 @@ static enum test_result test_flush_multiv_restart(ENGINE_HANDLE *h, ENGINE_HANDL
     // Read value from disk.
     check_key_value(h, h1, "key", "somevalue", 9);
 
+    // Try flush without enabling flush all.. Should fail
+    check(h1->flush(h, NULL, 0) == ENGINE_ENOTSUP,
+          "Failed to fail flush");
+
+    set_flush_param(h, h1, "enable_flushall", "true");
     // Flush
     check(h1->flush(h, NULL, 0) == ENGINE_SUCCESS,
           "Failed to flush");
@@ -2434,10 +2461,11 @@ static enum test_result test_memory_limit(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     check(get_int_stat(h, h1, "ep_oom_errors") == 0 &&
           get_int_stat(h, h1, "ep_tmp_oom_errors") == 0, "Expected no OOM errors.");
     assert(used < max);
+    int overhead = get_int_stat(h, h1, "eviction_headroom") + 2 * 1024 * 1024 * 3;
 
     char data[8192];
     memset(data, 'x', sizeof(data));
-    size_t vlen = max - used - 192;
+    size_t vlen = max - used - 192 - overhead;
     data[vlen] = 0x00;
 
     item *i = NULL;
@@ -6081,7 +6109,7 @@ engine_test_t* get_tests(void) {
         {"test alloc limit", test_alloc_limit, NULL, teardown, NULL},
         {"test init failure", test_init_fail, NULL, teardown, NULL},
         {"test total memory limit", test_memory_limit, NULL, teardown,
-         "max_size=4096;ht_locks=1;ht_size=3;chk_remover_stime=1;chk_period=60;mutation_mem_threshold=0.9"},
+         "max_size=7875000;ht_locks=1;ht_size=3;chk_remover_stime=1;chk_period=60;mutation_mem_threshold=0.9"},
         {"test max_size changes", test_max_size_settings, NULL, teardown,
          "max_size=1000;ht_locks=1;ht_size=3"},
         {"test whitespace dbname", test_whitespace_db, NULL, teardown,

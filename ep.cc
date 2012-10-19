@@ -538,10 +538,10 @@ public:
             if (v && v->isExpired(startTime)) {
                 value_t value(NULL);
                 uint64_t cas = v->getCas();
-                bool wasDirty = v->isDirty();
-                mutation_type_t delrv = vb->ht.unlocked_softDelete(vk.second, 0, bucket_num);
+                MutationValue mv;
+                mutation_type_t delrv = vb->ht.unlocked_softDelete(vk.second, 0, bucket_num, mv);
                 if (delrv == WAS_CLEAN || delrv == WAS_DIRTY || delrv == NOT_FOUND ) {
-                    if (!wasDirty) {
+                    if (!mv.wasDirty) {
                         e->queueFlusher(vb, v, queue_op_del);
                     }
                 }
@@ -574,12 +574,12 @@ StoredValue *EventuallyPersistentStore::fetchValidValue(RCPtr<VBucket> vb,
             ++stats.expired;
             value_t value(NULL);
             uint64_t cas = v->getCas();
-            bool wasDirty = v->isDirty(); 
-            mutation_type_t delrv = vb->ht.unlocked_softDelete(key, 0, bucket_num);
+            MutationValue mv;
+            mutation_type_t delrv = vb->ht.unlocked_softDelete(key, 0, bucket_num, mv);
             if (delrv == WAS_CLEAN || delrv == WAS_DIRTY || delrv == NOT_FOUND ) {
                 // As replication is interleaved with online restore, deletion of items that might
                 // exist in the restore backup files should be queued and replicated.
-                if (!wasDirty) {
+                if (!mv.wasDirty) {
                     queueFlusher(vb, v, queue_op_del);
                 }
             }
@@ -656,11 +656,11 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
     bool cas_op = (item.getCas() != 0);
 
     int64_t row_id = -1;
-    mutation_type_t mtype = vb->ht.set(item, row_id);
-    ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
+    MutationValue mv;
     int bucket_num(0);
     LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
-    StoredValue *v = vb->ht.unlocked_find(item.getKey(), bucket_num, false);
+    mutation_type_t mtype = vb->ht.set_unlocked(item, bucket_num, row_id, mv);
+    ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
 
     switch (mtype) {
     case NOMEM:
@@ -676,14 +676,15 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
             break;
         }
         // FALLTHROUGH
-    case WAS_DIRTY:
-        // Even if the item was dirty, push it into the vbucket's open checkpoint.
     case WAS_CLEAN:
-        if (v && mtype != WAS_DIRTY) {
-            queueFlusher(vb, v, queue_op_set);
+        if (!mv.wasDirty) {
+            queueFlusher(vb, mv.sv, queue_op_set);
         }
         lh.unlock();
 
+        // FALLTHROUGH
+    case WAS_DIRTY:
+        // Even if the item was dirty, push it into the vbucket's open checkpoint.
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
                    item.getFlags(), item.getExptime(), item.getCas(), row_id,
                    item.getCksum(), item.getQueuedTime());
@@ -720,18 +721,18 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::add(const Item &item,
         return ENGINE_NOT_STORED;
     }
 
-    switch (vb->ht.add(item)) {
+    int bucket_num(0);
+    MutationValue mv;
+    LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
+    switch (vb->ht.add_unlocked(item, bucket_num, mv)) {
     case ADD_NOMEM:
         return ENGINE_ENOMEM;
     case ADD_EXISTS:
         return ENGINE_NOT_STORED;
     case ADD_SUCCESS:
     case ADD_UNDEL:
-        int bucket_num(0);
-        LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
-        StoredValue *v = vb->ht.unlocked_find(item.getKey(), bucket_num, false);
-        if (v) {
-            queueFlusher(vb, v, queue_op_set);
+        if (!mv.wasDirty) {
+            queueFlusher(vb, mv.sv, queue_op_set);
         }
         lh.unlock();
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
@@ -754,11 +755,11 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
     bool cas_op = (item.getCas() != 0);
 
     int64_t row_id = -1;
-    mutation_type_t mtype = vb->ht.set(item, row_id);
-    ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
     int bucket_num(0);
+    MutationValue mv;
     LockHolder lh = vb->ht.getLockedBucket(item.getKey(), &bucket_num);
-    StoredValue *v = vb->ht.unlocked_find(item.getKey(), bucket_num, false);
+    mutation_type_t mtype = vb->ht.set_unlocked(item, bucket_num, row_id, mv);
+    ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
 
     switch (mtype) {
     case NOMEM:
@@ -778,8 +779,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
         }
         // FALLTHROUGH
     case WAS_CLEAN:
-        if (v) {
-            queueFlusher(vb, v, queue_op_set);
+        if (!mv.wasDirty) {
+            queueFlusher(vb, mv.sv, queue_op_set);
         }
         break;
     case INVALID_VBUCKET:
@@ -1498,9 +1499,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
         rowid = v->getId();
     }
 
-    bool wasDirty = v->isDirty();
-    assert(v->isDeleted() == false);
-    mutation_type_t delrv = vb->ht.unlocked_softDelete(key, cas, bucket_num);
+    MutationValue mv;
+    mutation_type_t delrv = vb->ht.unlocked_softDelete(key, cas, bucket_num, mv);
     ENGINE_ERROR_CODE rv;
     bool expired = false;
 
@@ -1520,8 +1520,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
         (delrv == NOT_FOUND && (expired || isRestoreEnabled()))) {
         // As replication is interleaved with online restore, deletion of items that might
         // exist in the restore backup files should be queued and replicated.
-        if (!wasDirty) {
-            queueFlusher(vb, v, queue_op_del);
+        if (!mv.wasDirty) {
+            queueFlusher(vb, mv.sv, queue_op_del);
         }
         lh.unlock();
         queueDirty(key, vbucket, queue_op_del, value_t(NULL), 0, 0, cas, rowid);

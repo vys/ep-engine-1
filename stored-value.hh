@@ -915,6 +915,14 @@ private:
 
 };
 
+class MutationValue {
+public:
+    MutationValue() : wasDirty(0), sv(NULL) {}
+
+    bool wasDirty;
+    StoredValue *sv;
+}; 
+
 /**
  * A container of StoredValue instances.
  */
@@ -1045,7 +1053,8 @@ public:
         values[bucket_num] = v;
         ++numItems;
         if (op == queue_op_del) {
-            unlocked_softDelete(itm.getKey(), itm.getCas(), bucket_num);
+            MutationValue mv;
+            unlocked_softDelete(itm.getKey(), itm.getCas(), bucket_num, mv);
         }
         return true;
     }
@@ -1055,9 +1064,18 @@ public:
      *
      * @param val the Item to store
      * @param row_id the row id that is assigned to the item to store
+     * @param return MutationVaue if asked
      * @return a result indicating the status of the store
      */
     mutation_type_t set(const Item &val, int64_t &row_id) {
+        MutationValue mv;
+        int bucket_num(0);
+        LockHolder lh = getLockedBucket(val.getKey(), &bucket_num);
+        return set_unlocked(val, bucket_num, row_id, mv);
+    }
+
+    mutation_type_t set_unlocked(const Item &val, int bucket_num, int64_t row_id,
+                                 MutationValue &mv) {
         assert(active());
         Item &itm = const_cast<Item&>(val);
         if (!StoredValue::hasAvailableSpace(stats, itm)) {
@@ -1065,8 +1083,6 @@ public:
         }
 
         mutation_type_t rv = NOT_FOUND;
-        int bucket_num(0);
-        LockHolder lh = getLockedBucket(val.getKey(), &bucket_num);
         StoredValue *v = unlocked_find(val.getKey(), bucket_num, true);
         /*
          * prior to checking for the lock, we should check if this object
@@ -1085,6 +1101,7 @@ public:
             }
         }
         if (v) {
+            mv.wasDirty = v->isDirty();
             if (v->isLocked(ep_current_time())) {
                 /*
                  * item is locked, deny if there is cas value mismatch
@@ -1119,6 +1136,7 @@ public:
             values[bucket_num] = v;
             ++numItems;
         }
+        mv.sv = v;
         return rv;
     }
 
@@ -1131,9 +1149,15 @@ public:
      * @return an indication of what happened
      */
     add_type_t add(const Item &val, bool isDirty = true, bool storeVal = true) {
-        assert(active());
         int bucket_num(0);
+        MutationValue mv;
         LockHolder lh = getLockedBucket(val.getKey(), &bucket_num);
+        return add_unlocked(val, bucket_num, mv, isDirty, storeVal);
+    }
+
+    add_type_t add_unlocked(const Item &val, int bucket_num, MutationValue &mv,
+                            bool isDirty = true, bool storeVal = true) {
+        assert(active());
         StoredValue *v = unlocked_find(val.getKey(), bucket_num, true);
         add_type_t rv = ADD_SUCCESS;
         if (v && !v->isDeleted() && !v->isExpired(ep_real_time())) {
@@ -1145,6 +1169,7 @@ public:
                 return ADD_NOMEM;
             }
             if (v) {
+                mv.wasDirty = v->isDirty();
                 rv = (v->isDeleted() || v->isExpired(ep_real_time())) ? ADD_UNDEL : ADD_SUCCESS;
                 v->setValue(itm.getValue(),
                             itm.getFlags(), itm.getExptime(),
@@ -1163,7 +1188,7 @@ public:
                 v->ejectValue(stats, *this);
             }
         }
-
+        mv.sv = v;
         return rv;
     }
 
@@ -1184,17 +1209,20 @@ public:
         if (v) {
             row_id = v->getId();
         }
-        return unlocked_softDelete(key, cas, bucket_num);
+        MutationValue mv;
+        return unlocked_softDelete(key, cas, bucket_num, mv);
     }
 
     /**
      * Unlocked implementation of softDelete.
      */
     mutation_type_t unlocked_softDelete(const std::string &key, uint64_t cas,
-                                        int bucket_num) {
+                                        int bucket_num, MutationValue &mv) {
         mutation_type_t rv = NOT_FOUND;
         StoredValue *v = unlocked_find(key, bucket_num);
         if (v) {
+            mv.wasDirty = v->isDirty();
+            mv.sv = v;
             if (v->isExpired(ep_real_time())) {
                 v->del(stats, *this);
                 return rv;
