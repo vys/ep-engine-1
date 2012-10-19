@@ -735,6 +735,21 @@ static void wait_for_stat_change(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
     }
 }
 
+static void wait_for_stat_match(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
+                                 const std::string stat, std::string match) {
+    vals.clear();
+    check(h1->get_stats(h, NULL, NULL, 0, add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+
+    useconds_t sleepTime = 128;
+    while (vals[stat] != match) {
+        decayingSleep(&sleepTime);
+        vals.clear();
+        check(h1->get_stats(h, NULL, NULL, 0, add_stats) == ENGINE_SUCCESS,
+              "Failed to get stats.");
+    }
+}
+
 static void wait_for_flusher_to_settle(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     useconds_t sleepTime = 128;
     while (get_int_stat(h, h1, "ep_flusher_todo")
@@ -6008,6 +6023,54 @@ static enum test_result test_checkpoint_vb0_persistence(ENGINE_HANDLE *h, ENGINE
     return SUCCESS;
 }
 
+static void switch_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, bool on) {
+
+    std::string error;
+    protocol_binary_request_header *pkt;
+
+    if (on) {
+        error = "Unable to start persistence";
+        pkt = create_packet(CMD_START_PERSISTENCE, "", "");
+    } else {
+        error = "Unable to stop persistence";
+        pkt = create_packet(CMD_STOP_PERSISTENCE, "", "");
+    }
+
+    check(h1->unknown_command(h, NULL, pkt, add_response, NULL) == ENGINE_SUCCESS,
+          error.c_str());
+
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          error.c_str());
+}
+
+static enum test_result test_ep_overhead_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    int overhead1, overhead2;
+
+    switch_persistence(h, h1, false);
+    wait_for_stat_match(h, h1, "ep_flusher_state", "paused");
+
+    overhead1 = get_int_stat(h, h1, "ep_overhead");
+    for (size_t i=0; i<100; i++) {
+        std::stringstream ss;
+        ss<<"key_"<<i;
+        item *itm = NULL;
+        check(store(h, h1, NULL, OPERATION_SET, ss.str().c_str(), "somevalue", &itm) == ENGINE_SUCCESS,
+              "Failed set.");
+        h1->release(h, NULL, itm);
+    }
+
+    overhead2 = get_int_stat(h, h1, "ep_overhead");
+    check(overhead2 > overhead1, "memory overhead should increase");
+    switch_persistence(h, h1, true);
+
+    wait_for_stat_match(h, h1, "ep_flusher_state", "running");
+    wait_for_flusher_to_settle(h, h1);
+    overhead1 = get_int_stat(h, h1, "ep_overhead");
+    check(overhead1 < overhead2, "memory overhead should come down");
+
+    return SUCCESS;
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
@@ -6271,6 +6334,7 @@ engine_test_t* get_tests(void) {
 
         {"persistence: vb0 checkpoint_id persistence (stats & vbucket_states table)", test_checkpoint_vb0_persistence, NULL, teardown,
         "inconsistent_slave_chk=true"},
+        {"persistence: verify start/stop persistence, ep_overhead stats", test_ep_overhead_stats, NULL, teardown, NULL},
         {NULL, NULL, NULL, NULL, NULL}
     };
     return tests;
