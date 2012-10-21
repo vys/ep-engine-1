@@ -301,7 +301,7 @@ static void* flusher_helper(void *args) {
 void FlusherHelper::run() {
     while (1) {
         const Flusher *flusher = store->getFlusher(kvid);
-        if (flusher->state() == running && !queue) {
+        if (!queue) {
             queue = store->beginFlush(kvid);
         }
         if (flusher->state() == stopped) {
