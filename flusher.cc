@@ -293,19 +293,23 @@ extern "C" {
 }
 
 static void* flusher_helper(void *args) {
-    FlusherHelper *data = (FlusherHelper *)args;
+    FlusherHelper *helper = (FlusherHelper *)args;
+    helper->run();
+    return NULL;
+}
+
+void FlusherHelper::run() {
     while (1) {
-        const Flusher *flusher = data->store->getFlusher(data->kvid);
-        if (flusher->state() == running && !data->queue) {
-            data->queue = data->store->beginFlush(data->kvid);
+        const Flusher *flusher = store->getFlusher(kvid);
+        if (flusher->state() == running && !queue) {
+            queue = store->beginFlush(kvid);
         }
         if (flusher->state() == stopped) {
             break;
         }
         usleep(1000);
     }
-
-    return NULL;
+    return;
 }
 
 void FlusherHelper::start() {

@@ -1788,6 +1788,7 @@ static enum test_result test_delete_set(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) 
     check(h1->remove(h, NULL, "key", 3, 0, 0) == ENGINE_SUCCESS,
           "Failed remove with value.");
 
+    wait_for_flusher_to_settle(h, h1);
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
                               testHarness.default_engine_cfg,
@@ -3878,6 +3879,7 @@ static enum test_result test_curr_items(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) 
     wait_for_stat_change(h, h1, "curr_items", 3);
     verify_curr_items(h, h1, 2, "one item deleted - persisted");
 
+    set_flush_param(h, h1, "enable_flushall", "true");
     // Verify flush case (remove the two remaining from above)
     check(h1->flush(h, NULL, 0) == ENGINE_SUCCESS,
           "Failed to flush");
@@ -5813,6 +5815,7 @@ static enum test_result test_lru_eviction(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     int i, mem_used, itemsRemoved;
     char buffer[BUFFER_SIZE];
 
+    set_flush_param(h, h1, "enable_flushall", "true");
     check(h1->flush(h, NULL, 0) == ENGINE_SUCCESS, "Failed to flush");
     mem_used = get_int_stat(h, h1, "mem_used");
     int remaining = (get_int_stat(h, h1, "ep_max_data_size") * 9 / 10) 

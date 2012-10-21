@@ -49,11 +49,18 @@ private:
  */
 class FlusherHelper {
 public:
-    FlusherHelper(int kv, EventuallyPersistentStore *st) : kvid(kv), store(st) {
+    FlusherHelper(int kv, EventuallyPersistentStore *st) :
+        kvid(kv), store(st), queue(NULL) {
         start();
     }
 
     ~FlusherHelper() {
+        if (queue != NULL) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "FlusherHelper dying with %d items in the queue\n",
+                             queue->size());
+            delete queue;
+        }
         pthread_join(myId, NULL);
     }
 
@@ -67,13 +74,13 @@ public:
     }
 
     void start();
-
-    int kvid;
-    EventuallyPersistentStore *store;
-    std::queue<FlushEntry> *queue;
+    void run();
 
 private:
+    int kvid;
     pthread_t myId;
+    EventuallyPersistentStore *store;
+    std::queue<FlushEntry> *queue;
 };
 
 /**

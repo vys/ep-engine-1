@@ -1983,6 +1983,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
         // If the new item is expired within current_time + expiry_window, clear the row id
         // from hashtable and remove the old item from database.
         v->clearId();
+        deleted = true;
         isDirty = false;
     }
 
@@ -2455,5 +2456,6 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
 std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) {
     std::vector<FlushEntry> *flushing = new std::vector<FlushEntry>();
     toFlush[kvid].toArray(*flushing);
+    assert(flushing->size() > 0);
     return flushing;
 }
