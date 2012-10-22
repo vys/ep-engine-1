@@ -3609,13 +3609,19 @@ static enum test_result test_tap_notify(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1)
     } while (r == ENGINE_SUCCESS);
     check(r == ENGINE_DISCONNECT, "should disconnect non-acking streams");
 
-    uint32_t auto_nack = 0; // TAP_OPAQUE_ENABLE_AUTO_NACK
+    uint32_t auto_nack = htonl(TAP_OPAQUE_ENABLE_AUTO_NACK);
     r = h1->tap_notify(h, cookie, &auto_nack, sizeof(auto_nack), 1, 0,
                        TAP_OPAQUE, 0, NULL, 0, 0, 0, 0, 0, NULL, 0, 0 , DI_CKSUM_DISABLED_STR);
     check(r == ENGINE_SUCCESS, "Enable auto nack'ing");
 
-    r = h1->tap_notify(h, cookie, NULL, 0, 1, 0, TAP_MUTATION, 0,
-                       "foo", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0, buffer, 1024, 0, DI_CKSUM_DISABLED_STR);
+    do {
+        std::stringstream ss;
+        ss << "Key-"<< ++ii;
+        std::string key = ss.str();
+
+        r = h1->tap_notify(h, cookie, NULL, 0, 1, 0, TAP_MUTATION, 0,
+                           key.c_str(), key.length(), 0, std::numeric_limits<uint32_t>::max(), 0, 0, buffer, 1024, 0, DI_CKSUM_DISABLED_STR);
+    } while (r == ENGINE_SUCCESS);
     check(r == ENGINE_TMPFAIL, "non-acking streams should etmpfail");
 
     testHarness.destroy_cookie(cookie);
