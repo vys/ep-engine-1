@@ -159,6 +159,7 @@ static ENGINE_ERROR_CODE storeCasVb11(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
                       key, strlen(key),
                       vlen, flags, 3600, 0, 0);
     if (rv != ENGINE_SUCCESS) {
+        *outitem = NULL;
         return rv;
     }
 
