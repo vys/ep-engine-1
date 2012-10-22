@@ -157,12 +157,13 @@ bool Flusher::step(Dispatcher &d, TaskId tid) {
                 // check if min_data_age changed, in which case perform the flush operation
                 timeval tv;
                 gettimeofday(&tv, NULL);
-                if (last_min_data_age == store->stats.min_data_age &&
+                if (last_min_data_age == store->stats.min_data_age && last_queue_age_cap == store->stats.queue_age_cap &&
                         (tv.tv_sec < waketime.tv_sec || (tv.tv_sec == waketime.tv_sec && tv.tv_usec < waketime.tv_usec))) {
                     d.snooze(tid, DEFAULT_MIN_SLEEP_TIME);
                     return true;
                 }
                 last_min_data_age = store->stats.min_data_age;
+                last_queue_age_cap = store->stats.queue_age_cap;
                 doFlush();
                 if (_state == running) {
                     double tosleep = computeMinSleepTime();

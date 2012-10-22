@@ -94,7 +94,7 @@ public:
         flushRv(0), prevFlushRv(0), minSleepTime(0.1),
         flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false),
         forceShutdownReceived(false), rejectedItemsRequeued(false),
-        last_min_data_age(-1), shouldFlushAll(false) {
+        last_min_data_age(-1), last_queue_age_cap(-1), shouldFlushAll(false) {
             helper = new FlusherHelper(flusherId, store);
         }
 
@@ -164,6 +164,7 @@ private:
     bool                     rejectedItemsRequeued;
     timeval                  waketime;
     int                      last_min_data_age;
+    int                      last_queue_age_cap;
     FlusherHelper            *helper;
     bool                     shouldFlushAll;
 
