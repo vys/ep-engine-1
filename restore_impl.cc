@@ -172,7 +172,12 @@ public:
         }
 
         if (!restore_cpoint) {
-            assert(sqlite3_prepare(db, restore_checkpoint_query, -1, &statement, NULL) == SQLITE_OK);
+            if (sqlite3_prepare(db, restore_checkpoint_query, -1, &statement, NULL) != SQLITE_OK) {
+                std::stringstream ss;
+                ss << "sqlite error: " << sqlite3_errmsg(db);
+                throw std::string(ss.str());
+            }
+
             while ((rc = sqlite3_step(statement)) != SQLITE_DONE) {
                 if (rc == SQLITE_ROW) {
                     restore_cpoint = (uint32_t) sqlite3_column_int(statement, 0);
@@ -185,7 +190,12 @@ public:
             (void)sqlite3_finalize(statement);
         }
 
-        assert(sqlite3_prepare(db, "pragma user_version;", -1, &statement, NULL) == SQLITE_OK);
+        if (sqlite3_prepare(db, "pragma user_version;", -1, &statement, NULL) != SQLITE_OK) {
+                std::stringstream ss;
+                ss << "sqlite error: " << sqlite3_errmsg(db);
+                throw std::string(ss.str());
+        }
+
         while ((rc = sqlite3_step(statement)) != SQLITE_DONE) {
             if (rc == SQLITE_ROW) {
                 user_version = sqlite3_column_int(statement, 0);
