@@ -1517,7 +1517,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
 
     if (delrv == WAS_CLEAN ||
         delrv == WAS_DIRTY ||
-        (delrv == NOT_FOUND && (expired || isRestoreEnabled()))) {
+        delrv == NOT_FOUND && expired) {
         // As replication is interleaved with online restore, deletion of items that might
         // exist in the restore backup files should be queued and replicated.
         if (!mv.wasDirty) {
@@ -2173,11 +2173,14 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
     int bucket_num(0);
     LockHolder lh = vb->ht.getLockedBucket(key, &bucket_num);
     LockHolder rlh(restore.mutex);
+    MutationValue mv;
     if (restore.itemsDeleted.find(key) == restore.itemsDeleted.end() &&
-        vb->ht.unlocked_restoreItem(itm, op, bucket_num)) {
+        vb->ht.unlocked_restoreItem(itm, op, bucket_num, mv)) {
         StoredValue *v = vb->ht.unlocked_find(itm.getKey(), bucket_num, true);
         assert(v);
-        queueFlusher(vb, v, op);
+        if (!mv.wasDirty) {
+            queueFlusher(vb, v, op);
+        }
         return 0;
     }
 

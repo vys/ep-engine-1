@@ -1041,7 +1041,8 @@ public:
      */
     bool unlocked_restoreItem(const Item &itm,
                               enum queue_operation op,
-                              int bucket_num)
+                              int bucket_num,
+                              MutationValue &mv)
     {
         if (unlocked_find(itm.getKey(), bucket_num, true)) {
             // it's already there...
@@ -1053,7 +1054,6 @@ public:
         values[bucket_num] = v;
         ++numItems;
         if (op == queue_op_del) {
-            MutationValue mv;
             unlocked_softDelete(itm.getKey(), itm.getCas(), bucket_num, mv);
         }
         return true;
