@@ -1428,7 +1428,7 @@ static enum test_result test_flush_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1)
     check(ENGINE_KEY_ENOENT == verify_key(h, h1, "key"), "Expected missing key");
     check(ENGINE_KEY_ENOENT == verify_key(h, h1, "key2"), "Expected missing key");
 
-    wait_for_flusher_to_settle(h, h1);
+    wait_for_stat_match(h, h1, "curr_items_tot", "0");
 
     mem_used2 = get_int_stat(h, h1, "mem_used");
     overhead2 = get_int_stat(h, h1, "ep_overhead");
@@ -1485,6 +1485,7 @@ static enum test_result test_flush_restart(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h
           "Failed set.");
     check_key_value(h, h1, "key", "somevalue", 9);
 
+    wait_for_flusher_to_settle(h, h1);
     // Restart once to ensure written to disk.
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
@@ -1506,6 +1507,7 @@ static enum test_result test_flush_restart(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h
           "Failed post-flush set.");
     check_key_value(h, h1, "key2", "somevalue", 9);
 
+    wait_for_flusher_to_settle(h, h1);
     // Restart again, ensure written to disk.
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
@@ -2153,6 +2155,7 @@ static enum test_result test_bug3522(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     // As the expiry window is 3 sec by default, the flusher won't persist the new item, but will
     // delete the old item from database before the shutdown.
 
+    wait_for_flusher_to_settle(h, h1);
     // Restart the engine.
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
