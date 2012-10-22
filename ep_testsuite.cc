@@ -5565,7 +5565,6 @@ static enum test_result test_restore_with_data(ENGINE_HANDLE *h, ENGINE_HANDLE_V
     for (uint16_t ii = 0; ii < 1000; ++ ii) {
         check(set_vbucket_state(h, h1, ii, vbucket_state_active), "Failed to activate vbucket");
     }
-
     item *it = NULL;
     uint64_t cas;
     ENGINE_ERROR_CODE r;
@@ -6357,21 +6356,20 @@ engine_test_t* get_tests(void) {
          NULL, teardown, NULL},
 
         // Restore tests
-        {"restore: not enabled", test_restore_not_enabled, NULL, teardown,
-         "kvstore_config_file=t/kv_single_memory.json"},
+        {"restore: not enabled", test_restore_not_enabled, NULL, teardown, NULL},
         {"restore: no such file", test_restore_no_such_file, NULL, teardown,
-         "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
+         "restore_mode=true"},
         {"restore: invalid file", test_restore_invalid_file, NULL, teardown,
-         "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
+         "restore_mode=true"},
         {"restore: data miss during restore", test_restore_data_miss, NULL, teardown,
-         "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
+         "restore_mode=true"},
         {"restore: no data in there", test_restore_clean, NULL, teardown,
          "restore_mode=true"},
         {"restore: no data in there (with partial vbucket list)",
          test_restore_clean_vbucket_subset, NULL, teardown,
          "restore_mode=true"},
         {"restore: with keys", test_restore_with_data, NULL, teardown,
-         "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
+         "restore_mode=true"},
 #ifdef future
         {"restore: multiple incrementalfiles", test_restore_multi, NULL, teardown,
          "kvstore_config_file=t/kv_single_memory.json;restore_mode=true"},
