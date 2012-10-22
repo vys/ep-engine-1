@@ -47,7 +47,6 @@ bool StoredValue::ejectValue(EPStats &stats, HashTable &ht) {
         } else if (new_keymeta_overhead < old_keymeta_overhead) {
             reduceCurrentSize(stats, old_keymeta_overhead - new_keymeta_overhead);
         }
-        reduceCacheSize(ht, old_keymeta_overhead, false, true);
         ++stats.numValueEjects;
         ++ht.numNonResidentItems;
         ++ht.numEjects;
@@ -87,7 +86,6 @@ bool StoredValue::restoreValue(const value_t &v, EPStats &stats, HashTable &ht) 
         } else if (new_keymeta_overhead < old_keymeta_overhead) {
             reduceCurrentSize(stats, old_keymeta_overhead - new_keymeta_overhead);
         }
-        increaseCacheSize(ht, new_keymeta_overhead, false, true);
         --ht.numNonResidentItems;
         return true;
     }

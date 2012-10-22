@@ -279,11 +279,8 @@ public:
                   uint64_t theCas, std::string _cksum, EPStats &stats, HashTable &ht) {
         size_t currSize = size();
         reduceCacheSize(ht, currSize, true);
-        if (isResident()) {
-            reduceCacheSize(ht, currSize, false, true);
-        } else {
-            reduceCacheSize(ht, valLength(), false, true);
-        }
+        reduceCacheSize(ht, totalSize(), false, true);
+
         reduceCurrentSize(stats, isDeleted() ? currSize : currSize - value->length());
         value = v;
         setResident(true, &stats);
@@ -295,9 +292,26 @@ public:
         }
         markDirty();
         size_t newSize = size();
-        increaseCacheSize(ht, newSize);
+        increaseCacheSize(ht, newSize, true);
+        increaseCacheSize(ht, totalSize(), false, true);
         increaseCurrentSize(stats, newSize - value->length());
         replicas = 0;
+    }
+
+    // Return total estimated size occupied by this key + data on disk
+    size_t totalSize() {
+        size_t ret = 0;
+        if (isDeleted()) {
+            return 0;
+        } else if (isResident()) {
+            ret = value->length();
+        } else {
+            blobval uval;
+            assert(value->length() == sizeof(uval));
+            std::memcpy(uval.chlen, value->getData(), sizeof(uval));
+            ret = static_cast<size_t>(uval.len);
+        }
+        return ret + getKeyLen();
     }
 
     size_t valLength() {
@@ -556,6 +570,7 @@ public:
 
         size_t oldsize = size();
         size_t old_valsize = value->length();
+        size_t oldtotalsize = totalSize();
 
         value.reset();
         markDirty();
@@ -575,6 +590,7 @@ public:
         } else if (newsize < (oldsize - old_valsize)) {
             reduceCurrentSize(stats, (oldsize - old_valsize) - newsize);
         }
+        reduceCacheSize(ht, oldtotalsize, false, true);
         // Note that the value memory overhead is automatically substracted from
         // Blob's deconstructor.
     }
@@ -1373,7 +1389,7 @@ public:
             }
             values[bucket_num] = v->next;
             size_t currSize = v->size();
-            v->reduceCacheSize(*this, currSize);
+            v->reduceCacheSize(*this, currSize, true);
             v->reduceCurrentSize(stats,
                                  v->isDeleted() ? currSize : currSize - v->getValue()->length());
             delete v;
@@ -1389,7 +1405,7 @@ public:
                 }
                 v->next = v->next->next;
                 size_t currSize = tmp->size();
-                tmp->reduceCacheSize(*this, currSize);
+                tmp->reduceCacheSize(*this, currSize, true);
                 tmp->reduceCurrentSize(stats,
                                tmp->isDeleted() ? currSize : currSize - tmp->getValue()->length());
                 delete tmp;
