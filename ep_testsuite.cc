@@ -1800,21 +1800,36 @@ static enum test_result test_delete_set(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) 
 }
 
 static enum test_result test_restart(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
-    item *i = NULL;
-    static const char val[] = "somevalue";
-    check(store(h, h1, NULL, OPERATION_SET, "key", val, &i) == ENGINE_SUCCESS,
-          "Failed set.");
+    size_t j;
 
+    for (j=0; j<50000; j++) {
+        std::stringstream sk, sv;
+        sk<<"key_"<<j;
+        sv<<"val_"<<j;
+        item *i = NULL;
+
+        check(store(h, h1, NULL, OPERATION_SET, sk.str().c_str(), sv.str().c_str(), &i) == ENGINE_SUCCESS,
+              "Failed set.");
+    }
+
+    wait_for_flusher_to_settle(h, h1);
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
-                              testHarness.default_engine_cfg,
+                              "kvstore_config_file=t/kv_multikv.json",
                               true, false);
-    return check_key_value(h, h1, "key", val, strlen(val));
+
+    for (j=0; j<50000; j++) {
+        std::stringstream sk, sv;
+        sk<<"key_"<<j;
+        sv<<"val_"<<j;
+        check(check_key_value(h, h1, sk.str().c_str(), sv.str().c_str(), sv.str().length()) == SUCCESS,
+                "key - value mismatch or not found");
+    }
+
+     return SUCCESS;
 }
 
 static enum test_result test_restart_bin_val(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
-
-
 
     char binaryData[] = "abcdefg\0gfedcba";
     assert(sizeof(binaryData) != strlen(binaryData));
@@ -1825,6 +1840,7 @@ static enum test_result test_restart_bin_val(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 
           == ENGINE_SUCCESS,
           "Failed set.");
 
+    wait_for_flusher_to_settle(h, h1);
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
                               testHarness.default_engine_cfg,
@@ -6235,7 +6251,7 @@ engine_test_t* get_tests(void) {
         {"tap backfill: receive and persist data", test_tap_rcv_backfill, NULL, teardown,
         "inconsistent_slave_chk=true"},
         // restart tests
-        {"test restart", test_restart, NULL, teardown, NULL},
+        {"test restart", test_restart, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"set+get+restart+hit (bin)", test_restart_bin_val, NULL, teardown, NULL},
         {"flush+restart", test_flush_restart, NULL, teardown, NULL},
         {"flush multiv+restart", test_flush_multiv_restart, NULL, teardown, NULL},
