@@ -159,7 +159,9 @@ static ENGINE_ERROR_CODE storeCasVb11(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
                       key, strlen(key),
                       vlen, flags, 3600, 0, 0);
     if (rv != ENGINE_SUCCESS) {
-        *outitem = NULL;
+        if (outitem) {
+            *outitem = NULL;
+        }
         return rv;
     }
 
@@ -5656,7 +5658,7 @@ static enum test_result test_get_last_closed_checkpoint_id(ENGINE_HANDLE *h, ENG
     return SUCCESS;
 }
 
-static enum test_result test_eviction_policy_switch(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+static enum test_result test_eviction_switch(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     int pager_time = 1;
     char buffer[20];
 
@@ -5696,10 +5698,14 @@ static enum test_result test_eviction_pause(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
     int pager_time = 1;
     char buffer[20];
 
-    sprintf(buffer, "%d", pager_time);
-    set_flush_param(h, h1, "exp_pager_stime", buffer);
+    set_flush_param(h, h1, "lru_mem_threshold_percent", "0");
     check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
-          "Failed to set exp_pager_stime param");
+          "Failed to set lru_mem_threshold_percent param");
+
+    sprintf(buffer, "%d", pager_time);
+    set_flush_param(h, h1, "lru_rebuild_stime", buffer);
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set lru_rebuild_stime param");
 
     set_flush_param(h, h1, "eviction_policy", "lru");
     check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
@@ -5739,19 +5745,11 @@ static enum test_result test_eviction_pause(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
     check(vals.find("evpolicy_job_start_timestamp") != vals.end(), "Missing stat");
-    check(vals["evpolicy_job_start_timestamp"] != timestart, "Expected unchanged value for start timestamp");
+    check(vals["evpolicy_job_start_timestamp"] != timestart, "Expected changed value for start timestamp");
     check(vals.find("evpolicy_job_end_timestamp") != vals.end(), "Missing stat");
-    check(vals["evpolicy_job_end_timestamp"] != timeend, "Expected unchanged value for end timestamp");
+    check(vals["evpolicy_job_end_timestamp"] != timeend, "Expected changed value for end timestamp");
 
     return SUCCESS;
-}
-
-static enum test_result test_eviction_pause_and_switch(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
-    enum test_result res = test_eviction_pause(h, h1);
-    if (res != SUCCESS) {
-        return res;
-    }
-    return test_eviction_policy_switch(h, h1);
 }
 
 static enum test_result test_validate_checkpoint_params(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
@@ -5783,9 +5781,12 @@ static enum test_result test_lru_queue(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     uint16_t vbucketId = 0;
     std::string s;
 
-    set_flush_param(h, h1, "exp_pager_stime", "2");
+    set_flush_param(h, h1, "lru_mem_threshold_percent", "0");
     check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
-          "Failed to set exp_pager_stime param");
+          "Failed to set lru_mem_threshold_percent param");
+    set_flush_param(h, h1, "lru_rebuild_stime", "1");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set lru_rebuild_stime param");
 
     check(store(h, h1, NULL, OPERATION_SET, "key1", "data1", NULL, 0, vbucketId)
                 == ENGINE_SUCCESS, "Failed to store an item.");
@@ -5793,7 +5794,7 @@ static enum test_result test_lru_queue(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
                 == ENGINE_SUCCESS, "Failed to store an item.");
 
     wait_for_flusher_to_settle(h, h1);
-    sleep(5);
+    sleep(2);
 
     vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
@@ -5803,7 +5804,7 @@ static enum test_result test_lru_queue(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(strcmp(s.c_str(), "2") == 0, "Incorrect eviction queue count");
 
     evict_key(h, h1, "key1");
-    sleep(5);
+    sleep(2);
 
     vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
@@ -5833,27 +5834,33 @@ static void check_eviction_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int exp
  * Evict if used + required > (total - (headroom  * 3 + total * 0.1))
  */
 static enum test_result test_lru_eviction(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 5000000
 
     char keyname[5];
     uint16_t vbucketId = 0;
     std::string s;
-    int i, mem_used, itemsRemoved;
     char buffer[BUFFER_SIZE];
+    memset(buffer, 'a', BUFFER_SIZE);
+
+    set_flush_param(h, h1, "lru_mem_threshold_percent", "0");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Failed to set lru_mem_threshold_percent param");
 
     set_flush_param(h, h1, "enable_flushall", "true");
     check(h1->flush(h, NULL, 0) == ENGINE_SUCCESS, "Failed to flush");
-    mem_used = get_int_stat(h, h1, "mem_used");
-    int remaining = (get_int_stat(h, h1, "ep_max_data_size") * 9 / 10) 
-                    - (get_int_stat(h, h1, "eviction_headroom") * 3 + mem_used);
+
+#define PARALLELISM 4
+#define MAX_PER_THREAD (2 * 1024 * 1024)
+
+    int remaining = (get_int_stat(h, h1, "ep_max_data_size") * 9 / 10)
+        - (get_int_stat(h, h1, "eviction_headroom") + MAX_PER_THREAD * (PARALLELISM - 1))
+        - get_int_stat(h, h1, "mem_used");
 
     int buf_size = remaining / 2 - 300; // delta for metadata
-    assert(buf_size > 0);
-    memset(buffer, 'a', sizeof(buffer));
-    buffer[buf_size - 1] = '\0';
-    itemsRemoved = get_int_stat(h, h1, "ep_items_rm_from_checkpoints");
+    buffer[buf_size] = '\0';
+    int itemsRemoved = get_int_stat(h, h1, "ep_items_rm_from_checkpoints");
 
-    for (i = 0; i < 2; ++i ) {
+    for (int i = 0; i < 2; ++i ) {
         snprintf(keyname, 5, "key%d", i);
         check(store(h, h1, NULL, OPERATION_SET, keyname, buffer, NULL, 0, vbucketId)
               == ENGINE_SUCCESS, "Failed to store an item.");
@@ -5884,7 +5891,7 @@ static enum test_result test_lru_eviction(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     buffer[buf_size/2 - 200] = 'a';
     check(store(h, h1, NULL, OPERATION_SET, keyname, buffer, NULL, 0, vbucketId)
           == ENGINE_SUCCESS, "Failed to store an item.");
-    check_eviction_stats(h, h1, 3);
+    check_eviction_stats(h, h1, 2);
 
     return SUCCESS;
 }
@@ -6290,9 +6297,10 @@ engine_test_t* get_tests(void) {
         // eviction
         {"value eviction", test_value_eviction, NULL, teardown, NULL},
         {"eviction: lru evictions", test_lru_eviction, NULL, teardown, 
-         "eviction_policy=lru;max_size=10000; exp_pager_stime=2;eviction_headroom=1000;chk_period=60;ht_size=3;ht_locks=1"},
+         "eviction_policy=lru;max_size=10000000;lru_rebuild_stime=1;eviction_headroom=1000;chk_period=60;ht_size=3;ht_locks=1"},
         {"eviction: lru queue", test_lru_queue, NULL, teardown, "eviction_policy=lru"},
-        {"eviction: pause and switch", test_eviction_pause_and_switch, NULL, teardown, NULL},
+        {"eviction: pause", test_eviction_pause, NULL, teardown, NULL},
+        {"eviction: switch", test_eviction_switch, NULL, teardown, NULL},
         // duplicate items on disk
         {"duplicate items on disk", test_duplicate_items_disk, NULL, teardown, NULL},
         // tap tests

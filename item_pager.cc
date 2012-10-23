@@ -145,7 +145,7 @@ public:
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
         } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty() &&
-                   v->valLength() > EvictionManager::getMinBlobSize()) {
+                   v->valLength() >= EvictionManager::getMinBlobSize()) {
             if (evjob->evictAge() &&
                 evjob->evictItemByAge(evjob->evictAge(), v, currentBucket) == false) {
             } else {
