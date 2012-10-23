@@ -14,6 +14,7 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
+
 #include "config.h"
 
 #include <iostream>
@@ -908,6 +909,12 @@ typedef struct {
     int iterations;
     uint32_t wait;
 } set_key_thread_params;
+
+typedef struct {
+    ENGINE_HANDLE *h;
+    ENGINE_HANDLE_V1 *h1;
+    std::vector<std::string> *keys;
+} random_set_key_thread_params;
 
 typedef struct {
     ENGINE_HANDLE *h;
@@ -6220,6 +6227,71 @@ static enum test_result test_persistence_flusher_states(ENGINE_HANDLE *h, ENGINE
     return SUCCESS;
 }
 
+static void shuffle_keys(std::vector<std::string> &keys) {
+    for (size_t i = 0; i < keys.size(); i++) {
+        size_t pos = rand() % (i+1);
+        std::string tmp = keys.at(i);
+        keys.at(i) = keys.at(pos);
+        keys.at(pos) = tmp;
+    }
+}
+
+static void* random_order_set_thread(void *arg) {
+    random_set_key_thread_params *params = static_cast<random_set_key_thread_params *>(arg);
+    item *itm = NULL;
+    std::vector<std::string> keys = *(params->keys);
+    shuffle_keys(keys);
+
+    std::vector<std::string>::iterator it = keys.begin();
+    for (; it != keys.end(); it++) {
+        check(
+              store(params->h, params->h1, NULL, OPERATION_SET,
+                    (*it).c_str(), "value", &itm, 0, 0) == ENGINE_SUCCESS,
+              "Thread failed to store an item");
+        (params->h1)->release(params->h, NULL, itm);
+        itm = NULL;
+    }
+
+    return NULL;
+}
+
+static enum test_result test_conc_set_mkv(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+
+    const int n_threads = 10;
+    pthread_t threads[n_threads];
+    std::vector<std::string> keylist;
+    for (int i = 0; i < 10000; i++) {
+        std::stringstream ss;
+        ss<<"key_"<<i;
+        keylist.push_back(ss.str());
+    }
+
+    random_set_key_thread_params hp = {h, h1, &keylist};
+
+    srand(time(NULL));
+    for (int i = 0; i < n_threads; i++) {
+        int r = pthread_create(&threads[i], NULL, random_order_set_thread, &hp);
+        assert(r == 0);
+    }
+
+    for (int i = 0; i < n_threads; i++) {
+        void *trv = NULL;
+        int r = pthread_join(threads[i], &trv);
+        assert(r == 0);
+    }
+    wait_for_flusher_to_settle(h, h1);
+
+    testHarness.reload_engine(&h, &h1,
+                              testHarness.engine_path,
+                              "kvstore_config_file=t/kv_multikv.json",
+                              true, false);
+
+    check(0 == get_int_stat(h, h1, "ep_warmed_dups"), "There should not be any duplicates");
+    check(10000 == get_int_stat(h, h1, "curr_items_tot"), "Expects curr_items to be 10000");
+
+    return SUCCESS;
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
@@ -6245,6 +6317,7 @@ engine_test_t* get_tests(void) {
         {"set", test_set, NULL, teardown, NULL},
         {"set with cksum", test_set_with_cksum, NULL, teardown, NULL},
         {"concurrent set", test_conc_set, NULL, teardown, NULL},
+        {"test concurrent sets multikv", test_conc_set_mkv, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"set+get hit", test_set_get_hit, NULL, teardown, NULL},
         {"set+get hit with max_txn_size", test_set_get_hit, NULL, teardown,
          "ht_locks=1;ht_size=3;max_txn_size=10"},
