@@ -6181,6 +6181,29 @@ static enum test_result test_kvstore_flusher_count(ENGINE_HANDLE *h, ENGINE_HAND
 
 }
 
+static enum test_result test_persistence_flusher_states(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    vals.clear();
+    check(h1->get_stats(h, NULL, "kvstore", strlen("kvstore"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    int kvstore_count = atoi(vals["num_kvstores"].c_str());
+    switch_persistence(h, h1, false);
+
+    for (int i = 0; i < kvstore_count; i++) {
+        std::stringstream ss;
+        ss<<"ep_flusher_state_"<<i;
+        wait_for_stat_match(h, h1, ss.str(), "paused");
+    }
+
+    switch_persistence(h, h1, true);
+    for (int i = 0; i < kvstore_count; i++) {
+        std::stringstream ss;
+        ss<<"ep_flusher_state_"<<i;
+        wait_for_stat_match(h, h1, ss.str(), "running");
+    }
+
+    return SUCCESS;
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
@@ -6444,6 +6467,7 @@ engine_test_t* get_tests(void) {
         {"persistence: vb0 checkpoint_id persistence (stats & vbucket_states table)", test_checkpoint_vb0_persistence, NULL, teardown,
         "inconsistent_slave_chk=true"},
         {"persistence: verify start/stop persistence, ep_overhead stats", test_ep_overhead_stats, NULL, teardown, NULL},
+        {"persistence: flusher states", test_persistence_flusher_states, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"evict bgfetch", test_evict_bgfetch, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"kvstore: flusher count", test_kvstore_flusher_count, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {NULL, NULL, NULL, NULL, NULL}
