@@ -6127,6 +6127,39 @@ static enum test_result test_ep_overhead_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V
     return SUCCESS;
 }
 
+static enum test_result test_evict_bgfetch(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    size_t j;
+
+    for (j=0; j<50000; j++) {
+        std::stringstream sk, sv;
+        sk<<"key_"<<j;
+        sv<<"val_"<<j;
+        item *i = NULL;
+
+        check(store(h, h1, NULL, OPERATION_SET, sk.str().c_str(), sv.str().c_str(), &i) == ENGINE_SUCCESS,
+              "Failed set.");
+    }
+
+    wait_for_flusher_to_settle(h, h1);
+    for (j=0; j<50000; j++) {
+        std::stringstream sk;
+        sk<<"key_"<<j;
+        evict_key(h, h1, sk.str().c_str());
+    }
+
+    for (j=0; j<50000; j++) {
+        std::stringstream sk, sv;
+        sk<<"key_"<<j;
+        sv<<"val_"<<j;
+        check(check_key_value(h, h1, sk.str().c_str(), sv.str().c_str(), sv.str().length()) == SUCCESS,
+                "key - value mismatch or not found");
+    }
+
+    check(get_int_stat(h, h1, "ep_bg_fetched") == 50000, "Bgfetch count should be 50000");
+
+    return SUCCESS;
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
@@ -6390,6 +6423,7 @@ engine_test_t* get_tests(void) {
         {"persistence: vb0 checkpoint_id persistence (stats & vbucket_states table)", test_checkpoint_vb0_persistence, NULL, teardown,
         "inconsistent_slave_chk=true"},
         {"persistence: verify start/stop persistence, ep_overhead stats", test_ep_overhead_stats, NULL, teardown, NULL},
+        {"evict bgfetch", test_evict_bgfetch, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {NULL, NULL, NULL, NULL, NULL}
     };
     return tests;
