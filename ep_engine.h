@@ -561,8 +561,11 @@ public:
 
     ~EventuallyPersistentEngine() {
         delete epstore;
-        for (int i = 0; i < numKVStores; ++i) {
-            delete kvstore[i];
+        if (kvstore) {
+            for (int i = 0; i < numKVStores; ++i) {
+                delete kvstore[i];
+            }
+            delete []kvstore;
         }
         if (kvstoreConfigMap) {
             for (std::map<std::string, KVStoreConfig*>::iterator it = kvstoreConfigMap->begin();
@@ -571,7 +574,6 @@ public:
             }
             delete kvstoreConfigMap;
         }
-        delete []kvstore;
         delete getlExtension;
         delete diExtension;
     }

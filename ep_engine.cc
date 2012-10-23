@@ -1440,7 +1440,11 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
 bool EventuallyPersistentEngine::createKVStores() {
     numKVStores = kvstoreConfigMap->size();
     kvstore = new KVStore * [numKVStores];
-    int i = 0;
+    int i;
+    for (i = 0; i < numKVStores; i++) {
+        kvstore[i] = NULL;
+    }
+    i = 0;
     for (std::map<std::string, KVStoreConfig*>::iterator it = kvstoreConfigMap->begin();
             it != kvstoreConfigMap->end(); it++, i++) {
         if ((kvstore[i] = newKVStore(it->second)) == NULL) {
