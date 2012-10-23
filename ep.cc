@@ -616,8 +616,10 @@ protocol_binary_response_status EventuallyPersistentStore::evictKey(const std::s
         if (v->isResident()) {
             if (v->ejectValue(stats, vb->ht)) {
                 *msg = "Ejected.";
+            } else if (v->isDirty()) {
+                *msg = "Can't eject: Dirty object.";
             } else {
-                *msg = "Can't eject: Dirty or a small object.";
+                *msg = "Can't eject: Small object.";
             }
         } else {
             *msg = "Already ejected.";
@@ -1517,7 +1519,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
 
     if (delrv == WAS_CLEAN ||
         delrv == WAS_DIRTY ||
-        delrv == NOT_FOUND && expired) {
+        (delrv == NOT_FOUND && expired)) {
         // As replication is interleaved with online restore, deletion of items that might
         // exist in the restore backup files should be queued and replicated.
         if (!mv.wasDirty) {
@@ -1579,12 +1581,12 @@ std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
         std::queue<FlushEntry> *flushQueue = new std::queue<FlushEntry>();
         pushToOutgoingQueue(dbShardQueues, flushQueue, id);
 
-        size_t queue_size = getWriteQueueSize();
         stats.flusher_todos[id].incr(num_items);
-        stats.queue_size.set(queue_size);
+        assert(stats.queue_size >= num_items);
+        stats.queue_size.decr(num_items);
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
-                         "Flusher Id %d flushing %d items with %d still in queue\n",
-                         id, num_items, queue_size);
+                         "Flusher Id %d flushing %d items with %lu still in queue\n",
+                         id, num_items, stats.queue_size.get());
         flushing->clear();
         delete []dbShardQueues;
         delete flushing;
@@ -1628,7 +1630,6 @@ void EventuallyPersistentStore::requeueRejectedItems(std::queue<FlushEntry> *rej
         flushQ->push(rej->front());
         rej->pop();
     }
-    stats.queue_size.set(getWriteQueueSize());
 }
 
 void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
@@ -1653,9 +1654,6 @@ void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
     // that was successfully persisted for each vbucket.
     scheduleVBSnapshot(Priority::VBucketPersistHighPriority, id);
 
-    //FIXME:: Why is it needed?
-//    stats.flusher_todo.set(writing.size());
-    stats.queue_size.set(getWriteQueueSize());
     rel_time_t time_diff = ep_current_time() - flush_start;
     stats.flushDuration.set(time_diff);
     stats.flushDurations[id].set(time_diff);
@@ -1727,6 +1725,7 @@ protocol_binary_response_status EventuallyPersistentStore::revertOnlineUpdate(RC
     size_t msg_size = 0;
     std::vector<queued_item> item_list;
 
+    assert(0);
     if (!vb || vb->getState() == vbucket_state_dead) {
         return rv;
     }
@@ -2098,7 +2097,7 @@ int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
             rv = flushOneDelOrSet(fe, rejectQueue, id);
             if (rejectQueue->size() == prevRejectCount) {
                 // flush operation was not rejected
-//                tctx[id]->addUncommittedItem(qi);
+                tctx[id]->addUncommittedItem();
             }
         }
         break;
@@ -2381,9 +2380,7 @@ void TransactionContext::commit() {
     numUncommittedItems = 0;
 }
 
-void TransactionContext::addUncommittedItem(const queued_item &item) {
-    //uncommittedItems.push_back(item);
-    (void) item;
+void TransactionContext::addUncommittedItem() {
     ++numUncommittedItems;
 }
 

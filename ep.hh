@@ -399,7 +399,7 @@ public:
         txnSize.set(to);
     }
 
-    void addUncommittedItem(const queued_item &item);
+    void addUncommittedItem();
 
     size_t getNumUncommittedItems() {
         return numUncommittedItems;
