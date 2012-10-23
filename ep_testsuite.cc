@@ -6160,6 +6160,26 @@ static enum test_result test_evict_bgfetch(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h
     return SUCCESS;
 }
 
+static enum test_result test_kvstore_flusher_count(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    vals.clear();
+    check(h1->get_stats(h, NULL, "kvstore", strlen("kvstore"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    int kvstore_count = atoi(vals["num_kvstores"].c_str());
+    check(kvstore_count == 3, "Number of kvstores should be 3");
+
+    check(h1->get_stats(h, NULL, 0, 0, add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+
+    for (int i = 0; i < kvstore_count; i++) {
+        std::stringstream ss;
+        ss<<"ep_flusher_state_"<<i;
+        check(vals.find(ss.str()) != vals.end(), "Expects flusher to be present");
+    }
+
+    return SUCCESS;
+
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
@@ -6424,6 +6444,7 @@ engine_test_t* get_tests(void) {
         "inconsistent_slave_chk=true"},
         {"persistence: verify start/stop persistence, ep_overhead stats", test_ep_overhead_stats, NULL, teardown, NULL},
         {"evict bgfetch", test_evict_bgfetch, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
+        {"kvstore: flusher count", test_kvstore_flusher_count, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {NULL, NULL, NULL, NULL, NULL}
     };
     return tests;
