@@ -128,6 +128,28 @@ static void rmdb(void) {
     unlink("/tmp/test.db-1.sqlite-shm");
     unlink("/tmp/test.db-2.sqlite-shm");
     unlink("/tmp/test.db-3.sqlite-shm");
+
+    unlink("/tmp/db1.db");
+    unlink("/tmp/db1.db-0.sqlite");
+    unlink("/tmp/db1.db-1.sqlite");
+    unlink("/tmp/db1.db-2.sqlite");
+    unlink("/tmp/db1.db-3.sqlite");
+
+    unlink("/tmp/db2.db");
+    unlink("/tmp/db2-db1.db-0.sqlite");
+    unlink("/tmp/db2-db1.db-3.sqlite");
+    unlink("/tmp/db2-db1.db-6.sqlite");
+    unlink("/tmp/db2-db2.db-1.sqlite");
+    unlink("/tmp/db2-db2.db-4.sqlite");
+    unlink("/tmp/db2-db2.db-7.sqlite");
+    unlink("/tmp/db2-db3.db-2.sqlite");
+    unlink("/tmp/db2-db3.db-5.sqlite");
+
+    unlink("/tmp/db3.db");
+    unlink("/tmp/db3.db-0.sqlite");
+    unlink("/tmp/db3.db-1.sqlite");
+    unlink("/tmp/db3.db-2.sqlite");
+    unlink("/tmp/db3.db-3.sqlite");
 }
 
 static bool teardown(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
