@@ -6075,7 +6075,15 @@ static enum test_result test_checkpoint_vb0_persistence(ENGINE_HANDLE *h, ENGINE
         vals.clear();
         check(h1->get_stats(h, NULL, "checkpoint", strlen("checkpoint"), add_stats) == ENGINE_SUCCESS,
             "Failed to get stats.");
-        check(atoi(vals["vb_0:persisted_checkpoint_id"].c_str()) == i, "checkpoint should be persisted after flusher runs");
+        int x = 0;
+        for (; x < 10; ++x) {
+            if (atoi(vals["vb_0:persisted_checkpoint_id"].c_str()) == i) {
+                break;
+            }
+            usleep(10);
+        }
+
+        check(atoi(vals["vb_0:persisted_checkpoint_id"].c_str()) == i, "checkpoint did not persist after flusher runs");
 
         check(get_persisted_cpid_vb0_fromdb() == i, "vbucket_states table should be updated with latest persisted checkpoint_id");
 

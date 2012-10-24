@@ -1564,11 +1564,6 @@ std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
         size_t num_items = 0;
         size_t shard_id = 0;
 
-        for (; vb_it != vblist.end(); vb_it++) {
-            RCPtr<VBucket> vb = getVBucket(*vb_it);
-            rwUnderlying[id]->setPersistenceCheckpointId(*vb_it, vb->checkpointManager.getOpenCheckpointId());
-        }
-
         std::vector<FlushEntry> *flushing = getFlushQueue(id);
         std::vector<FlushEntry>::iterator it = flushing->begin();
         for (; it != flushing->end(); ++it) {
@@ -1578,19 +1573,32 @@ std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
             num_items++;
         }
 
-        std::queue<FlushEntry> *flushQueue = new std::queue<FlushEntry>();
-        pushToOutgoingQueue(dbShardQueues, flushQueue, id);
+        if (num_items > 0 ) {
+            for (; vb_it != vblist.end(); vb_it++) {
+                RCPtr<VBucket> vb = getVBucket(*vb_it);
+                rwUnderlying[id]->setPersistenceCheckpointId(*vb_it, vb->checkpointManager.getOpenCheckpointId());
+            }
 
-        stats.flusher_todos[id].incr(num_items);
-        assert(stats.queue_size >= num_items);
-        stats.queue_size.decr(num_items);
-        getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
-                         "Flusher Id %d flushing %d items with %lu still in queue\n",
-                         id, num_items, stats.queue_size.get());
-        flushing->clear();
-        delete []dbShardQueues;
-        delete flushing;
-        return flushQueue;
+            std::queue<FlushEntry> *flushQueue = new std::queue<FlushEntry>();
+            pushToOutgoingQueue(dbShardQueues, flushQueue, id);
+
+            stats.flusher_todos[id].incr(num_items);
+            assert(stats.queue_size >= num_items);
+            stats.queue_size.decr(num_items);
+            getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
+                             "Flusher Id %d flushing %d items with %lu still in queue\n",
+                             id, num_items, stats.queue_size.get());
+            flushing->clear();
+            delete []dbShardQueues;
+            delete flushing;
+            return flushQueue;
+        } else {
+            getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
+                             "Flusher Id %d did not find any items to flush\n", id);
+            delete []dbShardQueues;
+            delete flushing;
+            return NULL;
+        }
     } else {
         stats.dirtyAge = 0;
         // If the persistence queue is empty, reset queue-related stats for each vbucket.
@@ -2456,6 +2464,5 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
 std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) {
     std::vector<FlushEntry> *flushing = new std::vector<FlushEntry>();
     toFlush[kvid].toArray(*flushing);
-    assert(flushing->size() > 0);
     return flushing;
 }
