@@ -453,6 +453,7 @@ EventuallyPersistentStore::~EventuallyPersistentStore() {
 
     nonIODispatcher->stop(forceShutdown);
 
+    delete []toFlush;
     delete []flusher;
     delete []dispatcher;
     delete []tctx;
@@ -1635,12 +1636,15 @@ void EventuallyPersistentStore::pushToOutgoingQueue(
     }
 }
 
-void EventuallyPersistentStore::requeueRejectedItems(std::queue<FlushEntry> *rej, std::queue<FlushEntry> *flushQ) {
+void EventuallyPersistentStore::requeueRejectedItems(std::queue<FlushEntry> *rej,
+                                                     std::queue<FlushEntry> *flushQ,
+                                                     int id) {
     // Requeue the rejects.
     while (!rej->empty()) {
         flushQ->push(rej->front());
         rej->pop();
     }
+    stats.flusher_todos[id].incr(flushQ->size());
 }
 
 void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
@@ -1688,6 +1692,7 @@ int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
             rejectQueue->push(q->front());
             q->pop();
         }
+        stats.flusher_todos[id].decr(rejectQueue->size());
         return 1; // This will cause us to jump out and delay a second
     }
     int tsz = tctx[id]->remaining();

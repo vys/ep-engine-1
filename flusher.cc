@@ -269,8 +269,7 @@ int Flusher::doFlush() {
         if (flushQueue->empty()) {
             if (rejectQueue && !rejectQueue->empty()) {
                 // Requeue the rejects.
-                store->requeueRejectedItems(rejectQueue, flushQueue);
-                store->stats.flusher_todos[flusherId].incr(flushQueue->size());
+                store->requeueRejectedItems(rejectQueue, flushQueue, flusherId);
                 rejectedItemsRequeued = true;
             } else {
                 store->completeFlush(flushStart, flusherId);

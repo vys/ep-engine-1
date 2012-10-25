@@ -881,7 +881,8 @@ private:
     void pushToOutgoingQueue(std::vector<FlushEntry> *dbShardQueues,
                              std::queue<FlushEntry> *flushQueue, int id);
     void requeueRejectedItems(std::queue<FlushEntry> *rejects,
-                              std::queue<FlushEntry> *flushQueue);
+                              std::queue<FlushEntry> *flushQueue,
+                              int id);
     void completeFlush(rel_time_t flush_start, int id);
 
     void enqueueCommit();
