@@ -1980,12 +1980,11 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
         return 0;
     }
 
+    int bucket_num(0);
+    LockHolder lh = vb->ht.getLockedBucket(fe.getKey(), &bucket_num);
     if (fe.getVBucketVersion() != vbuckets.getBucketVersion(fe.getVBucketId())) {
         return 0;
     }
-
-    int bucket_num(0);
-    LockHolder lh = vb->ht.getLockedBucket(fe.getKey(), &bucket_num);
     StoredValue *v = vb->ht.unlocked_find(fe.getKey(), bucket_num, true);
     Item *itm = NULL;
 
