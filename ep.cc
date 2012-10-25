@@ -664,6 +664,13 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
     mutation_type_t mtype = vb->ht.set_unlocked(item, bucket_num, row_id, mv);
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
 
+    time_t queued = item.getQueuedTime();
+    if (queued != -1 && (mtype == NOT_FOUND ||
+            mtype == WAS_CLEAN ||
+            mtype == WAS_DIRTY)) {
+        mv.sv->reDirty(static_cast<rel_time_t>(queued));
+    }
+
     switch (mtype) {
     case NOMEM:
         ret = ENGINE_ENOMEM;
@@ -689,7 +696,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
         // Even if the item was dirty, push it into the vbucket's open checkpoint.
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
                    item.getFlags(), item.getExptime(), item.getCas(), row_id,
-                   item.getCksum(), item.getQueuedTime());
+                   item.getCksum(), queued);
         break;
     case INVALID_VBUCKET:
         ret = ENGINE_NOT_MY_VBUCKET;
