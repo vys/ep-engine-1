@@ -284,7 +284,7 @@ int Flusher::doFlush() {
             }
         }
     } else {
-        flushRv = DEFAULT_MIN_SLEEP_TIME;
+        flushRv = 0;
     }
 
     return flushRv;
