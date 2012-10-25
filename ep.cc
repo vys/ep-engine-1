@@ -973,7 +973,7 @@ bool EventuallyPersistentStore::deleteVBucket(uint16_t vbid) {
     return rv;
 }
 
-bool EventuallyPersistentStore::resetVBucket(uint16_t vbid) {
+bool EventuallyPersistentStore::resetVBucket(uint16_t vbid, bool underlying) {
     LockHolder lh(vbsetMutex);
     bool rv(false);
 
@@ -999,7 +999,9 @@ bool EventuallyPersistentStore::resetVBucket(uint16_t vbid) {
         scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
                            KVStoreMapper::getVBucketToKVId(vbid));
         // Clear all the items from the vbucket kv table on disk.
-        scheduleVBDeletion(vb, vb_version);
+        if (underlying) {
+            scheduleVBDeletion(vb, vb_version);
+        }
         rv = true;
     }
     return rv;
@@ -1541,22 +1543,16 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
 void EventuallyPersistentStore::reset() {
     std::vector<int> buckets = vbuckets.getBuckets();
     std::vector<int>::iterator it;
-    for (it = buckets.begin(); it != buckets.end(); ++it) {
-        RCPtr<VBucket> vb = getVBucket(*it);
-        if (vb) {
-            HashTableStatVisitor statvis = vb->ht.clear();
-            stats.currentSize.decr(statvis.memSize - statvis.valSize);
-            assert(stats.currentSize.get() < GIGANTOR);
-            vb->checkpointManager.clear(vb->getState());
-            vb->resetStats();
-        }
-    }
+
     for (int i = 0; i < numKVStores; ++i) {
         if (diskFlushAll[i].cas(false, true)) {
             flusher[i]->setFlushAll(true);
-            // Increase the write queue size by 1 as flusher will execute flush_all as a single task.
-            stats.queue_size.set(getWriteQueueSize() + 1);
+            stats.queue_size.incr(1);
         }
+    }
+
+    for (it = buckets.begin(); it != buckets.end(); ++it) {
+        resetVBucket(*it, false);
     }
 }
 
@@ -1958,6 +1954,8 @@ private:
 int EventuallyPersistentStore::flushOneDeleteAll(int id) {
     rwUnderlying[id]->reset();
     diskFlushAll[id].cas(true, false);
+    stats.queue_size.decr(1);
+
     return 1;
 }
 
@@ -2106,29 +2104,31 @@ int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
     q->pop();
 
     int rv = 0;
-    switch (fe.getOperation()) {
-    case queue_op_set:
-        if (fe.getVBucketVersion() == vbuckets.getBucketVersion(fe.getVBucketId())) {
+
+    if (fe.getVBucketVersion() == vbuckets.getBucketVersion(fe.getVBucketId())) {
+        switch (fe.getOperation()) {
+        case queue_op_set:
             rv = flushOneDelOrSet(fe, rejectQueue, id);
             if (rejectQueue->size() == prevRejectCount) {
                 // flush operation was not rejected
                 tctx[id]->addUncommittedItem();
             }
+            break;
+        case queue_op_del:
+            rv = flushOneDelOrSet(fe, rejectQueue, id);
+            break;
+        case queue_op_commit:
+            tctx[id]->commit();
+            tctx[id]->enter();
+            break;
+        case queue_op_empty:
+            assert(false);
+            break;
+        default:
+            break;
         }
-        break;
-    case queue_op_del:
-        rv = flushOneDelOrSet(fe, rejectQueue, id);
-        break;
-    case queue_op_commit:
-        tctx[id]->commit();
-        tctx[id]->enter();
-        break;
-    case queue_op_empty:
-        assert(false);
-        break;
-    default:
-        break;
     }
+
     stats.flusher_todos[id]--;
     if (rejectQueue->size() == prevRejectCount) {
         stats.memOverhead.decr(sizeof(FlushEntry));

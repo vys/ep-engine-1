@@ -687,7 +687,7 @@ public:
      * Reset a given vbucket from memory and disk. This differs from vbucket deletion in that
      * it does not delete the vbucket instance from memory hash table.
      */
-    bool resetVBucket(uint16_t vbid);
+    bool resetVBucket(uint16_t vbid, bool underlying = true);
 
     void visit(VBucketVisitor &visitor) {
         size_t maxSize = vbuckets.getSize();

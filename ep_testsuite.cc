@@ -1490,7 +1490,6 @@ static enum test_result test_flush_multiv(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     check_key_value(h, h1, "key", "somevalue", 9);
     check_key_value(h, h1, "key2", "somevalue", 9, 2);
 
-    wait_for_flusher_to_settle(h, h1);
     // Try flush without enabling flush all.. Should fail
     check(h1->flush(h, NULL, 0) == ENGINE_ENOTSUP,
           "Failed to fail flush");
