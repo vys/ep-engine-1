@@ -1020,6 +1020,11 @@ public:
      *
      * @return a stat visitor reporting how much stuff was removed
      */
+    HashTableStatVisitor unlocked_clear(bool deactivate = false);
+
+    /**
+     * Locked version of unlocked_clear
+     */
     HashTableStatVisitor clear(bool deactivate = false);
 
     /**
@@ -1337,6 +1342,15 @@ public:
                 return rv;
             }
         }
+    }
+
+    /*
+     * Get a lockholder which locks all mutexes for the hashtable
+     * @return a locked MultiLockHolder
+     */
+    inline MultiLockHolder getLockedVBucket() {
+        MultiLockHolder lh(mutexes, n_locks);
+        return lh;
     }
 
     /**

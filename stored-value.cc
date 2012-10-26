@@ -122,14 +122,14 @@ void HashTable::setDefaultNumLocks(size_t to) {
     }
 }
 
-HashTableStatVisitor HashTable::clear(bool deactivate) {
+HashTableStatVisitor HashTable::unlocked_clear(bool deactivate) {
     HashTableStatVisitor rv;
 
     if (!deactivate) {
         // If not deactivating, assert we're already active.
         assert(active());
     }
-    MultiLockHolder mlh(mutexes, n_locks);
+
     if (deactivate) {
         active(false);
     }
@@ -148,6 +148,12 @@ HashTableStatVisitor HashTable::clear(bool deactivate) {
     cacheSize.set(0);
 
     return rv;
+}
+
+
+HashTableStatVisitor HashTable::clear(bool deactivate) {
+    MultiLockHolder mlh(mutexes, n_locks);
+    return unlocked_clear(deactivate);
 }
 
 void HashTable::resize(size_t newSize) {

@@ -85,6 +85,18 @@ public:
         lock();
     }
 
+    /**
+     * Copy constructor hands this lock to the new copy and then
+     * consider it released locally (i.e. renders unlock() a noop).
+     */
+    MultiLockHolder(const MultiLockHolder& from) : mutexes(from.mutexes) {
+
+        for (size_t i = 0; i < n_locks; i++) {
+            locked[i] = true;
+            const_cast<MultiLockHolder*>(&from)->locked[i] = false;
+        }
+    }
+
     ~MultiLockHolder() {
         unlock();
         delete[] locked;
@@ -118,7 +130,6 @@ private:
     bool   *locked;
     size_t  n_locks;
 
-    DISALLOW_COPY_AND_ASSIGN(MultiLockHolder);
 };
 
 #endif /* LOCKS_H */
