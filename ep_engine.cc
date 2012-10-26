@@ -2609,6 +2609,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
 
     EPStats &epstats = getEpStats();
     add_casted_stat("ep_version", VERSION, add_stat, cookie);
+    add_casted_stat("ep_current_time", ep_current_time(), add_stat, cookie);
+    add_casted_stat("ep_real_time", ep_real_time(), add_stat, cookie);
     add_casted_stat("ep_kvstore_map_vbuckets", epstats.kvstoreMapVbuckets,
                      add_stat, cookie);
     add_casted_stat("ep_storage_age",
