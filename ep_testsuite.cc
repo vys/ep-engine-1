@@ -4091,17 +4091,16 @@ static enum test_result test_mb3169(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
 static enum test_result test_queuedtime_tap(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     hrtime_t tt = gethrtime();
     char eng_specific[64];
-    uint64_t checkpointId;
-    checkpointId = htonll(1);
+    int currTime = get_int_stat(h, h1, "ep_real_time");
     check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
     memset(eng_specific, 0, sizeof(eng_specific));
     check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific), 1, 0, TAP_MUTATION, 1,
-                         "key", 3, 828, 12, 0, 0,
+                         "key", 3, 828, currTime + 12, 0, 0,
                          "value", 5, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Failed tap notify.");
     sleep(1);
     wait_for_flusher_to_settle(h, h1);
-    check(gethrtime() - tt > 18000000000, "Either min_data_age or queued_time not honoured");
+    check(gethrtime() - tt >= 22000000000, "Either min_data_age or queued_time not honoured");
     return SUCCESS;
 }
 

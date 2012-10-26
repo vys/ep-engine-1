@@ -1118,7 +1118,11 @@ extern "C" {
         item_info->exptime = it->getExptime();
         item_info->nbytes = it->getNBytes();
         item_info->flags = it->getFlags();
-        item_info->queued = it->getQueuedTime();
+        time_t queued = it->getQueuedTime();
+        // Convert engine time to real time
+        item_info->queued = (queued == -1 ?
+                std::numeric_limits<rel_time_t>::max() :
+                static_cast<rel_time_t>(ep_real_time()) - (ep_current_time() - static_cast<rel_time_t>(queued)));
         item_info->clsid = 0;
         item_info->nkey = static_cast<uint16_t>(it->getNKey());
         item_info->nvalue = 1;
@@ -2168,6 +2172,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
                                                         uint16_t vbucket,
                                                         const char *cksum)
 {
+    // Convert real time to engine time
+    if (queued != std::numeric_limits<uint32_t>::max()) {
+        queued = ep_current_time() - (static_cast<uint32_t>(ep_real_time()) - queued);
+    }
+
     void *specific = serverApi->cookie->get_engine_specific(cookie);
     TapConnection *connection = NULL;
     if (specific == NULL) {
