@@ -745,6 +745,15 @@ static int get_int_stat(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
     return atoi(s.c_str());
 }
 
+static long long get_long_stat(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
+                        const char *statname, const char *statkey = NULL) {
+    vals.clear();
+    check(h1->get_stats(h, NULL, statkey, statkey == NULL ? 0 : strlen(statkey),
+                        add_stats) == ENGINE_SUCCESS,
+          "Failed to get stats.");
+    std::string s = vals[statname];
+    return atoll(s.c_str());
+}
 static void verify_curr_items(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
                               int exp, const char *msg) {
     int curr_items = get_int_stat(h, h1, "curr_items");
@@ -6348,15 +6357,44 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
     char *value = NULL;
     char keyname[32];
 
-    printf ("starting fill for %d keys , blobsize = %d\n", keys, blobsize);
+    uint64_t max_size = get_long_stat(h, h1, "ep_max_data_size");
+    // Overhead = mem_used + Keys * sizeof(StoredValue) + mutation_mem_threshold
+    // + eviction_headroom + parallelism
+    uint64_t required = get_long_stat(h, h1, "mem_used") + keys * 100 + max_size / 10 + 10000000 + 6000000;
+    if (max_size <= required) {
+        printf ("Not enough memory to run the test. Max_size = %lu, required = %lu\n",
+                max_size, required);
+        printf("Cleanup db files as well\n");
+        return -1;
+    }
+    printf ("Starting fill for %d keys , blobsize = %d\n", keys, blobsize);
     value = (char *)malloc (blobsize * sizeof(char));
     memset(value, 3, blobsize - 1);
     value[blobsize] = '\0';
 
+
+    int max_tries = 2;
+    ENGINE_ERROR_CODE ret=ENGINE_SUCCESS;
     for (; i < keys; ++i) {
         snprintf(keyname, 32, "key-%d", i);
-        store(h, h1, NULL, OPERATION_SET, keyname, value, NULL);
+        int num_tries = 0;
+        while (((ret = store(h, h1, NULL, OPERATION_SET, keyname, value, NULL))
+                 == ENGINE_TMPFAIL) && num_tries < max_tries) {
+            printf ("Set for %s failed with tmpooom. Retrying after waiting for flusher\n", keyname);
+            wait_for_flusher_to_settle(h, h1);
+            num_tries++;
+            if (num_tries == max_tries) {
+                printf ("Waiting for checkpoint to settle\n");
+                sleep(60);
+                break;
+            }
+        }
     }
+    if (ret != ENGINE_SUCCESS) {
+        printf ("Set failed with error %d. Nothing to do\n", ret);
+        return -1;
+    }
+
     wait_for_flusher_to_settle(h, h1);
 
     uint32_t actual_keys = get_int_stat(h, h1, "curr_items");
@@ -6364,6 +6402,7 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
         printf("Store of %d keys failed. Stored only %d\n", keys, actual_keys);
     } else {
         printf ("Store Success\n");
+        printf(" Non resident = %d\n", get_int_stat(h, h1, "ep_num_non_resident"));
     }
     free(value);
     return 0;
@@ -6371,7 +6410,7 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
 
 static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     /* Generate these from the input parameters */
-    uint32_t num_keys = 100000;
+    uint32_t num_keys = 2000000;
     uint32_t blob_size = 20;
 
     if (!do_fill(h, h1, num_keys, blob_size)) {
@@ -6386,7 +6425,6 @@ MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
     static engine_test_t tests[]  = {
-        {"flusher perf test", run_flusher_perf_test, NULL, teardown, "max_size=100000000"},
         {"validate engine handle", test_validate_engine_handle, NULL, teardown,
          "kvstore_config_file=t/kv_single_memory.json"},
         // basic tests
@@ -6654,6 +6692,9 @@ engine_test_t* get_tests(void) {
         {"persistence: flusher states", test_persistence_flusher_states, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"evict bgfetch", test_evict_bgfetch, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"kvstore: flusher count", test_kvstore_flusher_count, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
+        // Flusher Perf tests
+        {"flusher perf test", run_flusher_perf_test, NULL, teardown, 
+        "max_size=400000000;eviction_headroom=10000000;ht_size=1572869;chk_period=60;ht_locks=10000"},
         {NULL, NULL, NULL, NULL, NULL}
     };
     return tests;
