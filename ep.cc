@@ -1911,7 +1911,9 @@ public:
                 StoredValue *v = store->fetchValidValue(vb, flushEntry.getKey(),
                                                         bucket_num, true);
                 assert(v == flushEntry.getStoredValue());
-                if (v && !v->isDirty()) {
+                // Only proceed with deletion if the item is still deleted and
+                // no other mutation for it came during this window.
+                if (v && !v->isDirty() && v->isDeleted()) {
                     if (store->isRestoreEnabled()) {
                         LockHolder rlh(store->restore.mutex);
                         store->restore.itemsDeleted.insert(flushEntry.getKey());
