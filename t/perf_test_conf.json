@@ -1,4 +1,4 @@
 {
-    "name" : "test1",
-    "max_size" : "10000000"
+    "keys" : "2000000",
+    "blobsize" : "20"
 }

@@ -814,6 +814,43 @@ static long long get_long_stat(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
     std::string s = vals[statname];
     return atoll(s.c_str());
 }
+
+std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
+        uint32_t keys, uint32_t blobsize, int dgm = 1) {
+
+    // Following the proportion: 10K locks per 2M keys
+    uint32_t ht_locks = keys / 200;
+
+    // Pick an appropriate number from prime_size_table
+    uint32_t ht_size = (keys < 2000000 ? 1572869 :
+                       (keys < 3500000 ? 3145721 : 
+                       (keys < 7000000 ? 6291449 : 12582917)));
+
+    // Query max_size and check if it is valid based on the requirements
+    uint64_t max_size = get_long_stat(h, h1, "ep_max_data_size");
+    uint64_t evictionheadroom = get_long_stat(h, h1, "eviction_headroom");
+    // Overhead = mem_used + Keys * sizeof(StoredValue) + mutation_mem_threshold
+    // + eviction_headroom + parallelism
+    uint64_t required = get_long_stat(h, h1, "mem_used") + keys * 100 + max_size / 10 + evictionheadroom + 6000000;
+    char msg[1024];
+    snprintf(msg, 1024, "Not enough memory to run the test. Max_size = %llu, required = %llu\nCleanup db files as well\n",
+            max_size, required);
+    check(max_size >= required, msg);
+
+    // Compute new max_size
+    max_size = required + (keys * blobsize) / dgm;
+
+    std::stringstream ss;
+
+    ss << "chk_period=60;"
+       << "max_size=" << max_size << ";"
+       << "eviction_headroom=" << evictionheadroom << ";"
+       << "ht_size=" << ht_size << ";"
+       << "ht_locks=" << ht_locks;
+
+    return ss.str();
+}
+
 static void verify_curr_items(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
                               int exp, const char *msg) {
     int curr_items = get_int_stat(h, h1, "curr_items");
@@ -6417,16 +6454,6 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
     char *value = NULL;
     char keyname[32];
 
-    uint64_t max_size = get_long_stat(h, h1, "ep_max_data_size");
-    // Overhead = mem_used + Keys * sizeof(StoredValue) + mutation_mem_threshold
-    // + eviction_headroom + parallelism
-    uint64_t required = get_long_stat(h, h1, "mem_used") + keys * 100 + max_size / 10 + 10000000 + 6000000;
-    if (max_size <= required) {
-        printf ("Not enough memory to run the test. Max_size = %llu, required = %llu\n",
-                max_size, required);
-        printf("Cleanup db files as well\n");
-        return -1;
-    }
     printf ("Starting fill for %d keys , blobsize = %d\n", keys, blobsize);
     value = (char *)malloc (blobsize * sizeof(char));
     memset(value, 3, blobsize - 1);
@@ -6505,15 +6532,26 @@ static int run_pattern_load(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
 
 static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     /* Generate these from the input parameters */
-    uint32_t num_keys = 2000000;
-    uint32_t blob_size = 20;
+    std::map<std::string, std::string> *conf = parsePerfTestConfig();
+    uint32_t num_keys = atoi((*conf)["keys"].c_str());
+    uint32_t blob_size = atoi((*conf)["blobsize"].c_str());
+
+    // Generate new config and restart the engine
+    std::string newConf = gen_new_config(h, h1, num_keys, blob_size);
+    testHarness.reload_engine(&h, &h1,
+                              testHarness.engine_path,
+                              newConf.c_str(),
+                              false, false);
+
+    check(h1->initialize(h, newConf.c_str())
+          == ENGINE_SUCCESS, "Failed to initialize");
 
     check(do_fill(h, h1, num_keys, blob_size) == 0, "Filling failed");
     BaseLoadPattern *g = new EvenKeysPattern(num_keys);
     check(run_pattern_load(h, h1, g, blob_size, 1, 2) == 0, "Pattern based loading failed");
 
+    delete conf;
     return SUCCESS;
-
 }
 
 
