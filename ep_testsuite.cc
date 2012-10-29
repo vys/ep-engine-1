@@ -6422,7 +6422,7 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
     // + eviction_headroom + parallelism
     uint64_t required = get_long_stat(h, h1, "mem_used") + keys * 100 + max_size / 10 + 10000000 + 6000000;
     if (max_size <= required) {
-        printf ("Not enough memory to run the test. Max_size = %lu, required = %lu\n",
+        printf ("Not enough memory to run the test. Max_size = %llu, required = %llu\n",
                 max_size, required);
         printf("Cleanup db files as well\n");
         return -1;
@@ -6468,18 +6468,54 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
     return 0;
 }
 
+static int run_pattern_load(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
+                BaseLoadPattern *generator, uint32_t blobsize, uint32_t set_r, uint32_t get_r) {
+
+    std::cout<<"Blob size:"<<blobsize<<" set-get="<<set_r<<"/"<<get_r<<std::endl;
+    char *value;
+    item *it;
+
+    value = (char *)malloc (blobsize * sizeof(char));
+    memset(value, 3, blobsize - 1);
+    value[blobsize] = '\0';
+
+    while (1) {
+        for (uint32_t i=0; i<set_r; i++) {
+            std::string key;
+            if (generator->getNextKey(key) > 0) {
+                check(store(h, h1, NULL, OPERATION_SET, key.c_str(), value, NULL) == ENGINE_SUCCESS, "Failed to store key");
+            } else {
+                return 0;
+            }
+        }
+
+        for (uint32_t i=0; i<get_r; i++) {
+            std::string key;
+            if (generator->getNextKey(key) > 0) {
+                check(h1->get(h, NULL, &it, key.c_str(), key.length(), 0) == ENGINE_SUCCESS, "Failed to read out key");
+                h1->release(h, NULL, it);
+            } else {
+                return 0;
+            }
+        }
+
+    }
+
+}
+
 static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     /* Generate these from the input parameters */
     uint32_t num_keys = 2000000;
     uint32_t blob_size = 20;
 
-    if (!do_fill(h, h1, num_keys, blob_size)) {
-        return SUCCESS;
-    } else {
-        return FAIL;
-    }
-    /* Run load test now */ 
+    check(do_fill(h, h1, num_keys, blob_size) == 0, "Filling failed");
+    BaseLoadPattern *g = new EvenKeysPattern(num_keys);
+    check(run_pattern_load(h, h1, g, blob_size, 1, 2) == 0, "Pattern based loading failed");
+
+    return SUCCESS;
+
 }
+
 
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
