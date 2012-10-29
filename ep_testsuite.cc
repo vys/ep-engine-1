@@ -32,6 +32,8 @@
 #include <sys/wait.h>
 #include <pthread.h>
 #include <netinet/in.h>
+#include <sys/stat.h>
+#include <fstream>
 
 #ifdef HAS_ARPA_INET_H
 #include <arpa/inet.h>
@@ -51,6 +53,7 @@
 #include "mutex.hh"
 #include "locks.hh"
 
+#include "tools/cJSON.h"
 #include "ep_testsuite.h"
 #include "command_ids.h"
 #include "sync_registry.hh"
@@ -110,6 +113,63 @@ bool abort_msg(const char *expr, const char *msg, int line) {
     abort();
     // UNREACHABLE
     return false;
+}
+
+#define JSON_ERROR(msg) \
+    if (c != NULL) { \
+        cJSON_Delete(c); \
+    } \
+    if (data) { \
+        free(data); \
+    } \
+    delete conf; \
+    abort_msg(confFile, msg, __LINE__)
+
+std::map<std::string, std::string> *parsePerfTestConfig(const char *confFile = NULL) {
+    std::map<std::string, std::string> *conf = new std::map<std::string, std::string>;
+    cJSON *c = NULL;
+
+    if (confFile == NULL) {
+        confFile = "t/perf_test_conf.json";
+    }
+
+    char *data = NULL;
+
+    struct stat st;
+    if (stat(confFile, &st) == -1) {
+        JSON_ERROR("Cannot read KVStore config file");
+    } else {
+        data = (char*) malloc((st.st_size + 1) * sizeof(char));
+        data[st.st_size] = 0;
+        std::ifstream input(confFile);
+        input.read(data, st.st_size);
+        input.close();
+    }
+
+    if ((c = cJSON_Parse(data)) == NULL) {
+        JSON_ERROR("Parse error in JSON file");
+    }
+
+    int numKeys = cJSON_GetArraySize(c);
+    std::set<std::string> unique_keys;
+    for (int i = 0; i < numKeys; i++) {
+        cJSON *param = cJSON_GetArrayItem(c, i);
+        std::string t(param->string);
+        if (unique_keys.find(t) != unique_keys.end()) {
+            JSON_ERROR("Duplicate keys in JSON");
+        }
+        unique_keys.insert(t);
+
+        if (param->type != cJSON_String) {
+            JSON_ERROR("Parameter value must be string");
+        }
+        (*conf)[t] = param->valuestring;
+    }
+
+    cJSON_Delete(c);
+    free(data);
+
+    return conf;
 }
 
 static void rmdb(void) {
