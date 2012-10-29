@@ -6342,10 +6342,51 @@ static enum test_result test_conc_set_mkv(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     return SUCCESS;
 }
 
+static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
+                    uint32_t blobsize) {
+    uint32_t i = 0;
+    char *value = NULL;
+    char keyname[32];
+
+    printf ("starting fill for %d keys , blobsize = %d\n", keys, blobsize);
+    value = (char *)malloc (blobsize * sizeof(char));
+    memset(value, 3, blobsize - 1);
+    value[blobsize] = '\0';
+
+    for (; i < keys; ++i) {
+        snprintf(keyname, 32, "key-%d", i);
+        store(h, h1, NULL, OPERATION_SET, keyname, value, NULL);
+    }
+    wait_for_flusher_to_settle(h, h1);
+
+    uint32_t actual_keys = get_int_stat(h, h1, "curr_items");
+    if (actual_keys != keys) {
+        printf("Store of %d keys failed. Stored only %d\n", keys, actual_keys);
+    } else {
+        printf ("Store Success\n");
+    }
+    free(value);
+    return 0;
+}
+
+static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    /* Generate these from the input parameters */
+    uint32_t num_keys = 100000;
+    uint32_t blob_size = 20;
+
+    if (!do_fill(h, h1, num_keys, blob_size)) {
+        return SUCCESS;
+    } else {
+        return FAIL;
+    }
+    /* Run load test now */ 
+}
+
 MEMCACHED_PUBLIC_API
 engine_test_t* get_tests(void) {
 
     static engine_test_t tests[]  = {
+        {"flusher perf test", run_flusher_perf_test, NULL, teardown, "max_size=100000000"},
         {"validate engine handle", test_validate_engine_handle, NULL, teardown,
          "kvstore_config_file=t/kv_single_memory.json"},
         // basic tests
