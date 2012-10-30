@@ -115,6 +115,31 @@ bool abort_msg(const char *expr, const char *msg, int line) {
     return false;
 }
 
+class BlockTimerSimple {
+public:
+    BlockTimerSimple() {
+        reset();
+    }
+
+    hrtime_t getElapsedTime() {
+        return (gethrtime() - startTime) / 1000000000;
+    }
+
+    hrtime_t getElapsedTimeUsec() {
+        return gethrtime() - startTime;
+    }
+
+    double getElapsedTimeDouble() {
+        return ((double) (gethrtime() - startTime)) / 1000000000.0;
+    }
+
+    void reset() {
+        startTime = gethrtime();
+    }
+
+    hrtime_t startTime;
+};
+
 #define JSON_ERROR(msg) \
     if (c != NULL) { \
         cJSON_Delete(c); \
@@ -4201,7 +4226,7 @@ static enum test_result test_mb3169(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
 }
 
 static enum test_result test_queuedtime_tap(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
-    hrtime_t tt = gethrtime();
+    BlockTimerSimple tt;
     char eng_specific[64];
     int currTime = get_int_stat(h, h1, "ep_real_time");
     check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
@@ -4212,12 +4237,12 @@ static enum test_result test_queuedtime_tap(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
           "Failed tap notify.");
     sleep(1);
     wait_for_flusher_to_settle(h, h1);
-    check(gethrtime() - tt >= 22000000000, "Either min_data_age or queued_time not honoured");
+    check(tt.getElapsedTime() >= 22, "Either min_data_age or queued_time not honoured");
     return SUCCESS;
 }
 
 static enum test_result test_min_data_age(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
-    hrtime_t tt = gethrtime();
+    BlockTimerSimple tt;
     for (int i = 0; i < 5; i++) {
         check(store(h, h1, NULL, OPERATION_SET, "key", "value", NULL) == ENGINE_SUCCESS,
               "Failed set.");
@@ -4225,7 +4250,7 @@ static enum test_result test_min_data_age(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     }
     wait_for_flusher_to_settle(h, h1);
     check(get_int_stat(h, h1, "ep_total_persisted") == 1, "Persistence must have occured exactly once");
-    check(gethrtime() - tt > 9000000000, "min_data_age not honoured");
+    check(tt.getElapsedTime() > 9, "min_data_age not honoured");
     return SUCCESS;
 }
 
@@ -6580,10 +6605,16 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     check(h1->initialize(h, newConf.c_str())
           == ENGINE_SUCCESS, "Failed to initialize");
 
+    BlockTimerSimple tt;
     check(do_fill(h, h1, num_keys, blob_size) == 0, "Filling failed");
+    printf("Fill took %llu seconds\n", tt.getElapsedTime());
+    tt.reset();
     check(do_warmup(h, h1, warmup) == 0, "Warmup failed");
+    printf("Warmup took %llu seconds\n", tt.getElapsedTime());
     BaseLoadPattern *g = new EvenKeysPattern(num_keys);
+    tt.reset();
     check(run_pattern_load(h, h1, g, blob_size, 1, 2) == 0, "Pattern based loading failed");
+    printf("Performance run took %llu seconds\n", tt.getElapsedTime());
 
     delete conf;
     return SUCCESS;
