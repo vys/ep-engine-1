@@ -3,6 +3,7 @@
 
 #include <memcached/engine.h>
 #include <memcached/engine_testapp.h>
+#include <tr1/random>
 
 #ifdef __cplusplus
 extern "C" {
@@ -99,6 +100,25 @@ public:
     }
 };
 
+class UniformIntPattern: public BaseLoadPattern {
+
+    int generateKey(std::string &key) {
+        std::stringstream ss;
+        ss<<"key-"<<unif(eng);
+        key = ss.str();
+        return 1;
+    }
+public:
+
+    UniformIntPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0) : BaseLoadPattern(n, t, (t || ops) ? ops : n-1) {
+        eng.seed(0);
+        unif = std::tr1::uniform_int<int>(0, n-1);
+        std::cout<<"Loading uniformint pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<std::endl;
+    }
+
+    std::tr1::uniform_int<int> unif;
+    std::tr1::ranlux64_base_01 eng;
+};
 
 #ifdef __cplusplus
 }
