@@ -816,7 +816,7 @@ static long long get_long_stat(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
 }
 
 std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
-        uint32_t keys, uint32_t blobsize, int dgm = 1) {
+        int &warmup, uint32_t keys, uint32_t blobsize, int dgm = 1) {
 
     // Following the proportion: 10K locks per 2M keys
     uint32_t ht_locks = keys / 200;
@@ -839,6 +839,12 @@ std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
 
     // Compute new max_size
     max_size = required + (keys * blobsize) / dgm;
+
+    if (dgm == 1) {
+        warmup = 0;
+    } else {
+        warmup = keys / dgm;
+    }
 
     std::stringstream ss;
 
@@ -6495,6 +6501,33 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
     return 0;
 }
 
+static int do_warmup(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys) {
+    uint32_t i = 0;
+    char keyname[32];
+
+    printf ("Starting fill for %d keys\n", keys);
+    item *itm = NULL;
+
+    ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
+    for (; i < keys && ret == ENGINE_SUCCESS; ++i) {
+        snprintf(keyname, 32, "key-%d", i);
+        ret = h1->get(h, NULL, &itm, keyname, strlen(keyname), 0);
+        h1->release(h, NULL, itm);
+    }
+    if (ret != ENGINE_SUCCESS) {
+        printf ("Get failed with error %d. Nothing to do\n", ret);
+        return -1;
+    }
+
+    if (i != keys) {
+        printf("Warmup of %d keys failed. Performed get on only %d keys\n", keys, i);
+    } else {
+        printf ("Warmup on %d keys success\n", keys);
+        printf(" Non resident = %d\n", get_int_stat(h, h1, "ep_num_non_resident"));
+    }
+    return 0;
+}
+
 static int run_pattern_load(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
                 BaseLoadPattern *generator, uint32_t blobsize, uint32_t set_r, uint32_t get_r) {
 
@@ -6537,7 +6570,8 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     uint32_t blob_size = atoi((*conf)["blobsize"].c_str());
 
     // Generate new config and restart the engine
-    std::string newConf = gen_new_config(h, h1, num_keys, blob_size);
+    int warmup;
+    std::string newConf = gen_new_config(h, h1, warmup, num_keys, blob_size);
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
                               newConf.c_str(),
@@ -6547,6 +6581,7 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
           == ENGINE_SUCCESS, "Failed to initialize");
 
     check(do_fill(h, h1, num_keys, blob_size) == 0, "Filling failed");
+    check(do_warmup(h, h1, warmup) == 0, "Warmup failed");
     BaseLoadPattern *g = new EvenKeysPattern(num_keys);
     check(run_pattern_load(h, h1, g, blob_size, 1, 2) == 0, "Pattern based loading failed");
 
