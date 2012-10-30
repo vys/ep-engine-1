@@ -6588,11 +6588,29 @@ static int run_pattern_load(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
 
 }
 
+static BaseLoadPattern *get_load_pattern(std::string type, uint32_t numkeys, uint64_t timeout = 0, uint32_t maxops = 0) {
+    if (type == "even") {
+        return new EvenKeysPattern(numkeys, timeout, maxops);
+    }
+    else if (type == "uniformint") {
+        return new UniformIntPattern(numkeys, timeout, maxops);
+    } else {
+        std::cout<<"Invalid load pattern"<<std::endl;
+        assert(0);
+    }
+
+}
+
 static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     /* Generate these from the input parameters */
     std::map<std::string, std::string> *conf = parsePerfTestConfig();
     uint32_t num_keys = atoi((*conf)["keys"].c_str());
     uint32_t blob_size = atoi((*conf)["blobsize"].c_str());
+    std::string load_pattern = (*conf)["load_pattern"];
+    uint64_t load_timeout = atoll((*conf)["load_timeout"].c_str());
+    uint32_t load_opsmax = atol((*conf)["load_opsmax"].c_str());
+    uint32_t load_ratio_sets = atoi((*conf)["load_ratio_sets"].c_str());
+    uint32_t load_ratio_gets = atoi((*conf)["load_ratio_gets"].c_str());
 
     // Generate new config and restart the engine
     int warmup;
@@ -6611,9 +6629,9 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     tt.reset();
     check(do_warmup(h, h1, warmup) == 0, "Warmup failed");
     printf("Warmup took %llu seconds\n", tt.getElapsedTime());
-    BaseLoadPattern *g = new EvenKeysPattern(num_keys);
+    BaseLoadPattern *pattern = get_load_pattern(load_pattern, num_keys, load_timeout, load_opsmax);
     tt.reset();
-    check(run_pattern_load(h, h1, g, blob_size, 1, 2) == 0, "Pattern based loading failed");
+    check(run_pattern_load(h, h1, pattern, blob_size, load_ratio_sets, load_ratio_gets) == 0, "Pattern based loading failed");
     printf("Performance run took %llu seconds\n", tt.getElapsedTime());
 
     delete conf;

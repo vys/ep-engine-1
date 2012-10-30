@@ -1,4 +1,9 @@
 {
     "keys" : "2000000",
-    "blobsize" : "20"
+    "blobsize" : "20",
+    "load_pattern" : "uniformint",
+    "load_timeout" : "60",
+    "load_opsmax" : "0",
+    "load_ratio_sets" : "1",
+    "load_ratio_gets" : "2"
 }
