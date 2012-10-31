@@ -100,24 +100,32 @@ public:
     }
 };
 
-class UniformIntPattern: public BaseLoadPattern {
+class PolynomialPattern: public BaseLoadPattern {
 
     int generateKey(std::string &key) {
         std::stringstream ss;
-        ss<<"key-"<<unif(eng);
+        int64_t val;
+        val = (a*curr*curr + b*curr);
+        if (val >= nkeys) {
+            curr = 0;
+            val = 0;
+        }
+        val = (val < 0) ? -val : val;
+        curr++;
+
+        ss<<"key-"<<val;
         key = ss.str();
         return 1;
     }
 public:
 
-    UniformIntPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0) : BaseLoadPattern(n, t, (t || ops) ? ops : n-1) {
-        eng.seed(0);
-        unif = std::tr1::uniform_int<int>(0, n-1);
-        std::cout<<"Loading uniformint pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<std::endl;
+    PolynomialPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0, int const1 = 1, int const2 = 1) : 
+        BaseLoadPattern(n, t, (t || ops) ? ops : n-1), a(const1), b(const2) {
+        std::cout<<"Loading polynomial pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<" a="<<a<<" b="<<b<<std::endl;
     }
 
-    std::tr1::uniform_int<int> unif;
-    std::tr1::ranlux64_base_01 eng;
+    int a, b;
+
 };
 
 #ifdef __cplusplus
