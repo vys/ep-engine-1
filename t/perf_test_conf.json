@@ -7,5 +7,6 @@
     "load_ratio_sets" : "1",
     "load_ratio_gets" : "2",
     "load_param1" : "1",
-    "load_param2" : "-2"
+    "load_param2" : "-2",
+    "max_size" : "500000000"
 }

@@ -3,7 +3,6 @@
 
 #include <memcached/engine.h>
 #include <memcached/engine_testapp.h>
-#include <tr1/random>
 
 #ifdef __cplusplus
 extern "C" {

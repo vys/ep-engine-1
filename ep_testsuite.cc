@@ -840,8 +840,8 @@ static long long get_long_stat(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
     return atoll(s.c_str());
 }
 
-std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
-        int &warmup, uint32_t keys, uint32_t blobsize, int dgm = 1) {
+std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int &warmup,
+            uint32_t keys, uint32_t blobsize, uint64_t max_size, int dgm = 1) {
 
     // Following the proportion: 10K locks per 2M keys
     uint32_t ht_locks = keys / 200;
@@ -852,18 +852,19 @@ std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
                        (keys < 7000000 ? 6291449 : 12582917)));
 
     // Query max_size and check if it is valid based on the requirements
-    uint64_t max_size = get_long_stat(h, h1, "ep_max_data_size");
     uint64_t evictionheadroom = get_long_stat(h, h1, "eviction_headroom");
     // Overhead = mem_used + Keys * sizeof(StoredValue) + mutation_mem_threshold
     // + eviction_headroom + parallelism
     uint64_t required = get_long_stat(h, h1, "mem_used") + keys * 100 + max_size / 10 + evictionheadroom + 6000000;
     char msg[1024];
     snprintf(msg, 1024, "Not enough memory to run the test. Max_size = %llu, required = %llu\nCleanup db files as well\n",
-            max_size, required);
+            (unsigned long long int)max_size, (unsigned long long int)required);
     check(max_size >= required, msg);
 
     // Compute new max_size
-    max_size = required + (keys * blobsize) / dgm;
+    if (max_size < required) {
+        max_size = required + (keys * blobsize) / dgm;
+    }
 
     if (dgm == 1) {
         warmup = 0;
@@ -6503,7 +6504,7 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
             num_tries++;
             if (num_tries == max_tries) {
                 printf ("Waiting for checkpoint to settle\n");
-                sleep(60);
+                testHarness.time_travel(70);
                 break;
             }
         }
@@ -6530,7 +6531,7 @@ static int do_warmup(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys) {
     uint32_t i = 0;
     char keyname[32];
 
-    printf ("Starting fill for %d keys\n", keys);
+    printf ("Starting warmup for %d keys\n", keys);
     item *itm = NULL;
 
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
@@ -6612,6 +6613,7 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     uint32_t load_opsmax = atol((*conf)["load_opsmax"].c_str());
     uint32_t load_ratio_sets = atoi((*conf)["load_ratio_sets"].c_str());
     uint32_t load_ratio_gets = atoi((*conf)["load_ratio_gets"].c_str());
+    uint64_t max_size = atoll((*conf)["max_size"].c_str());
     int load_param1, load_param2;
 
     if ((*conf).find("load_param1") != (*conf).end()) {
@@ -6625,7 +6627,7 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
 
     // Generate new config and restart the engine
     int warmup;
-    std::string newConf = gen_new_config(h, h1, warmup, num_keys, blob_size);
+    std::string newConf = gen_new_config(h, h1, warmup, num_keys, blob_size, max_size);
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
                               newConf.c_str(),
@@ -6636,14 +6638,14 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
 
     BlockTimerSimple tt;
     check(do_fill(h, h1, num_keys, blob_size) == 0, "Filling failed");
-    printf("Fill took %llu seconds\n", tt.getElapsedTime());
+    printf("Fill took %llu seconds\n", (unsigned long long int)tt.getElapsedTime());
     tt.reset();
     check(do_warmup(h, h1, warmup) == 0, "Warmup failed");
-    printf("Warmup took %llu seconds\n", tt.getElapsedTime());
+    printf("Warmup took %llu seconds\n", (unsigned long long int)tt.getElapsedTime());
     BaseLoadPattern *pattern = get_load_pattern(load_pattern, num_keys, load_timeout, load_opsmax, load_param1, load_param2);
     tt.reset();
     check(run_pattern_load(h, h1, pattern, blob_size, load_ratio_sets, load_ratio_gets) == 0, "Pattern based loading failed");
-    printf("Performance run took %llu seconds\n", tt.getElapsedTime());
+    printf("Performance run took %llu seconds\n", (unsigned long long int)tt.getElapsedTime());
 
     delete pattern;
     delete conf;
