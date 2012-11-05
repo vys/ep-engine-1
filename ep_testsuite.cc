@@ -150,7 +150,7 @@ public:
     delete conf; \
     abort_msg(confFile, msg, __LINE__)
 
-std::map<std::string, std::string> *parsePerfTestConfig(const char *confFile = NULL) {
+static std::map<std::string, std::string> *parsePerfTestConfig(const char *confFile = NULL) {
     std::map<std::string, std::string> *conf = new std::map<std::string, std::string>;
     cJSON *c = NULL;
 
@@ -840,7 +840,7 @@ static long long get_long_stat(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
     return atoll(s.c_str());
 }
 
-std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int &warmup,
+static std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int &warmup,
             uint32_t keys, uint32_t blobsize, uint64_t max_size, int dgm = 1) {
 
     // Following the proportion: 10K locks per 2M keys
@@ -6614,7 +6614,7 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     uint32_t load_ratio_sets = atoi((*conf)["load_ratio_sets"].c_str());
     uint32_t load_ratio_gets = atoi((*conf)["load_ratio_gets"].c_str());
     uint64_t max_size = atoll((*conf)["max_size"].c_str());
-    int load_param1, load_param2;
+    int load_param1(0), load_param2(0);
 
     if ((*conf).find("load_param1") != (*conf).end()) {
         load_param1 = atoi((*conf)["load_param1"].c_str());
