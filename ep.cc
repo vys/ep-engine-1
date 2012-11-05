@@ -2051,7 +2051,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
                 v->setPendingId();
             }
         } else {
-            isDirty = false;
+            isDirty = deleted = false;
             v->reDirty(dirtied);
             rejectQueue->push(fe);
             ++vb->opsReject;
@@ -2474,12 +2474,12 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
     int kvid = KVStoreMapper::getKVStoreId(v->getKey(), vbid);
     FlushEntry fe(v, vbid, op, getVBucketVersion(vbid), queued);
     assert(v->isDirty());
+    ++stats.queue_size;
     toFlush[kvid].push(fe);
 
-    vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
-    ++stats.queue_size;
     ++stats.totalEnqueued;
     stats.memOverhead.incr(sizeof(FlushEntry));
+    vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
 }
 
 std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) {
