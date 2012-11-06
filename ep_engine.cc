@@ -2280,7 +2280,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
             BlockTimer timer(&stats.tapMutationHisto);
             TapConsumer *tc = dynamic_cast<TapConsumer*>(connection);
             RCPtr<Blob> vblob(Blob::New(static_cast<const char*>(data), ndata));
-            Item *item = new Item(k, flags, exptime, vblob, cksum, 0, -1, 0, queued);
+            Item *item = new Item(k, flags, exptime, vblob, cksum, 0, -1, 0,
+                    (queued == std::numeric_limits<uint32_t>::max() ? -1 : static_cast<time_t>(queued)));
             item->setVBucketId(vbucket);
 
             if (tc) {
