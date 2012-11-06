@@ -6494,6 +6494,7 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
 
     int max_tries = 2;
     ENGINE_ERROR_CODE ret=ENGINE_SUCCESS;
+    time_t end_time(0), start_time = time(NULL);
     for (; i < keys; ++i) {
         snprintf(keyname, 32, "key-%d", i);
         int num_tries = 0;
@@ -6508,6 +6509,25 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
                 break;
             }
         }
+        if (ret != ENGINE_SUCCESS) {
+            printf("\nStore() returncode = %d\n", ret);
+            printf("Eviction stats:\n");
+            vals.clear();
+            check(h1->get_stats(h, NULL, "eviction", 8, add_stats) == ENGINE_SUCCESS,
+            "Failed to get stats.");
+
+            std::map<std::string, std::string>::iterator it = vals.begin();
+            for (; it!=vals.end(); it++) {
+                std::cout<<(*it).first<<" = "<<(*it).second<<std::endl;
+            }
+        }
+
+        if (i % 1000000 == 0) {
+            end_time = time(NULL);
+            printf("Filled up to %d items - Last 1M took %lu seconds\n", i, (long unsigned int)end_time-start_time);
+            start_time = end_time;
+        }
+
     }
     if (ret != ENGINE_SUCCESS) {
         printf ("Set failed with error %d. Nothing to do\n", ret);
