@@ -2020,15 +2020,16 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
         int dataAge = now - dirtied;
         int dirtyAge = now - queued;
         bool eligible = true;
+        int mda = stats.min_data_age.get();
+        int qac = stats.queue_age_cap.get();
 
         if (v->isPendingId()) {
             eligible = false;
-        } else if (dirtyAge > stats.queue_age_cap.get()) {
+        } else if (dirtyAge >= qac) {
             ++stats.tooOld;
-        } else if (dataAge < stats.min_data_age.get()) {
+        } else if (dataAge < mda) {
             eligible = false;
             // Skip this one.  It's too young.
-            ret = stats.min_data_age.get() - dataAge;
             ++stats.tooYoung;
         }
 
@@ -2055,6 +2056,17 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
             v->reDirty(dirtied);
             rejectQueue->push(fe);
             ++vb->opsReject;
+            // If queue_age_cap is not a multiple of min_data_age,
+            // the sleeptime is longer than is required for it to
+            // hit. This fix honors queue_age_cap for computing sleep
+            // time.
+            ret = std::min(mda - dataAge, qac - dirtyAge);
+            // This is a sanity check just in case v->isPendingId()
+            // returns true and the current time was eligible for
+            // persistence. A zero value for ret makes flusher to
+            // re-dispatch only after min_data_age seconds. Setting to 1
+            // rechecks after 1 second.
+            ret = (ret <= 0 ? 1 : ret);
         }
     }
 
