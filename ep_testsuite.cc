@@ -6539,6 +6539,7 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
         return -1;
     }
 
+    printf("Fill completed. Waiting for flusher to settle\n");
     wait_for_flusher_to_settle(h, h1);
 
     uint32_t actual_keys = get_int_stat(h, h1, "curr_items");
@@ -6656,10 +6657,8 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
                               newConf.c_str(),
-                              false, false);
+                              true, false);
 
-    check(h1->initialize(h, newConf.c_str())
-          == ENGINE_SUCCESS, "Failed to initialize");
 
     BlockTimerSimple tt;
     check(do_fill(h, h1, num_keys, blob_size) == 0, "Filling failed");

@@ -615,7 +615,14 @@ public:
         }
     }
 
-    ~EvictionManager() {}
+    static void destroy() {
+        delete managerInstance;
+        managerInstance = NULL;
+    }
+
+    ~EvictionManager() {
+        delete evpolicy;
+    }
    
     bool setPolicy(const char *name) {
         if (policies.find(name) != policies.end()) {

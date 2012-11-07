@@ -15,6 +15,11 @@ public:
         }
     }
 
+    static void destroy() {
+        delete instance;
+        instance = NULL;
+    }
+
     static int getVBucketToKVId(uint16_t vbid) {
         if (instance == NULL) {
             // Should never happen

@@ -97,6 +97,7 @@ extern "C" {
     {
         getHandle(handle)->destroy(force);
         delete getHandle(handle);
+        EvictionManager::destroy();
     }
 
     static ENGINE_ERROR_CODE EvpItemAllocate(ENGINE_HANDLE* handle,

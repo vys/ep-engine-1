@@ -461,6 +461,7 @@ EventuallyPersistentStore::~EventuallyPersistentStore() {
     delete []roDispatcher;
 
     delete nonIODispatcher;
+    KVStoreMapper::destroy();
 }
 
 void EventuallyPersistentStore::startDispatcher() {
