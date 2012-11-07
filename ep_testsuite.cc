@@ -4232,13 +4232,17 @@ static enum test_result test_queuedtime_tap(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
     int currTime = get_int_stat(h, h1, "ep_real_time");
     check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
     memset(eng_specific, 0, sizeof(eng_specific));
-    check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific), 1, 0, TAP_MUTATION, 1,
-                         "key", 3, 828, currTime + 12, 0, 0,
-                         "value", 5, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
-          "Failed tap notify.");
+    for (int i = 0; i < 12; i++) {
+        check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific), 1, 0, TAP_MUTATION, 1,
+                             "key", 3, 828, currTime, 0, 0,
+                             "value", 5, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+              "Failed tap notify.");
+        sleep(1);
+    }
     sleep(1);
     wait_for_flusher_to_settle(h, h1);
-    check(tt.getElapsedTime() >= 22, "Either min_data_age or queued_time not honoured");
+    // Give a gap of atleast 4 seconds because that's the resolution in stored value
+    check(tt.getElapsedTime() >= 18, "Either min_data_age or queued_time not honoured");
     return SUCCESS;
 }
 
@@ -4251,7 +4255,8 @@ static enum test_result test_min_data_age(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     }
     wait_for_flusher_to_settle(h, h1);
     check(get_int_stat(h, h1, "ep_total_persisted") == 1, "Persistence must have occured exactly once");
-    check(tt.getElapsedTime() > 9, "min_data_age not honoured");
+    // Give a gap of atleast 4 seconds because that's the resolution in stored value
+    check(tt.getElapsedTime() > 15, "min_data_age not honoured");
     return SUCCESS;
 }
 
@@ -6765,7 +6770,7 @@ engine_test_t* get_tests(void) {
         {"eviction: pause", test_eviction_pause, NULL, teardown, NULL},
         {"eviction: switch", test_eviction_switch, NULL, teardown, NULL},
         // min_data_age
-        {"min_data_age tests: basic", test_min_data_age, NULL, teardown, "min_data_age=10"},
+        {"min_data_age tests: basic", test_min_data_age, NULL, teardown, "min_data_age=20"},
         {"min_data_age tests: queued_time tap propogation", test_queuedtime_tap, NULL, teardown, "min_data_age=12"},
         // duplicate items on disk
         {"duplicate items on disk", test_duplicate_items_disk, NULL, teardown, NULL},
