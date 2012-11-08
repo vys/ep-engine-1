@@ -3088,8 +3088,10 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKVStoreStats(const void *cookie,
         std::string &shP = kvc->getShardpattern();
         add_casted_stat((kvname + ":dbname").c_str(), dbname, add_stat, cookie);
         add_casted_stat((kvname + ":shardpattern").c_str(), shP, add_stat, cookie);
-        add_casted_stat((kvname + ":initfile").c_str(), kvc->getInitfile(), add_stat, cookie);
-        add_casted_stat((kvname + ":postInitfile").c_str(), kvc->getPostInitfile(), add_stat, cookie);
+        std::string filename = kvc->getInitfile();
+        add_casted_stat((kvname + ":initfile").c_str(), filename.size() ? filename : "N/A", add_stat, cookie);
+        filename = kvc->getPostInitfile();
+        add_casted_stat((kvname + ":postInitfile").c_str(), filename.size() ? filename : "N/A", add_stat, cookie);
         add_casted_stat((kvname + ":db_strategy").c_str(), kvc->getDbStrategy(), add_stat, cookie);
         size_t k = kvc->getNumDataDbs();
         add_casted_stat((kvname + ":data_dbs").c_str(), k, add_stat, cookie);
