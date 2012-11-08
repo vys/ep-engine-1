@@ -235,6 +235,27 @@ static void rmdb(void) {
     unlink("/tmp/db3.db-1.sqlite");
     unlink("/tmp/db3.db-2.sqlite");
     unlink("/tmp/db3.db-3.sqlite");
+
+    unlink("/data_1/test-db.db-3.sqlite");
+    unlink("/data_1/test-db.db-2.sqlite");
+    unlink("/data_1/test-db.db-0.sqlite");
+    unlink("/data_1/test-db.db-1.sqlite");
+    unlink("/data_1/test-db.db");
+    unlink("/data_2/test-db.db-0.sqlite");
+    unlink("/data_2/test-db.db-1.sqlite");
+    unlink("/data_2/test-db.db-3.sqlite");
+    unlink("/data_2/test-db.db-2.sqlite");
+    unlink("/data_2/test-db.db");
+    unlink("/data_3/test-db.db-3.sqlite");
+    unlink("/data_3/test-db.db");
+    unlink("/data_3/test-db.db-2.sqlite");
+    unlink("/data_3/test-db.db-1.sqlite");
+    unlink("/data_3/test-db.db-0.sqlite");
+    unlink("/data_4/test-db.db");
+    unlink("/data_4/test-db.db-0.sqlite");
+    unlink("/data_4/test-db.db-1.sqlite");
+    unlink("/data_4/test-db.db-2.sqlite");
+    unlink("/data_4/test-db.db-3.sqlite");
 }
 
 static bool teardown(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
@@ -841,7 +862,8 @@ static long long get_long_stat(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
 }
 
 static std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int &warmup,
-            uint32_t keys, uint32_t blobsize, uint64_t max_size, int dgm = 1) {
+            uint32_t keys, uint32_t blobsize, uint64_t max_size, int dgm = 1,
+            int max_evict_entries = 500000, std::string kvs_config = "t/kv_multikv.json") {
 
     // Following the proportion: 10K locks per 2M keys
     uint32_t ht_locks = keys / 200;
@@ -878,7 +900,9 @@ static std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int &w
        << "max_size=" << max_size << ";"
        << "eviction_headroom=" << evictionheadroom << ";"
        << "ht_size=" << ht_size << ";"
-       << "ht_locks=" << ht_locks;
+       << "ht_locks=" << ht_locks << ";"
+       << "max_evict_entries=" << max_evict_entries <<";"
+       << "kvstore_config_file="<< kvs_config;
 
     return ss.str();
 }
@@ -6640,6 +6664,8 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     uint32_t load_ratio_sets = atoi((*conf)["load_ratio_sets"].c_str());
     uint32_t load_ratio_gets = atoi((*conf)["load_ratio_gets"].c_str());
     uint64_t max_size = atoll((*conf)["max_size"].c_str());
+    int max_evict_entries = atoi((*conf)["max_evict_entries"].c_str());
+    std::string kvs_config = (*conf)["kvs_config"];
     int load_param1(0), load_param2(0);
 
     if ((*conf).find("load_param1") != (*conf).end()) {
@@ -6653,7 +6679,7 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
 
     // Generate new config and restart the engine
     int warmup;
-    std::string newConf = gen_new_config(h, h1, warmup, num_keys, blob_size, max_size);
+    std::string newConf = gen_new_config(h, h1, warmup, num_keys, blob_size, max_size, 1, max_evict_entries, kvs_config);
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
                               newConf.c_str(),

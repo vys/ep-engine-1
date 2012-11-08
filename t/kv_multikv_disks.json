@@ -1,0 +1,20 @@
+{
+    "kvstores" : {
+        "kvstore1" : {
+            "db_strategy" : "multiDB",
+            "dbname" : "/data_1/test-db.db"
+        },
+        "kvstore2" : {
+            "db_strategy" : "multiDB",
+            "dbname" : "/data_2/test-db.db"
+        },
+        "kvstore3" : {
+            "db_strategy" : "multiDB",
+            "dbname" : "/data_3/test-db.db"
+        },
+        "kvstore4" : {
+            "db_strategy" : "multiDB",
+            "dbname" : "/data_4/test-db.db"
+        }
+    }
+}

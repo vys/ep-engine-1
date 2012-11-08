@@ -8,5 +8,7 @@
     "load_ratio_gets" : "2",
     "load_param1" : "1",
     "load_param2" : "-2",
-    "max_size" : "500000000"
+    "max_size" : "500000000",
+    "max_evict_entries" : "500000",
+    "kvs_config" : "t/kv_multikv.json"
 }
