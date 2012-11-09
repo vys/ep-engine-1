@@ -111,7 +111,7 @@ protected:
 
     uint16_t getDbShardIdForKey(const std::string &key) {
         assert(shardCount > 0);
-        int h=5381;
+        int h=94418953;
         int i=0;
         const char *str = key.c_str();
 

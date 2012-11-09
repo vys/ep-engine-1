@@ -4,6 +4,8 @@
 
 #include "queueditem.hh"
 
+#define MAX_SHARDS_LIMIT 2520
+
 /*
  * Class to distribute input data across kvstores.
  */
@@ -38,14 +40,14 @@ public:
             return KVStoreMapper::getVBucketToKVId(vbid);
         }
 
-        int h = 0;
+        int h = 94418953;
         int i=0;
         const char *str = key.c_str();
 
         for(i=0; str[i] != 0x00; i++) {
-            h = ( h << 4 ) ^ ( h >> 28 ) ^ str[i];
+            h = ((h << 5) + h) ^ str[i];
         }
-        return std::abs(h) % (int)instance->numKVStores;
+        return std::abs(h / MAX_SHARDS_LIMIT) % (int)instance->numKVStores;
     }
 
     static std::vector<uint16_t> getVBucketsForKVStore(int kvid, std::vector<int> vbs) {
