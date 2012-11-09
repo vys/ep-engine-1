@@ -278,7 +278,7 @@ static ENGINE_ERROR_CODE storeCasVb11(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
                                       const char *value, size_t vlen,
                                       uint32_t flags,
                                       item **outitem, uint64_t casIn,
-                                      uint16_t vb) {
+                                      uint16_t vb, uint64_t exp = 3600) {
     item *it = NULL;
     uint64_t cas = 0;
 
@@ -286,7 +286,7 @@ static ENGINE_ERROR_CODE storeCasVb11(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
 
     rv = h1->allocate(h, cookie, &it,
                       key, strlen(key),
-                      vlen, flags, 3600, 0, 0);
+                      vlen, flags, exp, 0, 0);
     if (rv != ENGINE_SUCCESS) {
         if (outitem) {
             *outitem = NULL;
@@ -319,9 +319,9 @@ static ENGINE_ERROR_CODE store(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
                                ENGINE_STORE_OPERATION op,
                                const char *key, const char *value,
                                item **outitem, uint64_t casIn = 0,
-                               uint16_t vb = 0) {
+                               uint16_t vb = 0, uint64_t exp = 3600) {
     return storeCasVb11(h, h1, cookie, op, key, value, strlen(value),
-                        9258, outitem, casIn, vb);
+                        9258, outitem, casIn, vb, exp);
 }
 
 
@@ -6527,7 +6527,7 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
     for (; i < keys; ++i) {
         snprintf(keyname, 32, "key-%d", i);
         int num_tries = 0;
-        while (((ret = store(h, h1, NULL, OPERATION_SET, keyname, value, NULL))
+        while (((ret = store(h, h1, NULL, OPERATION_SET, keyname, value, NULL, 0))
                  == ENGINE_TMPFAIL) && num_tries < max_tries) {
             printf ("Set for %s failed with tmpooom. Retrying after waiting for flusher\n", keyname);
             wait_for_flusher_to_settle(h, h1);
