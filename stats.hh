@@ -326,6 +326,9 @@ public:
     //! The total number of successful flush_all calls
     Atomic<size_t> flushHits;
 
+    //! Current number of soft deletes in waiting
+    Atomic<size_t> softDeletes;
+
     /* TAP related stats */
     //! The total number of tap events sent (not including noops)
     Atomic<size_t> numTapFetched;

@@ -282,6 +282,9 @@ public:
         reduceCacheSize(ht, totalSize(), false, true);
 
         reduceCurrentSize(stats, isDeleted() ? currSize : currSize - value->length());
+        if (isDeleted()) {
+            stats.softDeletes--;
+        }
         value = v;
         setResident(true, &stats);
         flags = newFlags;
@@ -572,6 +575,7 @@ public:
         size_t old_valsize = value->length();
         size_t oldtotalsize = totalSize();
 
+        stats.softDeletes++;
         value.reset();
         markDirty();
         setCas(getCas() + 1);
@@ -1406,6 +1410,9 @@ public:
             v->reduceCacheSize(*this, currSize, true);
             v->reduceCurrentSize(stats,
                                  v->isDeleted() ? currSize : currSize - v->getValue()->length());
+            if (v->isDeleted()) {
+                stats.softDeletes--;
+            }
             delete v;
             --numItems;
             return true;
@@ -1422,6 +1429,9 @@ public:
                 tmp->reduceCacheSize(*this, currSize, true);
                 tmp->reduceCurrentSize(stats,
                                tmp->isDeleted() ? currSize : currSize - tmp->getValue()->length());
+                if (v->isDeleted()) {
+                    stats.softDeletes--;
+                }
                 delete tmp;
                 --numItems;
                 return true;

@@ -2744,6 +2744,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                    replicaCountVisitor.getNumItems() +
                    pendingCountVisitor.getNumItems(),
                    add_stat, cookie);
+    add_casted_stat("curr_soft_deletes", epstats.softDeletes, add_stat, cookie);
+    add_casted_stat("curr_available_items",
+                   activeCountVisitor.getNumItems() - epstats.softDeletes, add_stat, cookie);
     add_casted_stat("vb_active_num", activeCountVisitor.getVBucketNumber(), add_stat, cookie);
     add_casted_stat("vb_active_curr_items", activeCountVisitor.getNumItems(),
                    add_stat, cookie);

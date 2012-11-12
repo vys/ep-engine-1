@@ -78,6 +78,9 @@ For introductory information on stats within membase, start with the
 | curr_items                    | Num items in active vbuckets.              |
 | curr_items_tot                | Num current items including those not      |
 |                               | active (replica, dead and pending states)  |
+| curr_soft_deletes             | Number of items waiting to be deleted, not |
+|                               | available to the user                      |
+| curr_available_items          | Num current items available to the user    |
 | ep_kv_size                    | Memory used to store keys and values.      |
 | ep_value_size                 | Memory used to store values for resident   |
 |                               | keys.                                      |
