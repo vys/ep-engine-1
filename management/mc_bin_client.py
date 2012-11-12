@@ -157,6 +157,12 @@ class MemcachedClient(object):
             struct.pack(memcacheConstants.GETL_PKT_FMT, exp))
         return self.__parseGet(parts)
 
+    def unlock(self, key, cas):
+        """Unlock the key with cas within the memcached server."""
+        parts=self._doCmd(memcacheConstants.CMD_UNLOCK, key, '',
+            '', cas)
+        return parts
+
     def cas(self, key, exp, flags, oldVal, val):
         """CAS in a new value for the given key and comparison value."""
         self._mutate(memcacheConstants.CMD_SET, key, exp, flags,
