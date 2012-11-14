@@ -147,7 +147,7 @@ public:
         } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty() &&
                    v->valLength() >= EvictionManager::getMinBlobSize()) {
             if (evjob->evictAge() &&
-                evjob->evictItemByAge(evjob->evictAge(), v, currentBucket) == false) {
+                evjob->evictItemByAge(evjob->evictAge(), v, currentBucket)) {
             } else {
                 time_t age = startTime - ep_abs_time(v->getDataAge());
                 ageHisto.add(age);
