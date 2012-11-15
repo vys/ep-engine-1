@@ -141,7 +141,7 @@ public:
 class LRUPolicy : public EvictionPolicy {
 public:
     LRUPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz) :
-              EvictionPolicy(s, st, job, true), maxSize(sz),
+              EvictionPolicy(s, st, job, true), maxSize(sz), curSize(0),
               list(new FixedList<LRUItem, LRUItemCompare>(maxSize)),
               templist(NULL),
               stopBuild(false),
