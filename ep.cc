@@ -2481,11 +2481,11 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
     FlushEntry fe(v, vbid, op, getVBucketVersion(vbid), queued);
     assert(v->isDirty());
     ++stats.queue_size;
-    toFlush[kvid].push(fe);
-
     ++stats.totalEnqueued;
     stats.memOverhead.incr(sizeof(FlushEntry));
     vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
+
+    toFlush[kvid].push(fe);
 }
 
 std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) {
