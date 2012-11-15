@@ -256,6 +256,16 @@ static void rmdb(void) {
     unlink("/data_4/test-db.db-1.sqlite");
     unlink("/data_4/test-db.db-2.sqlite");
     unlink("/data_4/test-db.db-3.sqlite");
+    unlink("/data_5/test-db.db-3.sqlite");
+    unlink("/data_5/test-db.db-2.sqlite");
+    unlink("/data_5/test-db.db-0.sqlite");
+    unlink("/data_5/test-db.db-1.sqlite");
+    unlink("/data_5/test-db.db");
+    unlink("/data_6/test-db.db-3.sqlite");
+    unlink("/data_6/test-db.db-2.sqlite");
+    unlink("/data_6/test-db.db-0.sqlite");
+    unlink("/data_6/test-db.db-1.sqlite");
+    unlink("/data_6/test-db.db");
 }
 
 static bool teardown(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
@@ -6521,25 +6531,36 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
     value[blobsize] = '\0';
 
 
-    int max_tries = 2;
+    int max_tries = 100;
     ENGINE_ERROR_CODE ret=ENGINE_SUCCESS;
     time_t end_time(0), start_time = time(NULL);
+	int tmp_fails = 0;
     for (; i < keys; ++i) {
         snprintf(keyname, 32, "key-%d", i);
         int num_tries = 0;
-        while (((ret = store(h, h1, NULL, OPERATION_SET, keyname, value, NULL, 0))
-                 == ENGINE_TMPFAIL) && num_tries < max_tries) {
-            printf ("Set for %s failed with tmpooom. Retrying after waiting for flusher\n", keyname);
-            wait_for_flusher_to_settle(h, h1);
-            num_tries++;
-            if (num_tries == max_tries) {
-                printf ("Waiting for checkpoint to settle\n");
-                testHarness.time_travel(70);
-                break;
-            }
-        }
+        while (((ret = store(h, h1, NULL, OPERATION_SET, keyname, value, NULL, 0, 0, 0))
+                 == ENGINE_TMPFAIL) && num_tries <= max_tries) {
+			printf ("Set for %s failed with tmpooom. Retrying after 1 sec\n", keyname);
+			tmp_fails++;
+			sleep(1);
+			if (num_tries > 60) {
+				printf("Flusher todo: %d\n", get_int_stat(h, h1, "flusher_todo"));
+				printf("ep_queue_size = %d\n", get_int_stat(h, h1, "ep_queue_size"));
+				printf("ep_uncommitted_items = %d\n", get_int_stat(h, h1, "ep_uncommitted_items"));
+				printf("Eviction stats:\n");
+				vals.clear();
+				check(h1->get_stats(h, NULL, "eviction", 8, add_stats) == ENGINE_SUCCESS,
+				"Failed to get stats.");
+
+				std::map<std::string, std::string>::iterator it = vals.begin();
+				for (; it!=vals.end(); it++) {
+					std::cout<<(*it).first<<" = "<<(*it).second<<std::endl;
+				}
+			}
+		}
         if (ret != ENGINE_SUCCESS) {
             printf("\nStore() returncode = %d\n", ret);
+	    	printf("Flusher todo: %d\n", get_int_stat(h, h1, "flusher_todo"));
             printf("Eviction stats:\n");
             vals.clear();
             check(h1->get_stats(h, NULL, "eviction", 8, add_stats) == ENGINE_SUCCESS,
@@ -6549,6 +6570,7 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
             for (; it!=vals.end(); it++) {
                 std::cout<<(*it).first<<" = "<<(*it).second<<std::endl;
             }
+	    	break;
         }
 
         if (i % 1000000 == 0) {
@@ -6558,6 +6580,7 @@ static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
         }
 
     }
+	printf("Total tmp failures were %d\n", tmp_fails);
     if (ret != ENGINE_SUCCESS) {
         printf ("Set failed with error %d. Nothing to do\n", ret);
         return -1;
@@ -6619,7 +6642,7 @@ static int run_pattern_load(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
         for (uint32_t i=0; i<set_r; i++) {
             std::string key;
             if (generator->getNextKey(key) > 0) {
-                check(store(h, h1, NULL, OPERATION_SET, key.c_str(), value, NULL) == ENGINE_SUCCESS, "Failed to store key");
+                check(store(h, h1, NULL, OPERATION_SET, key.c_str(), value, NULL, 0, 0, 0) == ENGINE_SUCCESS, "Failed to store key");
             } else {
                 return 0;
             }
@@ -6663,6 +6686,7 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     uint32_t load_opsmax = atol((*conf)["load_opsmax"].c_str());
     uint32_t load_ratio_sets = atoi((*conf)["load_ratio_sets"].c_str());
     uint32_t load_ratio_gets = atoi((*conf)["load_ratio_gets"].c_str());
+    uint32_t run_load = atoi((*conf)["run_load"].c_str());
     uint64_t max_size = atoll((*conf)["max_size"].c_str());
     int max_evict_entries = atoi((*conf)["max_evict_entries"].c_str());
     std::string kvs_config = (*conf)["kvs_config"];
@@ -6692,12 +6716,14 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     tt.reset();
     check(do_warmup(h, h1, warmup) == 0, "Warmup failed");
     printf("Warmup took %llu seconds\n", (unsigned long long int)tt.getElapsedTime());
-    BaseLoadPattern *pattern = get_load_pattern(load_pattern, num_keys, load_timeout, load_opsmax, load_param1, load_param2);
-    tt.reset();
-    check(run_pattern_load(h, h1, pattern, blob_size, load_ratio_sets, load_ratio_gets) == 0, "Pattern based loading failed");
-    printf("Performance run took %llu seconds\n", (unsigned long long int)tt.getElapsedTime());
+	if (run_load) {
+		BaseLoadPattern *pattern = get_load_pattern(load_pattern, num_keys, load_timeout, load_opsmax, load_param1, load_param2);
+		tt.reset();
+		check(run_pattern_load(h, h1, pattern, blob_size, load_ratio_sets, load_ratio_gets) == 0, "Pattern based loading failed");
+		printf("Performance run took %llu seconds\n", (unsigned long long int)tt.getElapsedTime());
+    	delete pattern;
+	}
 
-    delete pattern;
     delete conf;
     return SUCCESS;
 }

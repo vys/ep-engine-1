@@ -1,6 +1,6 @@
 {
-    "keys" : "2000000",
-    "blobsize" : "20",
+    "keys" : "70000000",
+    "blobsize" : "1000",
     "load_pattern" : "polynomial",
     "load_timeout" : "60",
     "load_opsmax" : "0",
@@ -8,7 +8,8 @@
     "load_ratio_gets" : "2",
     "load_param1" : "1",
     "load_param2" : "-2",
-    "max_size" : "500000000",
-    "max_evict_entries" : "500000",
-    "kvs_config" : "t/kv_multikv.json"
+    "run_load" : "0",
+    "max_size" : "64424509440",
+    "max_evict_entries" : "5000000",
+    "kvs_config" : "t/kv_multikv_disks.json"
 }
