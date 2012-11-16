@@ -423,7 +423,10 @@ bool StoredValue::hasAvailableSpace(EPStats &st, const Item &item) {
 
 int64_t StoredValue::getMemoryDeficit(size_t needed, EPStats &stats)
 {
-	double current = static_cast<double>(getCurrentSize(stats));
+    size_t allocated_memory = 0;
+    MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes",
+                                                    &allocated_memory);
+    double current = allocated_memory > 0 ? allocated_memory : getCurrentSize(stats);
 	double max =  static_cast<double>(getMaxDataSize(stats)) * mutation_mem_threshold;
     return (int64_t) ((current + needed) - max);
 }

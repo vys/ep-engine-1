@@ -222,7 +222,10 @@ public:
         if (lruSleepTime == 0) {
             return false;
         }
-        size_t mem_used = stats.currentSize + stats.memOverhead;
+        size_t allocated_memory = 0;
+        MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes",
+                                                    &allocated_memory);
+        size_t mem_used = allocated_memory > 0 ? allocated_memory : (stats.currentSize + stats.memOverhead);
         size_t max_size = StoredValue::getMaxDataSize(stats);
         if (mem_used < (size_t)(memThresholdPercent * max_size)) {
             return false;

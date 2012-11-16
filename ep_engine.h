@@ -736,11 +736,8 @@ private:
         bool haveEvidenceWeCanFreeMemory(stats.maxDataSize > stats.memOverhead);
         if (haveEvidenceWeCanFreeMemory) {
             // Look for more evidence by seeing if we have resident items.
-            VBucketCountVisitor countVisitor(vbucket_state_active);
-            epstore->visit(countVisitor);
 
-            haveEvidenceWeCanFreeMemory = countVisitor.getNonResident() <
-                                          countVisitor.getNumItems();
+            haveEvidenceWeCanFreeMemory = epstore->checkIfCanFreeMemory();
         }
         if (haveEvidenceWeCanFreeMemory) {
             ++stats.tmp_oom_errors;

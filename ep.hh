@@ -827,6 +827,22 @@ public:
         return storageProperties[kvid];
     }
 
+    bool checkIfCanFreeMemory() {
+        size_t maxSize = vbuckets.getSize();
+        size_t itemCount = 0;
+        size_t itemNonResident = 0;
+        for (uint16_t i = 0 ; i < maxSize; ++i) {
+            RCPtr<VBucket> vb = getVBucket(i, vbucket_state_active);
+            if (!vb) {
+                continue;
+            }
+            itemCount += vb->ht.getNumItems();
+            itemNonResident += vb->ht.getNumNonResidentItems();
+        }
+        size_t numDirty = getWriteQueueSize();
+        return (itemCount > (itemNonResident + numDirty));
+    }
+
     std::queue<FlushEntry> *beginFlush(int id);
 private:
 
