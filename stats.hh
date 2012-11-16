@@ -451,6 +451,8 @@ public:
 
     Histogram<hrtime_t> checkpointRevertHisto;
 
+    Atomic<size_t> totalEvictable;
+
     EvictionStats evictionStats;
     EvictionPruneStats pruneStats;
     ExpiryPagerTimeStats expiryPagerTimeStats;

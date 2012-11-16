@@ -2741,6 +2741,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.getl_misses_notfound, add_stat, cookie);
     add_casted_stat("num_unlocks",
                     epstats.num_unlocks, add_stat, cookie);
+    add_casted_stat("ep_total_evictable", stats.totalEvictable, add_stat, cookie);
     add_casted_stat("curr_items", activeCountVisitor.getNumItems(), add_stat, cookie);
     add_casted_stat("curr_items_tot",
                    activeCountVisitor.getNumItems() +

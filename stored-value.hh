@@ -1078,6 +1078,7 @@ public:
         assert(v);
         values[bucket_num] = v;
         ++numItems;
+        ++stats.totalEvictable;
         if (op == queue_op_del) {
             unlocked_softDelete(itm.getKey(), itm.getCas(), bucket_num, mv);
         }
@@ -1160,6 +1161,7 @@ public:
             v = valFact(itm, values[bucket_num], *this);
             values[bucket_num] = v;
             ++numItems;
+            ++stats.totalEvictable;
         }
         mv.sv = v;
         return rv;
@@ -1208,6 +1210,7 @@ public:
                 v = valFact(itm, values[bucket_num], *this, isDirty);
                 values[bucket_num] = v;
                 ++numItems;
+                ++stats.totalEvictable;
             }
             if (!storeVal) {
                 v->ejectValue(stats, *this);

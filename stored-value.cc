@@ -48,6 +48,7 @@ bool StoredValue::ejectValue(EPStats &stats, HashTable &ht) {
             reduceCurrentSize(stats, old_keymeta_overhead - new_keymeta_overhead);
         }
         ++stats.numValueEjects;
+        --stats.totalEvictable;
         ++ht.numNonResidentItems;
         ++ht.numEjects;
         return true;
@@ -87,6 +88,7 @@ bool StoredValue::restoreValue(const value_t &v, EPStats &stats, HashTable &ht) 
             reduceCurrentSize(stats, old_keymeta_overhead - new_keymeta_overhead);
         }
         --ht.numNonResidentItems;
+        ++stats.totalEvictable;
         return true;
     }
     return false;

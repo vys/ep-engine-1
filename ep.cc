@@ -1842,6 +1842,7 @@ public:
                 ++stats->newItems;
                 setId(value.second);
             }
+            ++stats->totalEvictable;
             RCPtr<VBucket> vb = store->getVBucket(flushEntry.getVBucketId());
             if (vb && vb->getState() != vbucket_state_active &&
                 vb->getState() != vbucket_state_pending) {
@@ -1879,6 +1880,7 @@ public:
                                      "Error persisting now missing ``%s'' from vb%d\n",
                                      flushEntry.getKey().c_str(), flushEntry.getVBucketId());
                 }
+                ++stats->totalEvictable;
             } else {
                 redirty();
             }
@@ -1919,6 +1921,7 @@ public:
                                                        bucket_num);
                     assert(deleted);
                 } else if (v) {
+                    ++stats->totalEvictable;
                     v->clearId();
                 }
             }
@@ -2254,6 +2257,11 @@ void EventuallyPersistentStore::warmup(Atomic<bool> &vbStateLoaded, int id) {
 
     roUnderlying[id]->dump(cb);
     invalidItemDbPager->createRangeList();
+    // Hack Alert:: Fix for multiple vbuckets
+    if (id == 0) {
+        RCPtr<VBucket> vb = getVBucket(0, vbucket_state_active);
+        stats.totalEvictable = vb->ht.getNumItems() - vb->ht.getNumNonResidentItems();
+    }
 }
 
 void LoadStorageKVPairCallback::initVBucket(uint16_t vbid,
@@ -2488,6 +2496,7 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
     ++stats.totalEnqueued;
     stats.memOverhead.incr(sizeof(FlushEntry));
     vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
+    --stats.totalEvictable;
 
     toFlush[kvid].push(fe);
 }

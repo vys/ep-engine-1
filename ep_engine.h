@@ -735,11 +735,6 @@ private:
         // Do we think it's possible we could free something?
         bool haveEvidenceWeCanFreeMemory(stats.maxDataSize > stats.memOverhead);
         if (haveEvidenceWeCanFreeMemory) {
-            // Look for more evidence by seeing if we have resident items.
-
-            haveEvidenceWeCanFreeMemory = epstore->checkIfCanFreeMemory();
-        }
-        if (haveEvidenceWeCanFreeMemory) {
             ++stats.tmp_oom_errors;
             return ENGINE_TMPFAIL;
         } else {
