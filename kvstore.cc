@@ -174,6 +174,7 @@ std::map<std::string, KVStoreConfig*> *KVStore::parseConfig(EventuallyPersistent
     }
 
     for (int i = 0; i < k; i++) {
+        bool dbShardsNotFound = true;
         kvstore = cJSON_GetArrayItem(kvstores, i);
         if (kvstore->type != cJSON_Object) {
             JSON_ERROR("'kvstores' has an entity of a non-object type");
@@ -225,6 +226,7 @@ std::map<std::string, KVStoreConfig*> *KVStore::parseConfig(EventuallyPersistent
                 if (kvparam->type != cJSON_Number) {
                     JSON_ERROR("Parameter db_shards must have an integer value");
                 }
+                dbShardsNotFound = false;
                 kvc->dbShards = kvparam->valueint;
             } else if (t.compare("data_dbnames") == 0) {
                 if (kvparam->type != cJSON_Array) {
@@ -247,6 +249,12 @@ std::map<std::string, KVStoreConfig*> *KVStore::parseConfig(EventuallyPersistent
                 }
             } else {
                 JSON_ERROR("Unknown parameter in kvstore");
+            }
+        }
+        if (dbShardsNotFound) {
+            if (kvc->dbStrategy.compare("singleDB") == 0
+                    || kvc->dbStrategy.compare("singleMTDB") == 0) {
+                kvc->dbShards = 1;
             }
         }
         (*confMap)[s] = kvc;
