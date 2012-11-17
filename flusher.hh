@@ -29,9 +29,7 @@ public:
     FlusherStepper(Flusher* f) : flusher(f) { }
     bool callback(Dispatcher &d, TaskId t);
 
-    std::string description() {
-        return std::string("Running a flusher loop.");
-    }
+    std::string description(); 
 
     hrtime_t maxExpectedDuration() {
         // Flusher can take a while, but let's report if it runs for
@@ -152,6 +150,8 @@ public:
     void setFlushAll(bool flag) {
         shouldFlushAll = flag;
     }
+
+    int getFlusherId() { return flusherId; }
 
 private:
     bool transition_state(enum flusher_state to);

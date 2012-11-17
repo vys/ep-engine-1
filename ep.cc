@@ -2031,6 +2031,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
         }
 
         if (eligible) {
+            assert(dirtyAge >= 0);
             assert(dirtyAge < (86400 * 30));
             stats.dirtyAgeHisto.add(dirtyAge * 1000000);
             stats.dataAgeHisto.add(dataAge * 1000000);

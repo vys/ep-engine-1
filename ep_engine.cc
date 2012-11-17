@@ -1308,6 +1308,7 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     stats.flushDurations.resize(numKVStores);
     stats.flushDurationHighWats.resize(numKVStores);
     stats.commit_times.resize(numKVStores);
+    stats.flusherRequeuedRejected.resize(numKVStores);
 
     databaseInitTime = ep_real_time() - start;
     epstore = new EventuallyPersistentStore(*this, kvstore, configuration.isVb0(),
@@ -2682,6 +2683,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
             add_casted_stat(buf, epstats.beginFailed[i], add_stat, cookie);
             sprintf(buf, "ep_item_commit_failed_%d", int(i));
             add_casted_stat(buf, epstats.commitFailed[i], add_stat, cookie);
+            sprintf(buf, "ep_flusher_requeue_rejected_%d", int(i));
+            add_casted_stat(buf, epstats.flusherRequeuedRejected[i], add_stat, cookie);
         }
     }
     add_casted_stat("ep_flusher_todo",

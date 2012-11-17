@@ -23,6 +23,12 @@ bool FlusherStepper::callback(Dispatcher &d, TaskId t) {
     return flusher->step(d, t);
 }
 
+std::string FlusherStepper::description() {
+    char buf[64];
+    snprintf(buf, 64, "Running flusher loop %d", flusher->getFlusherId());
+    return std::string(buf);
+}
+
 bool Flusher::stop(bool isForceShutdown) {
     forceShutdownReceived = isForceShutdown;
     enum flusher_state to = forceShutdownReceived ? stopped : stopping;
@@ -254,6 +260,7 @@ int Flusher::doFlush() {
             if (rejectQueue && !rejectQueue->empty()) {
                 // Requeue the rejects.
                 store->requeueRejectedItems(rejectQueue, flushQueue, flusherId);
+                store->stats.flusherRequeuedRejected[flusherId]++;
             } else {
                 store->completeFlush(flushStart, flusherId);
                 getLogger()->log(EXTENSION_LOG_INFO, NULL,

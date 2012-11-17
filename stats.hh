@@ -133,6 +133,8 @@ public:
 
     //! size of the input queue
     Atomic<size_t> queue_size;
+    //! Number of times flusher left rejected items to the flushQueue
+    std::vector<Atomic<size_t> > flusherRequeuedRejected;
     //! Size of the in-process (output) queue for each flusher
     std::vector<Atomic<size_t> > flusher_todos;
     //! Number of deduplications fixed by the flusher
