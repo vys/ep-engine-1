@@ -6663,12 +6663,13 @@ static int run_pattern_load(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
 }
 
 static BaseLoadPattern *get_load_pattern(std::string type, uint32_t numkeys, 
-        uint64_t timeout = 0, uint32_t maxops = 0, int param1 = 1, int param2 = 1) {
+        uint64_t timeout = 0, uint32_t maxops = 0, int param1 = 1, int param2 = 1, int param3 = 1, int param4 = 1) {
     if (type == "even") {
         return new EvenKeysPattern(numkeys, timeout, maxops);
-    }
-    else if (type == "polynomial") {
-        return new PolynomialPattern(numkeys, timeout, maxops, param1, param2);
+    } else if (type == "polynomial") {
+        return new PolynomialPattern(numkeys, timeout, maxops, param1, param2, param3, param4);
+    } else if (type == "random") {
+        return new RandomPattern(numkeys, timeout, maxops, param1, param2);
     } else {
         std::cout<<"Invalid load pattern"<<std::endl;
         assert(0);
@@ -6690,7 +6691,7 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     uint64_t max_size = atoll((*conf)["max_size"].c_str());
     int max_evict_entries = atoi((*conf)["max_evict_entries"].c_str());
     std::string kvs_config = (*conf)["kvs_config"];
-    int load_param1(0), load_param2(0);
+    int load_param1(1), load_param2(1), load_param3(1), load_param4(1);
 
     if ((*conf).find("load_param1") != (*conf).end()) {
         load_param1 = atoi((*conf)["load_param1"].c_str());
@@ -6700,6 +6701,13 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
         load_param2 = atoi((*conf)["load_param2"].c_str());
     }
 
+    if ((*conf).find("load_param3") != (*conf).end()) {
+        load_param3 = atoi((*conf)["load_param3"].c_str());
+    }
+
+    if ((*conf).find("load_param4") != (*conf).end()) {
+        load_param4 = atoi((*conf)["load_param4"].c_str());
+    }
 
     // Generate new config and restart the engine
     int warmup;
@@ -6717,7 +6725,7 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     check(do_warmup(h, h1, warmup) == 0, "Warmup failed");
     printf("Warmup took %llu seconds\n", (unsigned long long int)tt.getElapsedTime());
 	if (run_load) {
-		BaseLoadPattern *pattern = get_load_pattern(load_pattern, num_keys, load_timeout, load_opsmax, load_param1, load_param2);
+		BaseLoadPattern *pattern = get_load_pattern(load_pattern, num_keys, load_timeout, load_opsmax, load_param1, load_param2, load_param3, load_param4);
 		tt.reset();
 		check(run_pattern_load(h, h1, pattern, blob_size, load_ratio_sets, load_ratio_gets) == 0, "Pattern based loading failed");
 		printf("Performance run took %llu seconds\n", (unsigned long long int)tt.getElapsedTime());

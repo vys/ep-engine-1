@@ -103,28 +103,46 @@ class PolynomialPattern: public BaseLoadPattern {
 
     int generateKey(std::string &key) {
         std::stringstream ss;
-        int64_t val;
-        val = (a*curr*curr + b*curr);
-        if (val >= nkeys) {
-            curr = 0;
-            val = 0;
-        }
-        val = (val < 0) ? -val : val;
-        curr++;
+        uint64_t ck = curr;
+        std::cout << ck << std::endl;
+        ck = (a * ck * ck) % nkeys;
+        std::cout << ck << std::endl;
+        curr = (ck + b*ck + c) % nkeys;
+        std::cout << curr << std::endl;
 
-        ss<<"key-"<<val;
+        ss << "key-" << (curr + startkey);
         key = ss.str();
         return 1;
     }
 public:
 
-    PolynomialPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0, int const1 = 1, int const2 = 1) : 
-        BaseLoadPattern(n, t, (t || ops) ? ops : n-1), a(const1), b(const2) {
-        std::cout<<"Loading polynomial pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<" a="<<a<<" b="<<b<<std::endl;
+    PolynomialPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0, int skey = 1, int const1 = 1, int const2 = 1, int const3 = 1) : 
+        BaseLoadPattern(n, t, (t || ops) ? ops : n-1), a(const1), b(const2), c(const3), startkey(skey) {
+        std::cout<<"Loading polynomial pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<" startkey="<<startkey<<" a="<<a<<" b="<<b<<" c="<<c<<std::endl;
     }
 
-    int a, b;
+    int a, b, c, startkey;
 
+};
+
+class RandomPattern: public BaseLoadPattern {
+
+    int generateKey(std::string &key) {
+        std::stringstream ss;
+        ss << "key-" << ((rand()%nkeys) + startkey);
+        key = ss.str();
+        std::cout << "key " << key << std::endl;
+        return 1;
+    }
+public:
+
+    RandomPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0, int skey = 1, int const1 = 863) : 
+        BaseLoadPattern(n, t, (t || ops) ? ops : n-1), startkey(skey) {
+        std::cout<<"Loading random pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<" startkey="<<startkey<<" seed="<<const1<<std::endl;
+        srand(const1);
+    }
+
+    int startkey;
 };
 
 #ifdef __cplusplus
