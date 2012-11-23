@@ -301,15 +301,17 @@ static void* flusher_helper(void *args) {
 }
 
 void FlusherHelper::run() {
+
     while (1) {
         const Flusher *flusher = store->getFlusher(kvid);
+        LockHolder lh(sync);
         if (!queue) {
             queue = store->beginFlush(kvid);
         }
         if (flusher->state() == stopped) {
             break;
         }
-        usleep(1000);
+        sync.wait();
     }
     return;
 }

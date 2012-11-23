@@ -50,7 +50,7 @@ private:
 class FlusherHelper {
 public:
     FlusherHelper(int kv, EventuallyPersistentStore *st) :
-        kvid(kv), store(st), queue(NULL) {
+        kvid(kv), store(st), queue(NULL), sync() {
         start();
     }
 
@@ -65,11 +65,14 @@ public:
     }
 
     std::queue<FlushEntry> *getFlushQueue() {
+        LockHolder lh(sync);
         if (!queue) {
+            sync.notify();
             return NULL;
         }
         std::queue<FlushEntry> *ret = queue;
         queue = NULL;
+        sync.notify();
         return ret;
     }
 
@@ -81,6 +84,7 @@ private:
     pthread_t myId;
     EventuallyPersistentStore *store;
     std::queue<FlushEntry> *queue;
+    SyncObject sync;
 };
 
 /**
