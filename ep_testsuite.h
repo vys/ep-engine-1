@@ -73,10 +73,11 @@ class EvenKeysPattern: public BaseLoadPattern {
 
     int generateKey(std::string &key) {
         bool found = false;
+        uint32_t remainder = startkey % 2;
         while (curr < nkeys) {
-            if (curr % 2 == 0) {
+            if (curr % 2 == remainder) {
                 std::stringstream ss;
-                ss<<"key-"<<curr;
+                ss<<"key-"<<(curr+startkey);
                 key = ss.str();
                 found = true;
             }
@@ -94,9 +95,11 @@ class EvenKeysPattern: public BaseLoadPattern {
     }
 
 public:
-    EvenKeysPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0) : BaseLoadPattern(n, t, ops) {
-        std::cout<<"Loading even keylist pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<std::endl;
+    EvenKeysPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0, int skey = 0) : BaseLoadPattern(n, t, ops), startkey(skey) {
+        std::cout<<"Loading even keylist pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<" startkey="<<startkey<<std::endl;
     }
+
+    int startkey;
 };
 
 class PolynomialPattern: public BaseLoadPattern {
@@ -113,7 +116,7 @@ class PolynomialPattern: public BaseLoadPattern {
     }
 public:
 
-    PolynomialPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0, int skey = 1, int const1 = 1, int const2 = 1, int const3 = 1) : 
+    PolynomialPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0, int skey = 0, int const1 = 1, int const2 = 1, int const3 = 1) :
         BaseLoadPattern(n, t, (t || ops) ? ops : n-1), a(const1), b(const2), c(const3), startkey(skey) {
         std::cout<<"Loading polynomial pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<" startkey="<<startkey<<" a="<<a<<" b="<<b<<" c="<<c<<std::endl;
     }
@@ -132,7 +135,7 @@ class RandomPattern: public BaseLoadPattern {
     }
 public:
 
-    RandomPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0, int skey = 1, int const1 = 863) : 
+    RandomPattern(uint32_t n, uint64_t t = 0, uint32_t ops = 0, int skey = 0, int const1 = 863) :
         BaseLoadPattern(n, t, (t || ops) ? ops : n-1), startkey(skey) {
         std::cout<<"Loading random pattern, nkeys="<<n<<" timeout="<<t<<" maxops="<<ops<<" startkey="<<startkey<<" seed="<<const1<<std::endl;
         srand(const1);
