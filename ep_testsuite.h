@@ -104,11 +104,8 @@ class PolynomialPattern: public BaseLoadPattern {
     int generateKey(std::string &key) {
         std::stringstream ss;
         uint64_t ck = curr;
-        std::cout << ck << std::endl;
         ck = (a * ck * ck) % nkeys;
-        std::cout << ck << std::endl;
         curr = (ck + b*ck + c) % nkeys;
-        std::cout << curr << std::endl;
 
         ss << "key-" << (curr + startkey);
         key = ss.str();
@@ -131,7 +128,6 @@ class RandomPattern: public BaseLoadPattern {
         std::stringstream ss;
         ss << "key-" << ((rand()%nkeys) + startkey);
         key = ss.str();
-        std::cout << "key " << key << std::endl;
         return 1;
     }
 public:
