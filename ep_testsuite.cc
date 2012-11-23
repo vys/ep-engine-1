@@ -873,7 +873,8 @@ static long long get_long_stat(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1,
 
 static std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int &warmup,
             uint32_t keys, uint32_t blobsize, uint64_t max_size, int dgm = 1,
-            int max_evict_entries = 500000, std::string kvs_config = "t/kv_multikv.json") {
+            int max_evict_entries = 500000, std::string kvs_config = "t/kv_multikv.json",
+            std::string other_config = "") {
 
     // Following the proportion: 10K locks per 2M keys
     uint32_t ht_locks = keys / 200;
@@ -911,8 +912,12 @@ static std::string gen_new_config(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, int &w
        << "eviction_headroom=" << evictionheadroom << ";"
        << "ht_size=" << ht_size << ";"
        << "ht_locks=" << ht_locks << ";"
-       << "max_evict_entries=" << max_evict_entries <<";"
+       << "max_evict_entries=" << max_evict_entries << ";"
        << "kvstore_config_file="<< kvs_config;
+
+    if (other_config.size()) {
+        ss << ";" << other_config;
+    }
 
     return ss.str();
 }
@@ -6691,6 +6696,7 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     uint64_t max_size = atoll((*conf)["max_size"].c_str());
     int max_evict_entries = atoi((*conf)["max_evict_entries"].c_str());
     std::string kvs_config = (*conf)["kvs_config"];
+    std::string other_config;
     int load_param1(1), load_param2(1), load_param3(1), load_start_key(0);
     int load_num_keys = num_keys;
 
@@ -6714,9 +6720,13 @@ static enum test_result run_flusher_perf_test(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
         load_num_keys = atoi((*conf)["load_num_keys"].c_str());
     }
 
+    if ((*conf).find("other_config") != (*conf).end()) {
+        other_config = (*conf)["other_config"];
+    }
+
     // Generate new config and restart the engine
     int warmup;
-    std::string newConf = gen_new_config(h, h1, warmup, num_keys, blob_size, max_size, 1, max_evict_entries, kvs_config);
+    std::string newConf = gen_new_config(h, h1, warmup, num_keys, blob_size, max_size, 1, max_evict_entries, kvs_config, other_config);
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
                               newConf.c_str(),
