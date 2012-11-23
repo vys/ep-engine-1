@@ -50,17 +50,11 @@ public:
         return std::abs(h / MAX_SHARDS_LIMIT) % (int)instance->numKVStores;
     }
 
-    static std::vector<uint16_t> getVBucketsForKVStore(int kvid, std::vector<int> vbs) {
+    static std::vector<uint16_t> getVBucketsForKVStore(int kvid) {
         assert(instance != NULL);
+        (void)  kvid;
         std::vector<uint16_t> kvstore_vbs;
-
-        std::vector<int>::iterator it = vbs.begin();
-        for (; it != vbs.end(); it++) {
-            if (!instance->mapVBuckets || *it % instance->numKVStores == kvid) {
-                kvstore_vbs.push_back(static_cast<uint16_t>(*it));
-            }
-        }
-
+        kvstore_vbs.push_back(0);
         return kvstore_vbs;
     }
 

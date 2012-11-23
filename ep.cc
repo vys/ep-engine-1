@@ -1557,7 +1557,7 @@ void EventuallyPersistentStore::reset() {
 
 // This works on the premise that the stored value is only freed by flusher
 std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
-    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(id, vbuckets.getBuckets());
+    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(id);
     std::vector<uint16_t>::iterator vb_it = vblist.begin();
 
     if (hasItemsForPersistence(id)) {
@@ -1648,7 +1648,7 @@ void EventuallyPersistentStore::requeueRejectedItems(std::queue<FlushEntry> *rej
 void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
     LockHolder lh(vbsetMutex);
 
-    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(id, vbuckets.getBuckets());
+    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(id);
     std::vector<uint16_t>::iterator vb_it = vblist.begin();
     for (; vb_it != vblist.end(); vb_it++) {
         RCPtr<VBucket> vb = getVBucket(*vb_it);
