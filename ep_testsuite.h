@@ -34,11 +34,12 @@ public:
     uint32_t ops_count;
 
     int getNextKey(std::string &key) {
+        uint64_t curr_time = time(NULL);
         if (!start_time) {
-            start_time = time(NULL);
+            start_time = curr_time;
         }
 
-        if (timeout && (time(NULL) - start_time) > timeout) {
+        if (timeout && (curr_time - start_time) > timeout) {
             return -1;
         }
 
@@ -48,6 +49,9 @@ public:
 
         int rv = generateKey(key);
         if (rv) {
+            if (ops_count % 1000000 == 0 || (curr_time - start_time) % 60 == 0) {
+                printf("Load ops up to %d items - Last 1M took %lu seconds\n", ops_count, (long unsigned int)(curr_time-start_time));
+            }
             ops_count++;
         }
         return rv;
