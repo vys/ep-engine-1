@@ -1310,7 +1310,7 @@ public:
      */
     inline int hash(const char *str, const size_t len) {
         assert(active());
-        int h=94418953;
+        int h=5381;
 
         for(size_t i=0; i < len; i++) {
             h = ((h << 5) + h) ^ str[i];

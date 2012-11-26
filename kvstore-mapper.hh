@@ -40,7 +40,7 @@ public:
             return KVStoreMapper::getVBucketToKVId(vbid);
         }
 
-        int h = 94418953;
+        int h = 5381;
         int i=0;
         const char *str = key.c_str();
 
