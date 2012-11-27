@@ -845,8 +845,9 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority, int k
     }
 }
 
-void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
+ENGINE_ERROR_CODE EventuallyPersistentStore::setVBucketState(uint16_t vbid,
                                                 vbucket_state_t to) {
+    ENGINE_ERROR_CODE rv = ENGINE_SUCCESS;
     // Lock to prevent a race condition between a failed update and add.
     LockHolder lh(vbsetMutex);
     RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
@@ -868,13 +869,18 @@ void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
         uint16_t vb_new_version = vb_version == (std::numeric_limits<uint16_t>::max() - 1) ?
                                   0 : vb_version + 1;
 
-        KVStoreMapper::assignKVStore(newvb);
-        vbuckets.addBucket(newvb);
-        vbuckets.setBucketVersion(vbid, vb_new_version);
-        lh.unlock();
-        scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
-                           KVStoreMapper::getVBucketToKVId(newvb));
+        if (KVStoreMapper::assignKVStore(newvb) == KVSTORE_ALLOCATION_SUCCESS) {
+            vbuckets.addBucket(newvb);
+            vbuckets.setBucketVersion(vbid, vb_new_version);
+            lh.unlock();
+            scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
+                               KVStoreMapper::getVBucketToKVId(newvb));
+        } else {
+            rv = ENGINE_EINVAL;
+        }
     }
+
+    return rv;
 }
 
 void EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p, int kvid) {
@@ -2292,7 +2298,7 @@ void EventuallyPersistentStore::warmup(Atomic<bool> &vbStateLoaded, int id) {
                            VBucket::fromString(vbs.state.c_str()));
             if (stats.kvstoreMapVbuckets) {
                 RCPtr<VBucket> vb = getVBucket(vbp.first);
-                KVStoreMapper::assignKVStore(vb, id);
+                assert(KVStoreMapper::assignKVStore(vb, id) == KVSTORE_ALLOCATION_SUCCESS);
             }
         }
         vbStateLoaded.set(true);

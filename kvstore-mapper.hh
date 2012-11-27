@@ -6,6 +6,14 @@
 
 #define MAX_SHARDS_LIMIT 2520
 
+typedef enum {
+    /**
+     * Status codes for KVStoreMapper operations
+     */
+    KVSTORE_ALLOCATION_SUCCESS,
+    KVSTORE_NOT_AVAILABLE
+} KVSTOREMAPPER_ERROR_CODE;
+
 /*
  * Class to distribute input data across kvstores.
  */
@@ -26,8 +34,10 @@ public:
      * Assign a vbucket to an available KVStore which holds less number of vbuckets
      * If kvid != -1, assign vbucket explicitly to the specified kvstore (used for warmup)
      */
-    static int assignKVStore(RCPtr<VBucket> &vb, int kvid = -1) {
+    static KVSTOREMAPPER_ERROR_CODE assignKVStore(RCPtr<VBucket> &vb, int kvid = -1) {
+        assert(instance != NULL);
         LockHolder lh(instance->mutex);
+        KVSTOREMAPPER_ERROR_CODE rv = KVSTORE_ALLOCATION_SUCCESS;
         int eligibleKVStore(-1);
         size_t kvstoreSize;
 
@@ -58,10 +68,11 @@ public:
             } else {
                 getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                     "Unable to assign vbucket %d to a kvstore\n", vb->getId());
+                rv = KVSTORE_NOT_AVAILABLE;
             }
         }
 
-        return eligibleKVStore;
+        return rv;
     }
 
     static int getVBucketToKVId(const RCPtr<VBucket> &vb) {
@@ -92,8 +103,8 @@ public:
     }
 
     static std::vector<uint16_t> getVBucketsForKVStore(int kvid) {
-        LockHolder lh(instance->mutex);
         assert(instance != NULL);
+        LockHolder lh(instance->mutex);
         std::map<int, std::vector<uint16_t> >::iterator it;
         it = instance->kvstoresMap.find(kvid);
         assert(it != instance->kvstoresMap.end());

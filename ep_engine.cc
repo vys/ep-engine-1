@@ -840,6 +840,7 @@ extern "C" {
             response(NULL, 0, NULL, 0, msg.c_str(), msg.length(),
                      PROTOCOL_BINARY_RAW_BYTES,
                      PROTOCOL_BINARY_RESPONSE_EINVAL, 0, cookie);
+            return ENGINE_SUCCESS;
         }
 
         vbucket_state_t state;
@@ -851,13 +852,20 @@ extern "C" {
             response(NULL, 0, NULL, 0, msg.c_str(), msg.length(),
                      PROTOCOL_BINARY_RAW_BYTES,
                      PROTOCOL_BINARY_RESPONSE_EINVAL, 0, cookie);
+            return ENGINE_SUCCESS;
         }
 
-        e->setVBucketState(ntohs(req->message.header.request.vbucket), state);
-        response(NULL, 0, NULL, 0, NULL, 0, PROTOCOL_BINARY_RAW_BYTES,
-                 PROTOCOL_BINARY_RESPONSE_SUCCESS, 0, cookie);
-
-        return ENGINE_SUCCESS;
+        if (e->setVBucketState(ntohs(req->message.header.request.vbucket), state)
+                == ENGINE_SUCCESS) {
+            response(NULL, 0, NULL, 0, NULL, 0, PROTOCOL_BINARY_RAW_BYTES,
+                     PROTOCOL_BINARY_RESPONSE_SUCCESS, 0, cookie);
+            return ENGINE_SUCCESS;
+        } else {
+            const std::string msg("VBucket allocation failed");
+            response(NULL, 0, NULL, 0, msg.c_str(), msg.length(),
+                PROTOCOL_BINARY_RAW_BYTES, PROTOCOL_BINARY_RESPONSE_EINTERNAL, 0, cookie);
+            return ENGINE_SUCCESS;
+        }
     }
 
     static ENGINE_ERROR_CODE delVBucket(EventuallyPersistentEngine *e,
@@ -1990,7 +1998,9 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
                 getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                                  "Vbucket <%d> is going dead.\n",
                                   ev.vbucket);
-                epstore->setVBucketState(ev.vbucket, vbucket_state_dead);
+                if (epstore->setVBucketState(ev.vbucket, vbucket_state_dead) != ENGINE_SUCCESS) {
+                    return TAP_DISCONNECT;
+                }
                 connection->setTakeOverCompletionPhase(true);
             }
             if (connection->getTapAckLogSize() > 1) {
@@ -2538,7 +2548,10 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
                 break;
             }
 
-            epstore->setVBucketState(vbucket, state);
+            if (epstore->setVBucketState(vbucket, state) != ENGINE_SUCCESS) {
+                ret = ENGINE_DISCONNECT;
+                break;
+            }
         }
         break;
 

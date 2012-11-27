@@ -665,7 +665,7 @@ public:
     }
 
     void snapshotVBuckets(const Priority &priority, int kvid);
-    void setVBucketState(uint16_t vbid,
+    ENGINE_ERROR_CODE setVBucketState(uint16_t vbid,
                          vbucket_state_t state);
 
     /**
