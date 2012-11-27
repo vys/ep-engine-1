@@ -837,7 +837,7 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority, int k
     }
 
     VBucketStateVisitor v(vbuckets);
-    visit(v);
+    visit(v, kvid);
     if (!rwUnderlying[kvid]->snapshotVBuckets(v.states)) {
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Rescheduling a task to snapshot vbuckets\n");
@@ -2278,20 +2278,24 @@ void EventuallyPersistentStore::completeOnlineRestore() {
 
 void EventuallyPersistentStore::warmup(Atomic<bool> &vbStateLoaded, int id) {
     LoadStorageKVPairCallback cb(vbuckets, stats, this);
-    if (id == 0) {
-    std::map<std::pair<uint16_t, uint16_t>, vbucket_state> state =
-        roUnderlying[0]->listPersistedVbuckets();
-    std::map<std::pair<uint16_t, uint16_t>, vbucket_state>::iterator it;
-    for (it = state.begin(); it != state.end(); ++it) {
-        std::pair<uint16_t, uint16_t> vbp = it->first;
-        vbucket_state vbs = it->second;
-        getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
-                         "Reloading vbucket %d - was in %s state\n",
-                         vbp.first, vbs.state.c_str());
-        cb.initVBucket(vbp.first, vbp.second, vbs.checkpointId + 1,
-                       VBucket::fromString(vbs.state.c_str()));
-    }
-    vbStateLoaded.set(true);
+    if (id == 0 || stats.kvstoreMapVbuckets) {
+        std::map<std::pair<uint16_t, uint16_t>, vbucket_state> state =
+            roUnderlying[id]->listPersistedVbuckets();
+        std::map<std::pair<uint16_t, uint16_t>, vbucket_state>::iterator it;
+        for (it = state.begin(); it != state.end(); ++it) {
+            std::pair<uint16_t, uint16_t> vbp = it->first;
+            vbucket_state vbs = it->second;
+            getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
+                             "Reloading vbucket %d - was in %s state\n",
+                             vbp.first, vbs.state.c_str());
+            cb.initVBucket(vbp.first, vbp.second, vbs.checkpointId + 1,
+                           VBucket::fromString(vbs.state.c_str()));
+            if (stats.kvstoreMapVbuckets) {
+                RCPtr<VBucket> vb = getVBucket(vbp.first);
+                KVStoreMapper::assignKVStore(vb, id);
+            }
+        }
+        vbStateLoaded.set(true);
     }
 
     roUnderlying[id]->dump(cb);

@@ -686,11 +686,26 @@ public:
      */
     bool resetVBucket(uint16_t vbid, bool underlying = true);
 
-    void visit(VBucketVisitor &visitor) {
-        size_t maxSize = vbuckets.getSize();
-        for (size_t i = 0; i <= maxSize; ++i) {
-            assert(i <= std::numeric_limits<uint16_t>::max());
-            uint16_t vbid = static_cast<uint16_t>(i);
+    void visit(VBucketVisitor &visitor, int kvstore_id = -1) {
+        size_t maxSize;
+        uint16_t vbid;
+        std::vector<uint16_t> vblist;
+        if (kvstore_id == -1) {
+            maxSize = vbuckets.getSize() + 1;
+        } else {
+            vblist = KVStoreMapper::getVBucketsForKVStore(kvstore_id);
+            maxSize = vblist.size();
+        }
+
+        for (size_t i = 0; i < maxSize; ++i) {
+            if (kvstore_id == -1) {
+                assert(i <= std::numeric_limits<uint16_t>::max());
+                vbid = static_cast<uint16_t>(i);
+            } else {
+                vbid = vblist.at(i);
+                assert(vbid <= std::numeric_limits<uint16_t>::max());
+            }
+
             RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
             if (vb) {
                 bool wantData = visitor.visitBucket(vb);
