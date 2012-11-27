@@ -116,7 +116,8 @@ public:
     bool callback(Dispatcher &, TaskId) {
         RememberingCallback<GetValue> gcb;
 
-        int id = KVStoreMapper::getKVStoreId(key, vbucket);
+        RCPtr<VBucket> vb = ep->getVBucket(vbucket);
+        int id = KVStoreMapper::getKVStoreId(key, vb);
         ep->getROUnderlying(id)->get(key, rowid, vbucket, vbver, gcb);
         gcb.waitForValue();
         assert(gcb.fired);
@@ -418,7 +419,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     setTxnSize(DEFAULT_TXN_SIZE);
     diskFlushAll.resize(numKVStores);
 
-    if (startVb0) {
+    if (startVb0 && !stats.kvstoreMapVbuckets) {
         RCPtr<VBucket> vb(new VBucket(0, vbucket_state_active, stats));
         vbuckets.addBucket(vb);
         vbuckets.setBucketVersion(0, 0);
@@ -857,7 +858,7 @@ void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
                                                                         engine)),
                                   NULL, Priority::NotifyVBStateChangePriority, 0, false);
         scheduleVBSnapshot(Priority::VBucketPersistLowPriority,
-                           KVStoreMapper::getVBucketToKVId(vbid));
+                           KVStoreMapper::getVBucketToKVId(vb));
     } else {
         RCPtr<VBucket> newvb(new VBucket(vbid, to, stats));
         if (to != vbucket_state_active) {
@@ -866,11 +867,13 @@ void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
         uint16_t vb_version = vbuckets.getBucketVersion(vbid);
         uint16_t vb_new_version = vb_version == (std::numeric_limits<uint16_t>::max() - 1) ?
                                   0 : vb_version + 1;
+
+        KVStoreMapper::assignKVStore(newvb);
         vbuckets.addBucket(newvb);
         vbuckets.setBucketVersion(vbid, vb_new_version);
         lh.unlock();
         scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
-                           KVStoreMapper::getVBucketToKVId(vbid));
+                           KVStoreMapper::getVBucketToKVId(newvb));
     }
 }
 
@@ -933,7 +936,7 @@ EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vbver
 
 void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version,
                                                    double delay=0) {
-    int id = KVStoreMapper::getVBucketToKVId(vb->getId());
+    int id = KVStoreMapper::getVBucketToKVId(vb);
     if (vbuckets.setBucketDeletion(vb->getId(), true)) {
         if (storageProperties[id]->hasEfficientVBDeletion()) {
             shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
@@ -972,7 +975,7 @@ bool EventuallyPersistentStore::deleteVBucket(uint16_t vbid) {
         vbuckets.removeBucket(vbid);
         hlh.unlock();
         scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
-                           KVStoreMapper::getVBucketToKVId(vbid));
+                           KVStoreMapper::getVBucketToKVId(vb));
         scheduleVBDeletion(vb, vb_version);
     }
     return rv;
@@ -1004,7 +1007,7 @@ bool EventuallyPersistentStore::resetVBucket(uint16_t vbid, bool underlying) {
         vb->resetStats();
 
         scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
-                           KVStoreMapper::getVBucketToKVId(vbid));
+                           KVStoreMapper::getVBucketToKVId(vb));
         // Clear all the items from the vbucket kv table on disk.
         if (underlying) {
             scheduleVBDeletion(vb, vb_version);
@@ -1036,7 +1039,7 @@ void EventuallyPersistentStore::completeBGFetch(const std::string &key,
     // Go find the data
     RememberingCallback<GetValue> gcb;
 
-    int id = KVStoreMapper::getKVStoreId(key, vbucket);
+    int id = KVStoreMapper::getKVStoreId(key, getVBucket(vbucket));
     roUnderlying[id]->get(key, rowid, vbucket, vbver, gcb);
     gcb.waitForValue();
     assert(gcb.fired);
@@ -1094,7 +1097,7 @@ void EventuallyPersistentStore::bgFetch(const std::string &key,
     ss << "Queued a background fetch, now at " << bgFetchQueue.get()
        << std::endl;
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, ss.str().c_str());
-    int i = KVStoreMapper::getKVStoreId(key, vbucket);
+    int i = KVStoreMapper::getKVStoreId(key, getVBucket(vbucket));
     roDispatcher[i]->schedule(dcb, NULL, Priority::BgFetcherPriority, bgFetchDelay);
 }
 
@@ -1278,7 +1281,7 @@ EventuallyPersistentStore::getFromUnderlying(const std::string &key,
                                                                             v->getId(),
                                                                             cookie, cb));
         assert(bgFetchQueue > 0);
-        int i = KVStoreMapper::getKVStoreId(key, vbucket);
+        int i = KVStoreMapper::getKVStoreId(key, vb);
         roDispatcher[i]->schedule(dcb, NULL, Priority::VKeyStatBgFetcherPriority, bgFetchDelay);
         return ENGINE_EWOULDBLOCK;
     } else if (isRestoreEnabled()) {
@@ -2529,7 +2532,7 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v, 
     uint16_t vbid = vb->getId();
     std::string key = v->getKey();
 
-    int kvid = KVStoreMapper::getKVStoreId(key, vbid);
+    int kvid = KVStoreMapper::getKVStoreId(v->getKey(), vb);
     int shard = rwUnderlying[kvid]->getShardId(key, vbid);
 
     FlushEntry *fe = new FlushEntry(v, vbid, getVBucketVersion(vbid), queued);

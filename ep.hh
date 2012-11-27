@@ -51,6 +51,7 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #include "eviction.hh"
 #include "flushlist.hh"
 #include "crc32.hh"
+#include "kvstore-mapper.hh"
 
 #define DEFAULT_TXN_SIZE 10000
 #define MAX_TXN_SIZE 10000000

@@ -816,7 +816,8 @@ public:
         EventuallyPersistentStore *epstore = epe->getEpStore();
         assert(epstore);
 
-        int kvid = KVStoreMapper::getKVStoreId(key, vbucket);
+        RCPtr<VBucket> vb = epstore->getVBucket(vbucket);
+        int kvid = KVStoreMapper::getKVStoreId(key, vb);
         epstore->getROUnderlying(kvid)->get(key, rowid, vbucket, vbver, gcb);
         gcb.waitForValue();
         assert(gcb.fired);
@@ -829,7 +830,6 @@ public:
             }
             epe->notifyIOComplete(cookie, ENGINE_SUCCESS);
         } else { // If a tap bg fetch job is failed, schedule it again.
-            RCPtr<VBucket> vb = epstore->getVBucket(vbucket);
             if (vb) {
                 int bucket_num(0);
                 LockHolder lh = vb->ht.getLockedBucket(key, &bucket_num);
@@ -890,12 +890,13 @@ private:
 };
 
 void TapProducer::queueBGFetch(const std::string &key, uint64_t id,
-                               uint16_t vb, uint16_t vbv, const void *c) {
+                               uint16_t vbid, uint16_t vbv, const void *c) {
     LockHolder lh(queueLock);
     shared_ptr<TapBGFetchCallback> dcb(new TapBGFetchCallback(&engine,
                                                               getName(), key,
-                                                              vb, vbv,
+                                                              vbid, vbv,
                                                               id, c, sessionID));
+    RCPtr<VBucket> vb = engine.getEpStore()->getVBucket(vbid);
     int kvid = KVStoreMapper::getKVStoreId(key, vb);
     engine.getEpStore()->getRODispatcher(kvid)->schedule(dcb, NULL, Priority::TapBgFetcherPriority);
     ++bgQueued;

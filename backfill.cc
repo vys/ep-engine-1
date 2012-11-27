@@ -109,7 +109,7 @@ void BackFillVisitor::apply(void) {
     if (efficientVBDump) {
         std::vector<uint16_t>::iterator it = vbuckets.begin();
         for (; it != vbuckets.end(); it++) {
-            int kvid = KVStoreMapper::getVBucketToKVId(*it);
+            int kvid = KVStoreMapper::getVBucketToKVId(engine->epstore->getVBucket(*it));
             Dispatcher *d(engine->epstore->getRODispatcher(kvid));
             KVStore *underlying(engine->epstore->getROUnderlying(kvid));
             assert(d);

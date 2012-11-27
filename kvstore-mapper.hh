@@ -2,7 +2,7 @@
 #ifndef KVSTORE_MAPPER_HH
 #define KVSTORE_MAPPER_HH 1
 
-#include "queueditem.hh"
+#include "vbucket.hh"
 
 #define MAX_SHARDS_LIMIT 2520
 
@@ -22,22 +22,63 @@ public:
         instance = NULL;
     }
 
-    static int getVBucketToKVId(uint16_t vbid) {
+    /**
+     * Assign a vbucket to an available KVStore which holds less number of vbuckets
+     * If kvid != -1, assign vbucket explicitly to the specified kvstore (used for warmup)
+     */
+    static int assignKVStore(RCPtr<VBucket> &vb, int kvid = -1) {
+        LockHolder lh(instance->mutex);
+        int eligibleKVStore(-1);
+        size_t kvstoreSize;
+
+        if (instance->mapVBuckets) {
+            std::map<int, std::vector<uint16_t> >::iterator it;
+
+            if (kvid == -1) {
+                for (it = instance->kvstoresMap.begin(); it != instance->kvstoresMap.end(); it++) {
+                    if (eligibleKVStore == -1) {
+                        kvstoreSize = (*it).second.size();
+                        eligibleKVStore = (*it).first;
+                    } else if (kvstoreSize > (*it).second.size()) {
+                        kvstoreSize = (*it).second.size();
+                        eligibleKVStore = (*it).first;
+                    }
+                }
+            } else {
+                eligibleKVStore = kvid;
+            }
+
+            if (eligibleKVStore != -1) {
+                vb->setKVStoreId(eligibleKVStore);
+                it = instance->kvstoresMap.find(eligibleKVStore);
+                assert(it != instance->kvstoresMap.end());
+                (*it).second.push_back(vb->getId());
+                getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                    "Assigned vbucket %d to kvstore %d\n", vb->getId(), eligibleKVStore);
+            } else {
+                getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                    "Unable to assign vbucket %d to a kvstore\n", vb->getId());
+            }
+        }
+
+        return eligibleKVStore;
+    }
+
+    static int getVBucketToKVId(const RCPtr<VBucket> &vb) {
         if (instance == NULL) {
             // Should never happen
             return -1;
         }
-        //FIXME:: Fix with a better algorithm to map vbuckets
-        return vbid % instance->numKVStores;
+        return vb->getKVStoreId();
     }
 
-    static int getKVStoreId(const std::string &key, uint16_t vbid) {
+    static int getKVStoreId(const std::string &key, const RCPtr<VBucket> &vb) {
         if (instance == NULL) {
             // Should never happen
             return -1;
         }
         if (instance->mapVBuckets) {
-            return KVStoreMapper::getVBucketToKVId(vbid);
+            return KVStoreMapper::getVBucketToKVId(vb);
         }
 
         int h = 5381;
@@ -51,19 +92,32 @@ public:
     }
 
     static std::vector<uint16_t> getVBucketsForKVStore(int kvid) {
+        LockHolder lh(instance->mutex);
         assert(instance != NULL);
-        (void)  kvid;
-        std::vector<uint16_t> kvstore_vbs;
-        kvstore_vbs.push_back(0);
-        return kvstore_vbs;
+        std::map<int, std::vector<uint16_t> >::iterator it;
+        it = instance->kvstoresMap.find(kvid);
+        assert(it != instance->kvstoresMap.end());
+        return (*it).second;
     }
 
 private:
-    KVStoreMapper(int numKV, bool mapVB) : numKVStores(numKV), mapVBuckets(mapVB) {}
+    KVStoreMapper(int numKV, bool mapVB) : numKVStores(numKV), mapVBuckets(mapVB), mutex() {
+        LockHolder lh(mutex);
+        if (mapVBuckets) {
+            std::vector<uint16_t> empty;
+            int i;
+            for (i=0; i < numKVStores; i++) {
+                kvstoresMap[i] = empty;
+            }
+        }
+    }
 
     static KVStoreMapper *instance;
     int numKVStores;
     bool mapVBuckets;
+    //Map kvstore_id to a set of vbucket_id which the kvstore holds
+    std::map<int, std::vector<uint16_t> > kvstoresMap;
+    Mutex mutex;
 };
 
 #endif

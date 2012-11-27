@@ -12,7 +12,6 @@
 #include "locks.hh"
 #include "queueditem.hh"
 #include "stats.hh"
-#include "kvstore-mapper.hh"
 
 #define MIN_CHECKPOINT_ITEMS 100
 #define MAX_CHECKPOINT_ITEMS 500000

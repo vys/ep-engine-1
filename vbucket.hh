@@ -108,7 +108,7 @@ public:
     VBucket(int i, vbucket_state_t newState, EPStats &st,
             vbucket_state_t initState = vbucket_state_dead, uint64_t checkpointId = 1):
         ht(st), checkpointManager(st, i, checkpointId),
-        id(i), state(newState), initialState(initState), stats(st) {
+        id(i), state(newState), initialState(initState), stats(st), kvstore_id(-1) {
         backfill.isBackfillPhase = false;
         pendingOpsStart = 0;
         stats.memOverhead.incr(sizeof(VBucket)
@@ -228,6 +228,8 @@ public:
 private:
 
     void fireAllOps(EventuallyPersistentEngine &engine, ENGINE_ERROR_CODE code);
+    int getKVStoreId(void) const { return kvstore_id; }
+    void setKVStoreId(int kvid) { kvstore_id = kvid; }
 
     int                      id;
     Atomic<vbucket_state_t>  state;
@@ -236,7 +238,9 @@ private:
     std::vector<const void*> pendingOps;
     hrtime_t                 pendingOpsStart;
     EPStats                 &stats;
+    int                      kvstore_id;
 
+    friend class KVStoreMapper;
     DISALLOW_COPY_AND_ASSIGN(VBucket);
 };
 
