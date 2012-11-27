@@ -187,6 +187,7 @@ public:
     }
 
     bool shouldContinue() {
+        update();
         if (evjob) {
             return evjob->storeEvictItem();
         }
