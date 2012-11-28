@@ -869,7 +869,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::setVBucketState(uint16_t vbid,
         uint16_t vb_new_version = vb_version == (std::numeric_limits<uint16_t>::max() - 1) ?
                                   0 : vb_version + 1;
 
-        if (KVStoreMapper::assignKVStore(newvb) == KVSTORE_ALLOCATION_SUCCESS) {
+        if (!stats.kvstoreMapVbuckets ||
+                KVStoreMapper::assignKVStore(newvb) == KVSTORE_ALLOCATION_SUCCESS) {
             vbuckets.addBucket(newvb);
             vbuckets.setBucketVersion(vbid, vb_new_version);
             lh.unlock();
@@ -893,8 +894,16 @@ void EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p, int kvid) 
             return;
         }
     }
-    dispatcher[kvid]->schedule(shared_ptr<DispatcherCallback>(
-                        new SnapshotVBucketsCallback(this, p, kvid)), NULL, p, 0, false);
+
+    if (kvid == -1) {
+        for (int i = 0; i < numKVStores; i++) {
+            dispatcher[i]->schedule(shared_ptr<DispatcherCallback>(
+                                new SnapshotVBucketsCallback(this, p, i)), NULL, p, 0, false);
+        }
+    } else {
+        dispatcher[kvid]->schedule(shared_ptr<DispatcherCallback>(
+                            new SnapshotVBucketsCallback(this, p, kvid)), NULL, p, 0, false);
+    }
 }
 
 vbucket_del_result
@@ -942,24 +951,31 @@ EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vbver
 
 void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version,
                                                    double delay=0) {
-    int id = KVStoreMapper::getVBucketToKVId(vb);
-    if (vbuckets.setBucketDeletion(vb->getId(), true)) {
-        if (storageProperties[id]->hasEfficientVBDeletion()) {
-            shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
-                                                                              vb_version,
-                                                                              stats));
-            dispatcher[id]->schedule(cb,
-                                 NULL, Priority::FastVBucketDeletionPriority,
-                                 delay, false);
-        } else {
-            size_t chunk_size = engine.getVbDelChunkSize();
-            uint32_t vb_chunk_del_time = engine.getVbChunkDelThresholdTime();
-            shared_ptr<DispatcherCallback> cb(new VBucketDeletionCallback(this, vb, vb_version,
-                                                                          stats, chunk_size,
-                                                                          vb_chunk_del_time));
-            dispatcher[id]->schedule(cb,
-                                 NULL, Priority::VBucketDeletionPriority,
-                                 delay, false);
+    int kvid = KVStoreMapper::getVBucketToKVId(vb);
+    for (int id = 0; id < numKVStores; id++) {
+        id = kvid >= 0 ? kvid : id;
+
+        if (vbuckets.setBucketDeletion(vb->getId(), true)) {
+            if (rwUnderlying[id]->getStorageProperties().hasEfficientVBDeletion()) {
+                shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
+                                                                                  vb_version,
+                                                                                  stats));
+                dispatcher[id]->schedule(cb,
+                                     NULL, Priority::FastVBucketDeletionPriority,
+                                     delay, false);
+            } else {
+                size_t chunk_size = engine.getVbDelChunkSize();
+                uint32_t vb_chunk_del_time = engine.getVbChunkDelThresholdTime();
+                shared_ptr<DispatcherCallback> cb(new VBucketDeletionCallback(this, vb, vb_version,
+                                                                              stats, chunk_size,
+                                                                              vb_chunk_del_time));
+                dispatcher[id]->schedule(cb,
+                                     NULL, Priority::VBucketDeletionPriority,
+                                     delay, false);
+            }
+        }
+        if (kvid >= 0) {
+            break;
         }
     }
 }

@@ -110,17 +110,24 @@ void BackFillVisitor::apply(void) {
         std::vector<uint16_t>::iterator it = vbuckets.begin();
         for (; it != vbuckets.end(); it++) {
             int kvid = KVStoreMapper::getVBucketToKVId(engine->epstore->getVBucket(*it));
-            Dispatcher *d(engine->epstore->getRODispatcher(kvid));
-            KVStore *underlying(engine->epstore->getROUnderlying(kvid));
-            assert(d);
-            shared_ptr<DispatcherCallback> cb(new BackfillDiskLoad(name,
-                                                                   engine,
-                                                                   engine->tapConnMap,
-                                                                   underlying,
-                                                                   *it,
-                                                                   validityToken,
-                                                                   sessionID));
-            d->schedule(cb, NULL, Priority::TapBgFetcherPriority);
+            for (int i = 0; i < engine->epstore->numKVStores; i++) {
+                i = kvid >= 0 ? kvid : i;
+                Dispatcher *d(engine->epstore->getRODispatcher(i));
+                KVStore *underlying(engine->epstore->getROUnderlying(i));
+                assert(d);
+                shared_ptr<DispatcherCallback> cb(new BackfillDiskLoad(name,
+                                                                       engine,
+                                                                       engine->tapConnMap,
+                                                                       underlying,
+                                                                       *it,
+                                                                       validityToken,
+                                                                       sessionID));
+                d->schedule(cb, NULL, Priority::TapBgFetcherPriority);
+
+                if (kvid >= 0) {
+                    break;
+                }
+            }
         }
         vbuckets.clear();
     }

@@ -833,6 +833,9 @@ extern "C" {
         protocol_binary_request_set_vbucket *req =
             reinterpret_cast<protocol_binary_request_set_vbucket*>(request);
 
+        /**
+         * TODO: Remove this code. This makes no sense
+         *
         size_t bodylen = ntohl(req->message.header.request.bodylen)
             - ntohs(req->message.header.request.keylen);
         if (bodylen != sizeof(vbucket_state_t)) {
@@ -840,8 +843,8 @@ extern "C" {
             response(NULL, 0, NULL, 0, msg.c_str(), msg.length(),
                      PROTOCOL_BINARY_RAW_BYTES,
                      PROTOCOL_BINARY_RESPONSE_EINVAL, 0, cookie);
-            return ENGINE_SUCCESS;
         }
+        */
 
         vbucket_state_t state;
         memcpy(&state, &req->message.body.state, sizeof(state));

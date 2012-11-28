@@ -927,6 +927,7 @@ private:
     friend class PersistenceCallback;
     friend class Deleter;
     friend class VBCBAdaptor;
+    friend class BackFillVisitor;
 
     EventuallyPersistentEngine &engine;
     EPStats                    &stats;

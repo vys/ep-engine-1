@@ -113,13 +113,16 @@ public:
 
 private:
     KVStoreMapper(int numKV, bool mapVB) : numKVStores(numKV), mapVBuckets(mapVB), mutex() {
+        std::vector<uint16_t> vblist;
+        int i;
         LockHolder lh(mutex);
-        if (mapVBuckets) {
-            std::vector<uint16_t> empty;
-            int i;
-            for (i=0; i < numKVStores; i++) {
-                kvstoresMap[i] = empty;
-            }
+
+        if (!mapVBuckets) {
+            vblist.push_back(0);
+        }
+
+        for (i=0; i < numKVStores; i++) {
+            kvstoresMap[i] = vblist;
         }
     }
 
