@@ -43,8 +43,10 @@ KVStore *KVStore::create(KVStoreConfig *c, EventuallyPersistentEngine &theEngine
         break;
     }
 
-    return new StrategicSqlite3(theEngine.getEpStats(),
+    KVStore *kvstore = new StrategicSqlite3(theEngine.getEpStats(),
                                 shared_ptr<SqliteStrategy>(sqliteInstance));
+    kvstore->availability.set(true);
+    return kvstore;
 }
 
 static const char* MULTI_DB_NAME("multiDB");

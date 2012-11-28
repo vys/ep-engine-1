@@ -829,6 +829,10 @@ public:
 
     bool isRestoreEnabled();
 
+    bool isKVStoreAvailable(int kvid);
+
+    bool setKVStoreAvailablity(int kvid, bool val);
+
     /**
      * Complete the online restore phase by clearing the list of deleted items that
      * are received from the upstream master via TAP or from the normal clients

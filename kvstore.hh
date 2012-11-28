@@ -344,9 +344,20 @@ public:
         persistedCheckpoints.clear();
     }
 
+    // Set kvstore state
+    void setAvailability(bool val) {
+        availability.set(val);
+    }
+
+    // Get KVStore state: online/offline
+    bool isAvailable() const {
+        return availability.get();
+    }
+
 
 private:
     std::map<uint16_t, uint64_t> persistedCheckpoints;
+    Atomic<bool> availability;
 
 };
 

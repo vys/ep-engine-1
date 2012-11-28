@@ -374,7 +374,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     tctx = new TransactionContext *[numKVStores];
     storageProperties = new StorageProperties *[numKVStores];
 
-    KVStoreMapper::createKVMapper(numKVStores, stats.kvstoreMapVbuckets);
+    KVStoreMapper::createKVMapper(numKVStores, rwUnderlying, stats.kvstoreMapVbuckets);
 
     int maxShards = 0;
     int i = 0;
@@ -2293,6 +2293,41 @@ bool EventuallyPersistentStore::isRestoreEnabled() {
     return engine.restore.enabled.get();
 }
 
+bool EventuallyPersistentStore::isKVStoreAvailable(int kvid) {
+    return rwUnderlying[kvid]->isAvailable();
+}
+
+bool EventuallyPersistentStore::setKVStoreAvailablity(int kvid, bool val) {
+    if (kvid < 0 || kvid >= numKVStores) {
+        return false;
+    }
+
+    if (val) {
+        if (isKVStoreAvailable(kvid)) {
+            return true;
+        }
+
+        KVStoreMapper::resetKVStore(kvid);
+        rwUnderlying[kvid]->reset();
+        if (roUnderlying[kvid] != rwUnderlying[kvid]) {
+            roUnderlying[kvid]->reset();
+        }
+        flusher[kvid]->resume();
+        getLogger()->log(EXTENSION_LOG_INFO, NULL, "Switching kvstore %d state to online", kvid);
+    } else {
+        if (!isKVStoreAvailable(kvid)) {
+            return true;
+        }
+        tctx[kvid]->commitSoon();
+        flusher[kvid]->pause();
+        getLogger()->log(EXTENSION_LOG_INFO, NULL, "Switching kvstore %d state to offline", kvid);
+    }
+
+    rwUnderlying[kvid]->setAvailability(val);
+
+   return true;
+}
+
 void EventuallyPersistentStore::completeOnlineRestore() {
     LockHolder lh(restore.mutex);
     restore.itemsDeleted.clear();
@@ -2555,12 +2590,15 @@ size_t EventuallyPersistentStore::getBlobSize(const std::string &key,
 }
 
 void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v, time_t queued) {
+    int kvid = KVStoreMapper::getKVStoreId(v->getKey(), vb);
+    if (!isKVStoreAvailable(kvid)) {
+        return;
+    }
+
     uint16_t vbid = vb->getId();
     std::string key = v->getKey();
 
-    int kvid = KVStoreMapper::getKVStoreId(v->getKey(), vb);
     int shard = rwUnderlying[kvid]->getShardId(key, vbid);
-
     FlushEntry *fe = new FlushEntry(v, vbid, getVBucketVersion(vbid), queued);
     assert(v->isDirty());
     ++stats.queue_size;

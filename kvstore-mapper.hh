@@ -2,9 +2,12 @@
 #ifndef KVSTORE_MAPPER_HH
 #define KVSTORE_MAPPER_HH 1
 
+#include "kvstore.hh"
 #include "vbucket.hh"
 
+
 #define MAX_SHARDS_LIMIT 2520
+class EventuallyPersistentEngine;
 
 typedef enum {
     /**
@@ -19,9 +22,9 @@ typedef enum {
  */
 class KVStoreMapper {
 public: 
-    static void createKVMapper(int numKV, bool mapVB) {
+    static void createKVMapper(int numKV, KVStore **kvs, bool mapVB) {
         if (instance == NULL) {
-            instance = new KVStoreMapper(numKV, mapVB);
+            instance = new KVStoreMapper(numKV, kvs, mapVB);
         }
     }
 
@@ -46,12 +49,15 @@ public:
 
             if (kvid == -1) {
                 for (it = instance->kvstoresMap.begin(); it != instance->kvstoresMap.end(); it++) {
-                    if (eligibleKVStore == -1) {
-                        kvstoreSize = (*it).second.size();
-                        eligibleKVStore = (*it).first;
-                    } else if (kvstoreSize > (*it).second.size()) {
-                        kvstoreSize = (*it).second.size();
-                        eligibleKVStore = (*it).first;
+                    KVStore *k = instance->kvstores[(*it).first];
+                    if (k->isAvailable()) {
+                        if (eligibleKVStore == -1) {
+                            kvstoreSize = (*it).second.size();
+                            eligibleKVStore = (*it).first;
+                        } else if (kvstoreSize > (*it).second.size()) {
+                            kvstoreSize = (*it).second.size();
+                            eligibleKVStore = (*it).first;
+                        }
                     }
                 }
             } else {
@@ -102,6 +108,7 @@ public:
         return std::abs(h / MAX_SHARDS_LIMIT) % (int)instance->numKVStores;
     }
 
+    // Get the list of vbuckets mapped to a kvstore
     static std::vector<uint16_t> getVBucketsForKVStore(int kvid) {
         assert(instance != NULL);
         LockHolder lh(instance->mutex);
@@ -111,8 +118,17 @@ public:
         return (*it).second;
     }
 
+    // Reset a kvstore mapping
+    static void resetKVStore(int kvid) {
+        std::vector<uint16_t> vblist;
+        if (kvid >= 0 && kvid < instance->numKVStores) {
+            instance->kvstoresMap[kvid] = vblist;
+        }
+    }
+
 private:
-    KVStoreMapper(int numKV, bool mapVB) : numKVStores(numKV), mapVBuckets(mapVB), mutex() {
+    KVStoreMapper(int numKV, KVStore **kvs, bool mapVB) :
+        numKVStores(numKV), kvstores(kvs), mapVBuckets(mapVB), mutex() {
         std::vector<uint16_t> vblist;
         int i;
         LockHolder lh(mutex);
@@ -128,6 +144,7 @@ private:
 
     static KVStoreMapper *instance;
     int numKVStores;
+    KVStore **kvstores;
     bool mapVBuckets;
     //Map kvstore_id to a set of vbucket_id which the kvstore holds
     std::map<int, std::vector<uint16_t> > kvstoresMap;

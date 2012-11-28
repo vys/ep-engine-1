@@ -444,6 +444,16 @@ extern "C" {
             } else if (strcmp(keyz, "allocator_stats") == 0) {
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Printing allocator stats to stderr");
                 print_allocator_stats();
+            } else if (strcmp(keyz, "kvstore_online") == 0) {
+                if (!e->getEpStore()->setKVStoreAvailablity(v, true)) {
+                    *msg = "Unable to change kvstore state";
+                    rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
+                }
+            } else if (strcmp(keyz, "kvstore_offline") == 0) {
+                if (!e->getEpStore()->setKVStoreAvailablity(v, false)) {
+                    *msg = "Unable to change kvstore state";
+                    rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
+                }
             } else {
                 *msg = "Unknown config param";
                 rv = PROTOCOL_BINARY_RESPONSE_KEY_ENOENT;
@@ -3224,6 +3234,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doMemoryStats(const void *cookie,
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doKVStoreStats(const void *cookie,
                                                            ADD_STAT add_stat) {
+    int id = 0;
     add_casted_stat("num_kvstores", kvstoreConfigMap->size(), add_stat, cookie);
     for (std::map<std::string, KVStoreConfig*>::iterator it = kvstoreConfigMap->begin();
             it != kvstoreConfigMap->end(); it++) {
@@ -3231,6 +3242,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKVStoreStats(const void *cookie,
         KVStoreConfig *kvc = it->second;
         std::string &dbname = kvc->getDbname();
         std::string &shP = kvc->getShardpattern();
+        add_casted_stat((kvname + ":id").c_str(), id, add_stat, cookie);
         add_casted_stat((kvname + ":dbname").c_str(), dbname, add_stat, cookie);
         add_casted_stat((kvname + ":shardpattern").c_str(), shP, add_stat, cookie);
         std::string filename = kvc->getInitfile();
@@ -3240,6 +3252,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKVStoreStats(const void *cookie,
         add_casted_stat((kvname + ":db_strategy").c_str(), kvc->getDbStrategy(), add_stat, cookie);
         size_t k = kvc->getNumDataDbs();
         add_casted_stat((kvname + ":data_dbs").c_str(), k, add_stat, cookie);
+        std::string state = "offline";
+        if (epstore->isKVStoreAvailable(id)) {
+            state = "online";
+        }
+        add_casted_stat((kvname + ":status").c_str(), state.c_str(), add_stat, cookie);
         for (size_t i = 0; i < k; i++) {
             std::stringstream ss;
             ss << i;
@@ -3252,6 +3269,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doKVStoreStats(const void *cookie,
             ss << i;
             add_casted_stat((kvname + ":db_shard" + ss.str()).c_str(), kvc->getDbShardI(i), add_stat, cookie);
         }
+        id++;
     }
 
     return ENGINE_SUCCESS;
