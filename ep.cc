@@ -682,7 +682,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
         // FALLTHROUGH
     case WAS_CLEAN:
         if (!mv.wasDirty) {
-            queueFlusher(vb, mv.sv, queue_op_set);
+            queueFlusher(vb, mv.sv, queue_op_set, item.getQueuedTime());
         }
         lh.unlock();
 
