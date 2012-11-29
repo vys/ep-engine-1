@@ -79,6 +79,9 @@ public:
     void visit(StoredValue *v);
 
     bool shouldContinue() {
+        if (found.size() >= (size_t)maxBackfillSize) {
+            apply();
+        }
         return checkValidity();
     }
 
