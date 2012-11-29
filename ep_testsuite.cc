@@ -6016,6 +6016,45 @@ static enum test_result test_validate_checkpoint_params(ENGINE_HANDLE *h, ENGINE
     return SUCCESS;
 }
 
+static enum test_result test_bug_10443(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    /**
+     * NOTE: When an open checkpoint is present, set a key with expiry one
+     * second. The membase is started with inconsistent_slave_check = true,
+     * min_data_age=2. Close the checkpoint immediately after the set. When the
+     * flusher processes the item after meeting min_data_age, the
+     * fetchValidValue() method tries to queue a delete mutation since item has
+     * already expired. But, no open checkpoint is present and hence membase
+     * crashes due to assert.
+     */
+    char eng_specific[64];
+    uint64_t checkpointId = htonll(5);
+    memset(eng_specific, 0, sizeof(eng_specific));
+    item *it;
+    uint64_t cas = 0;
+
+    check(set_vbucket_state(h, h1, 1, vbucket_state_active), "Failed to set vbucket state.");
+
+    //Allocate an item with expiry one second
+    check(h1->allocate(h, NULL, &it, "key", 3, 100, 0, 1, 0, 0) == ENGINE_SUCCESS,
+            "Allocation failed");
+
+    check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+                         1, 0, TAP_CHECKPOINT_START, 1, "", 0, 828, 0, 0, 0,
+                         &checkpointId, sizeof(checkpointId), 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+          "Failed tap notify.");
+
+    //Store when an open checkpoint is present
+    check(h1->store(h, NULL, it, &cas, OPERATION_SET, 0) == ENGINE_SUCCESS, "Store failed");
+    check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+                             1, 0, TAP_CHECKPOINT_END, 1, "", 0, 828, 0, 0, 0,
+                             &checkpointId, sizeof(checkpointId), 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+              "Failed tap notify.");
+    h1->release(h, NULL, it);
+    sleep(10);
+
+    return SUCCESS;
+}
+
 static enum test_result test_lru_queue(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
 
     uint16_t vbucketId = 0;
@@ -7026,6 +7065,7 @@ engine_test_t* get_tests(void) {
         // Flusher Perf tests
         {"flusher perf test", run_flusher_perf_test, NULL, teardown, 
         "max_size=400000000;eviction_headroom=10000000;ht_size=1572869;chk_period=60;ht_locks=10000"},
+        {"test_bug_seg10443", test_bug_10443, NULL, teardown, "min_data_age=2;inconsistent_slave_chk=true"},
         {NULL, NULL, NULL, NULL, NULL}
     };
     return tests;
