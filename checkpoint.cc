@@ -233,10 +233,6 @@ bool CheckpointManager::closeOpenCheckpoint_UNLOCKED(uint64_t id) {
         return true;
     }
 
-    // This item represents the end of the current open checkpoint and is sent to the slave node.
-    queued_item qi = createCheckpointItem(id, vbucketId, queue_op_checkpoint_end);
-    checkpointList.back()->queueDirty(qi, this);
-    ++numItems;
     checkpointList.back()->setState(closed);
     return true;
 }

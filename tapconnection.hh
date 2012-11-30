@@ -95,9 +95,6 @@ public:
         case queue_op_checkpoint_start:
             event = TAP_CHECKPOINT_START;
             break;
-        case queue_op_checkpoint_end:
-            event = TAP_CHECKPOINT_END;
-            break;
         case queue_op_online_update_start:
             event = TAP_OPAQUE;
             state = (vbucket_state_t)htonl(TAP_OPAQUE_START_ONLINEUPDATE);
@@ -391,8 +388,6 @@ private:
     Atomic<size_t> numVbucketSetFailed;
     Atomic<size_t> numCheckpointStart;
     Atomic<size_t> numCheckpointStartFailed;
-    Atomic<size_t> numCheckpointEnd;
-    Atomic<size_t> numCheckpointEndFailed;
     Atomic<size_t> numUnknown;
 
 public:

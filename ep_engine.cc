@@ -1750,9 +1750,6 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
         case queue_op_checkpoint_start:
             ret = TAP_CHECKPOINT_START;
             break;
-        case queue_op_checkpoint_end:
-            ret = TAP_CHECKPOINT_END;
-            break;
         default:
             abort();
         }
@@ -2225,8 +2222,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
             }
         }
         break;
-    case TAP_CHECKPOINT_START:
     case TAP_CHECKPOINT_END:
+        // Return successful for CHECKPOINT_END message to keep backward compatibility
+        ret = ENGINE_SUCCESS;
+        break;
+    case TAP_CHECKPOINT_START:
         {
             TapConsumer *tc = dynamic_cast<TapConsumer*>(connection);
             if (tc) {

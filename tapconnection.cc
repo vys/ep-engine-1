@@ -373,7 +373,7 @@ bool TapProducer::requestAck(tap_event_t event, uint16_t vbucket) {
             tapCheckpointState.find(vbucket);
         if (map_it != tapCheckpointState.end()) {
             map_it->second.lastSeqNum = seqno;
-            if (map_it->second.lastItem || map_it->second.state == checkpoint_end) {
+            if (map_it->second.lastItem) {
                 // Always ack for the last item or any items that were NAcked after the cursor
                 // reaches to the checkpoint end.
                 isExplicitAck = true;
@@ -390,8 +390,7 @@ bool TapProducer::requestAck(tap_event_t event, uint16_t vbucket) {
     bool explicitEvent = false;
     if (event == TAP_VBUCKET_SET ||
         event == TAP_OPAQUE ||
-        event == TAP_CHECKPOINT_START ||
-        event == TAP_CHECKPOINT_END) {
+        event == TAP_CHECKPOINT_START) {
         explicitEvent = true;
     }
 
@@ -460,7 +459,6 @@ void TapProducer::rollback() {
             }
             break;
         case TAP_CHECKPOINT_START:
-        case TAP_CHECKPOINT_END:
             ++checkpoint_msg_sent;
             addCheckpointMessage_UNLOCKED(i->item);
             break;
@@ -602,7 +600,6 @@ void TapProducer::reschedule_UNLOCKED(const std::list<TapLogElement>::iterator &
         }
         break;
     case TAP_CHECKPOINT_START:
-    case TAP_CHECKPOINT_END:
         --checkpointMsgCounter;
         addCheckpointMessage_UNLOCKED(iter->item);
         break;
@@ -672,13 +669,10 @@ ENGINE_ERROR_CODE TapProducer::processAck(uint32_t s,
         if (iter != tapLog.end()) {
             // If this ACK is for TAP_CHECKPOINT messages, indicate that the checkpoint
             // is synced between the master and slave nodes.
-            if ((iter->event == TAP_CHECKPOINT_START || iter->event == TAP_CHECKPOINT_END)
+            if ((iter->event == TAP_CHECKPOINT_START)
                 && supportCheckpointSync) {
                 std::map<uint16_t, TapCheckpointState>::iterator map_it =
                     tapCheckpointState.find(iter->vbucket);
-                if (iter->event == TAP_CHECKPOINT_END && map_it != tapCheckpointState.end()) {
-                    map_it->second.state = checkpoint_end_synced;
-                }
                 --checkpointMsgCounter;
                 notifyTapNotificationThread = true;
             }
@@ -1027,8 +1021,6 @@ void TapConsumer::addStats(ADD_STAT add_stat, const void *c) {
     addStat("num_vbucket_set_failed", numVbucketSetFailed, add_stat, c);
     addStat("num_checkpoint_start", numCheckpointStart, add_stat, c);
     addStat("num_checkpoint_start_failed", numCheckpointStartFailed, add_stat, c);
-    addStat("num_checkpoint_end", numCheckpointEnd, add_stat, c);
-    addStat("num_checkpoint_end_failed", numCheckpointEndFailed, add_stat, c);
     addStat("num_unknown", numUnknown, add_stat, c);
 }
 
@@ -1121,14 +1113,6 @@ void TapConsumer::processedEvent(tap_event_t event, ENGINE_ERROR_CODE ret)
         }
         break;
 
-    case TAP_CHECKPOINT_END:
-        if (ret == ENGINE_SUCCESS) {
-            ++numCheckpointEnd;
-        } else {
-            ++numCheckpointEndFailed;
-        }
-        break;
-
     default:
         ++numUnknown;
     }
@@ -1153,12 +1137,14 @@ bool TapConsumer::processCheckpointCommand(tap_event_t event, uint16_t vbucket,
     switch (event) {
     case TAP_CHECKPOINT_START:
         {
+
             // This is necessary for supporting backward compatibility to 1.7
             if (vb->isBackfillPhase() && checkpointId > 0) {
                 setBackfillPhase(false, vbucket);
             }
 
             bool persistenceCursorRepositioned = false;
+            vb->checkpointManager.closeOpenCheckpoint(checkpointId-1);
             ret = vb->checkpointManager.checkAndAddNewCheckpoint(checkpointId,
                                                                  persistenceCursorRepositioned);
             if (ret && persistenceCursorRepositioned) {
@@ -1169,7 +1155,7 @@ bool TapConsumer::processCheckpointCommand(tap_event_t event, uint16_t vbucket,
         }
         break;
     case TAP_CHECKPOINT_END:
-        ret = vb->checkpointManager.closeOpenCheckpoint(checkpointId);
+        ret = true;
         break;
     default:
         ret = false;
@@ -1272,7 +1258,19 @@ queued_item TapProducer::next(bool &shouldPause) {
             case queue_op_set:
             case queue_op_del:
                 if (supportCheckpointSync && isLastItem) {
+                    uint32_t seqnoAcked;
                     it->second.lastItem = true;
+                    if (seqnoReceived == 0) {
+                        seqnoAcked = 0;
+                    } else {
+                        seqnoAcked = isLastAckSucceed ? seqnoReceived : seqnoReceived - 1;
+                    }
+
+                    if (it->second.lastSeqNum > seqnoAcked) {
+                        vb->checkpointManager.decrTapCursorFromCheckpointEnd(name);
+                        ++wait_for_ack_count;
+                        break;
+                    }
                 } else {
                     it->second.lastItem = false;
                 }
@@ -1287,23 +1285,6 @@ queued_item TapProducer::next(bool &shouldPause) {
                     if (supportCheckpointSync) {
                         it->second.state = checkpoint_start;
                         addCheckpointMessage_UNLOCKED(item);
-                    }
-                }
-                break;
-            case queue_op_checkpoint_end:
-                if (supportCheckpointSync) {
-                    it->second.state = checkpoint_end;
-                    uint32_t seqnoAcked;
-                    if (seqnoReceived == 0) {
-                        seqnoAcked = 0;
-                    } else {
-                        seqnoAcked = isLastAckSucceed ? seqnoReceived : seqnoReceived - 1;
-                    }
-                    if (it->second.lastSeqNum <= seqnoAcked) {
-                        addCheckpointMessage_UNLOCKED(item);
-                    } else {
-                        vb->checkpointManager.decrTapCursorFromCheckpointEnd(name);
-                        ++wait_for_ack_count;
                     }
                 }
                 break;
