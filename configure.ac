@@ -11,6 +11,8 @@ AC_CONFIG_SRCDIR([ep.hh])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER([config.h])
 AC_CONFIG_MACRO_DIR([m4])
+AC_USE_SYSTEM_EXTENSIONS
+AM_PROG_AR
 AC_DISABLE_STATIC
 
 PANDORA_CANONICAL_TARGET(less-warnings, warnings-always-on, require-cxx,
@@ -196,6 +198,10 @@ AS_IF([test "$with_docs" = "yes"],
   ])
 AM_CONDITIONAL(BUILD_DOCS, test "$with_docs" = "yes")
 
+AC_CHECK_HEADERS([jemalloc/jemalloc.h])
+
+AC_CHECK_LIB([jemalloc], [je_mallctl])
+
 AC_ARG_WITH([tcmalloc-headers],
    [AS_HELP_STRING([--with-tcmalloc-headers],
      [Location of the tcmalloc header files])],
@@ -228,5 +234,6 @@ echo "   * C++ Compiler:              $CXX_VERSION"
 echo "   * Assertions enabled:        $ac_cv_assert"
 echo "   * Debug enabled:             $with_debug"
 echo "   * Warnings as failure:       $ac_cv_warnings_as_errors"
+echo "   * Use jemalloc:              $ac_cv_header_jemalloc_jemalloc_h"
 echo ""
 echo "---"
