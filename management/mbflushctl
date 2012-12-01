@@ -85,7 +85,9 @@ Available params for "set":
     lru_mem_threshold_percent - Do not rebuild LRU if mem_used has not reached the percent of max_size
     evict_min_blob_size       - Only evict entries that are bigger than this size
     scrub_memory              - Scrub allocator's memory to release as much memory as possible back to OS
-    allocator_stats           - Print allocator stats """)
+    allocator_stats           - Print allocator stats
+    kvstore_online            - Change kvstore state of the given kstore_id online
+    kvstore_offline           - Change kvstore state of the given kvstore_id offline""")
 
     c.addCommand('stop', stop, 'stop')
     c.addCommand('start', start, 'start')
