@@ -2332,6 +2332,20 @@ bool EventuallyPersistentStore::setKVStoreAvailablity(int kvid, bool val) {
             return true;
         }
 
+        std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(kvid);
+        std::vector<uint16_t>::iterator it = vblist.begin();
+        // Remove the vbuckets mapped by the kvstore
+        for (; it != vblist.end(); it++) {
+            RCPtr<VBucket> vb = vbuckets.getBucket(*it);
+            if (vb) {
+                if(!deleteVBucket(*it)) {
+                    getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                     "Unable to change kvstore-%d state to online (vbuckets are not marked as dead)\n", *it);
+                    return false;
+                }
+            }
+        }
+
         KVStoreMapper::resetKVStore(kvid);
         rwUnderlying[kvid]->reset();
         if (roUnderlying[kvid] != rwUnderlying[kvid]) {
