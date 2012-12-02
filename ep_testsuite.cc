@@ -6615,6 +6615,31 @@ static enum test_result test_conc_set_mkv(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     return SUCCESS;
 }
 
+static enum test_result test_kvstore_mapping(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    int size[3] = {0, 0, 0};
+    for (uint16_t ii = 0; ii < 300; ++ ii) {
+        check(set_vbucket_state(h, h1, ii, vbucket_state_active), "Failed to activate vbucket");
+    }
+
+    check(h1->get_stats(h, NULL, "vbucket", 7, add_stats) == ENGINE_SUCCESS,
+          "Failed to get the state of vbuckets");
+
+    for (uint16_t ii = 0; ii < 300; ++ ii) {
+        std::stringstream ss;
+        int kvid;
+        ss<<"vb_"<<ii;
+        check(vals.find(ss.str()) != vals.end(), "VB info not found");
+        std::string vbstate = vals[ss.str()];
+        sscanf(vbstate.c_str(), "active  kvstore %d", &kvid);
+        size[kvid]++;
+    }
+
+    for (int i=0; i < 3; i++) {
+        check(size[i] == 100, "Unbalanced vbucket to kvstore mapping");
+    }
+    return SUCCESS;
+}
+
 static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
                     uint32_t blobsize) {
     uint32_t i = 0;
@@ -7114,6 +7139,8 @@ engine_test_t* get_tests(void) {
         {"persistence: flusher states", test_persistence_flusher_states, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"evict bgfetch", test_evict_bgfetch, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"kvstore: flusher count", test_kvstore_flusher_count, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
+        // Multi vbuckets support with kvstore
+        {"multivbuckets: kvstore mapping", test_kvstore_mapping, NULL, teardown, "kvstore_config_file=t/kv_multikv.json;kvstore_map_vbuckets=true"},
         // Flusher Perf tests
         {"flusher perf test", run_flusher_perf_test, NULL, teardown, 
         "max_size=400000000;eviction_headroom=10000000;ht_size=1572869;chk_period=60;ht_locks=10000"},
