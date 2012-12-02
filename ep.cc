@@ -2319,7 +2319,11 @@ bool EventuallyPersistentStore::isRestoreEnabled() {
 }
 
 bool EventuallyPersistentStore::isKVStoreAvailable(int kvid) {
-    return rwUnderlying[kvid]->isAvailable();
+    if (kvid == -1) {
+        return true;
+    } else {
+        return rwUnderlying[kvid]->isAvailable();
+    }
 }
 
 bool EventuallyPersistentStore::setKVStoreAvailablity(int kvid, bool val) {

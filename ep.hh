@@ -690,20 +690,20 @@ public:
         size_t maxSize;
         uint16_t vbid;
         std::vector<uint16_t> vblist;
-        if (kvstore_id == -1) {
-            maxSize = vbuckets.getSize() + 1;
-        } else {
+        if (stats.kvstoreMapVbuckets && kvstore_id != -1) {
             vblist = KVStoreMapper::getVBucketsForKVStore(kvstore_id);
             maxSize = vblist.size();
+        } else {
+            maxSize = vbuckets.getSize() + 1;
         }
 
         for (size_t i = 0; i < maxSize; ++i) {
-            if (kvstore_id == -1) {
-                assert(i <= std::numeric_limits<uint16_t>::max());
-                vbid = static_cast<uint16_t>(i);
-            } else {
+            if (stats.kvstoreMapVbuckets && kvstore_id != -1) {
                 vbid = vblist.at(i);
                 assert(vbid <= std::numeric_limits<uint16_t>::max());
+            } else {
+                assert(i <= std::numeric_limits<uint16_t>::max());
+                vbid = static_cast<uint16_t>(i);
             }
 
             RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
