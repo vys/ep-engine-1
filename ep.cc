@@ -118,6 +118,9 @@ public:
 
         RCPtr<VBucket> vb = ep->getVBucket(vbucket);
         int id = KVStoreMapper::getKVStoreId(key, vb);
+        if (!ep->isKVStoreAvailable(id)) {
+            return false;
+        }
         ep->getROUnderlying(id)->get(key, rowid, vbucket, vbver, gcb);
         gcb.waitForValue();
         assert(gcb.fired);
@@ -885,6 +888,10 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::setVBucketState(uint16_t vbid,
 }
 
 void EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p, int kvid) {
+
+    if (!isKVStoreAvailable(kvid)) {
+        return;
+    }
     if (p == Priority::VBucketPersistHighPriority) {
         if (!vbuckets.setHighPriorityVbSnapshotFlag(true)) {
             return;
@@ -954,6 +961,10 @@ void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t v
     int kvid = KVStoreMapper::getVBucketToKVId(vb);
     for (int id = 0; id < numKVStores; id++) {
         id = kvid >= 0 ? kvid : id;
+
+        if (!isKVStoreAvailable(id)) {
+            return;
+        }
 
         if (vbuckets.setBucketDeletion(vb->getId(), true)) {
             if (rwUnderlying[id]->getStorageProperties().hasEfficientVBDeletion()) {
@@ -1062,6 +1073,10 @@ void EventuallyPersistentStore::completeBGFetch(const std::string &key,
     RememberingCallback<GetValue> gcb;
 
     int id = KVStoreMapper::getKVStoreId(key, getVBucket(vbucket));
+    if (!isKVStoreAvailable(id)) {
+        engine.notifyIOComplete(cookie, ENGINE_TMPFAIL);
+        return;
+    }
     roUnderlying[id]->get(key, rowid, vbucket, vbver, gcb);
     gcb.waitForValue();
     assert(gcb.fired);
@@ -1157,6 +1172,13 @@ GetValue EventuallyPersistentStore::get(const std::string &key,
     if (v) {
         // If the value is not resident, wait for it...
         if (!v->isResident()) {
+            int kvid = KVStoreMapper::getKVStoreId(key, vb);
+            if (!isKVStoreAvailable(kvid)) {
+                GetValue rv;
+                rv.setStatus(ENGINE_TMPFAIL);
+                return rv;
+            }
+
             if (queueBG) {
                 bgFetch(key, vbucket, vbuckets.getBucketVersion(vbucket),
                         v->getId(), cookie);
@@ -1304,6 +1326,9 @@ EventuallyPersistentStore::getFromUnderlying(const std::string &key,
                                                                             cookie, cb));
         assert(bgFetchQueue > 0);
         int i = KVStoreMapper::getKVStoreId(key, vb);
+        if (!isKVStoreAvailable(i)) {
+            return ENGINE_TMPFAIL;
+        }
         roDispatcher[i]->schedule(dcb, NULL, Priority::VKeyStatBgFetcherPriority, bgFetchDelay);
         return ENGINE_EWOULDBLOCK;
     } else if (isRestoreEnabled()) {

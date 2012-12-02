@@ -100,6 +100,9 @@ void BackFillVisitor::visit(StoredValue *v) {
     std::string k = v->getKey();
     queued_item qi(new QueuedItem(k, currentBucket->getId(), queue_op_set, -1, v->getId()));
     int kvid = KVStoreMapper::getKVStoreId(k, currentBucket);
+    if (!engine->getEpStore()->isKVStoreAvailable(kvid)) {
+        return;
+    }
     uint16_t shardId = engine->kvstore[kvid]->getShardId(qi->getKey(), qi->getVBucketId());
     found.push_back(std::make_pair(shardId, qi));
 }
@@ -110,8 +113,11 @@ void BackFillVisitor::apply(void) {
         std::vector<uint16_t>::iterator it = vbuckets.begin();
         for (; it != vbuckets.end(); it++) {
             int kvid = KVStoreMapper::getVBucketToKVId(engine->epstore->getVBucket(*it));
-            for (int i = 0; i < engine->epstore->numKVStores; i++) {
+            for (int i = 0; i < engine->getEpStore()->numKVStores; i++) {
                 i = kvid >= 0 ? kvid : i;
+                if (!engine->getEpStore()->isKVStoreAvailable(i)) {
+                    return;
+                }
                 Dispatcher *d(engine->epstore->getRODispatcher(i));
                 KVStore *underlying(engine->epstore->getROUnderlying(i));
                 assert(d);

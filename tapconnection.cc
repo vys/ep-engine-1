@@ -818,6 +818,10 @@ public:
 
         RCPtr<VBucket> vb = epstore->getVBucket(vbucket);
         int kvid = KVStoreMapper::getKVStoreId(key, vb);
+        if (!epstore->isKVStoreAvailable(kvid)) {
+            epe->notifyIOComplete(cookie, ENGINE_DISCONNECT);
+            return false;
+        }
         epstore->getROUnderlying(kvid)->get(key, rowid, vbucket, vbver, gcb);
         gcb.waitForValue();
         assert(gcb.fired);
@@ -898,6 +902,10 @@ void TapProducer::queueBGFetch(const std::string &key, uint64_t id,
                                                               id, c, sessionID));
     RCPtr<VBucket> vb = engine.getEpStore()->getVBucket(vbid);
     int kvid = KVStoreMapper::getKVStoreId(key, vb);
+    if (!engine.getEpStore()->isKVStoreAvailable(kvid)) {
+        engine.notifyIOComplete(cookie, ENGINE_DISCONNECT);
+        return;
+    }
     engine.getEpStore()->getRODispatcher(kvid)->schedule(dcb, NULL, Priority::TapBgFetcherPriority);
     ++bgQueued;
     ++bgJobIssued;
