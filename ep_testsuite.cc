@@ -4122,8 +4122,8 @@ static enum test_result test_warmup_stats(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
     check(vals.find("vb_1") != vals.end(), "Found no previous state for VB1");
     std::string vb0_prev_state = vals["vb_0"];
     std::string vb1_prev_state = vals["vb_1"];
-    assert(strcmp(vb0_prev_state.c_str(), "active") == 0);
-    assert(strcmp(vb1_prev_state.c_str(), "replica") == 0);
+    assert(strncmp(vb0_prev_state.c_str(), "active", 6) == 0);
+    assert(strncmp(vb1_prev_state.c_str(), "replica", 7) == 0);
 
     return SUCCESS;
 }

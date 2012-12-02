@@ -3284,14 +3284,16 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doVBucketStats(const void *cookie,
             cookie(c), add_stat(a), isPrevState(isPrevStateRequested) {}
 
         bool visitBucket(RCPtr<VBucket> vb) {
-            char buf[16];
+            char buf[30];
+            std::stringstream ss;
             snprintf(buf, sizeof(buf), "vb_%d", vb->getId());
             if (isPrevState) {
-                add_casted_stat(buf, VBucket::toString(vb->getInitialState()),
-                                add_stat, cookie);
+                ss<<VBucket::toString(vb->getInitialState());
             } else {
-                add_casted_stat(buf, VBucket::toString(vb->getState()), add_stat, cookie);
+                ss<<VBucket::toString(vb->getState());
             }
+            ss<<" kvstore "<<KVStoreMapper::getVBucketToKVId(vb);
+            add_casted_stat(buf, ss.str(), add_stat, cookie);
             return false;
         }
 
