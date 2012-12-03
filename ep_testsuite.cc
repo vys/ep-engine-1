@@ -6640,6 +6640,67 @@ static enum test_result test_kvstore_mapping(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 
     return SUCCESS;
 }
 
+static enum test_result test_kvstore_online_offline(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    check(set_vbucket_state(h, h1, 1, vbucket_state_active), "Failed to activate vbucket 1");
+    check(set_vbucket_state(h, h1, 2, vbucket_state_active), "Failed to activate vbucket 2");
+    item *i = NULL;
+    check(store(h, h1, NULL, OPERATION_SET, "key1", "somevalue", &i,
+                0, 1) == ENGINE_SUCCESS,
+          "Failed set in vb1.");
+    h1->release(h, NULL, i);
+
+    check(store(h, h1, NULL, OPERATION_SET, "key2", "somevalue", &i,
+                0, 1) == ENGINE_SUCCESS,
+          "Failed set in vb1.");
+    h1->release(h, NULL, i);
+    wait_for_flusher_to_settle(h, h1);
+
+    evict_key(h, h1,"key1", 1);
+    check(get_int_stat(h, h1, "ep_num_non_resident") == 1, "key1 should be evicted");
+    vals.clear();
+    check(h1->get_stats(h, NULL, "kvstore", strlen("kvstore"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get kvstore stats.");
+    check(vals["kvstore1:status"] == "online", "Expects kvstore1 to be online");
+
+    check(set_flush_param(h, h1, "kvstore_offline", "0") == true, "Unable to make kvstore offline");
+    check(set_vbucket_state(h, h1, 3, vbucket_state_active), "Failed to activate vbucket 3");
+    check(set_flush_param(h, h1, "kvstore_offline", "1") == true, "Unable to make kvstore offline");
+    check(set_flush_param(h, h1, "kvstore_offline", "2") == true, "Unable to make kvstore offline");
+
+
+    vals.clear();
+    check(h1->get_stats(h, NULL, "kvstore", strlen("kvstore"), add_stats) == ENGINE_SUCCESS,
+          "Failed to get kvstore stats.");
+    check(vals["kvstore1:status"] == "offline", "Expects kvstore1 to be offline");
+
+    check(set_vbucket_state(h, h1, 4, vbucket_state_active) == false, "vbucket activation should fail if kvstores are not available");
+    check(verify_vb_key(h, h1, "key1", 1) == ENGINE_TMPFAIL, "BGfetch should fail");
+    check(verify_vb_key(h, h1, "key2", 1) == ENGINE_SUCCESS, "Get from memory should not fail");
+
+    check(set_vbucket_state(h, h1, 1, vbucket_state_dead), "Failed to deactivate vbucket 1");
+    check(set_flush_param(h, h1, "kvstore_online", "0") == true, "Unable to make kvstore online");
+    check(set_vbucket_state(h, h1, 5, vbucket_state_active), "Failed to activate vbucket 5");
+
+    vals.clear();
+    check(h1->get_stats(h, NULL, "vbucket", 7, add_stats) == ENGINE_SUCCESS,
+          "Failed to get the state of vbuckets");
+    check(vals.find("vb_5") != vals.end(), "VB 5 info not found");
+    std::string vbstate = vals["vb_5"];
+    int kvid;
+    sscanf(vbstate.c_str(), "active  kvstore %d", &kvid);
+    check(kvid == 0, "vbucket 5 should be mapping to kvstore 0");
+    check(vals.size() == 3, "Membase should be holding 3 vbuckets after kvstore online");
+    check(verify_vb_key(h, h1, "key1", 1) == ENGINE_NOT_MY_VBUCKET, "key1 should not exist");
+
+    check(store(h, h1, NULL, OPERATION_SET, "key3", "somevalue", &i,
+                0, 5) == ENGINE_SUCCESS,
+          "Failed set in vb5.");
+    evict_key(h, h1,"key3", 5);
+    check(verify_vb_key(h, h1, "key3", 5) == ENGINE_SUCCESS, "Get from memory should succeed");
+
+    return SUCCESS;
+}
+
 static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
                     uint32_t blobsize) {
     uint32_t i = 0;
@@ -7140,7 +7201,8 @@ engine_test_t* get_tests(void) {
         {"evict bgfetch", test_evict_bgfetch, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"kvstore: flusher count", test_kvstore_flusher_count, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         // Multi vbuckets support with kvstore
-        {"multivbuckets: kvstore mapping", test_kvstore_mapping, NULL, teardown, "kvstore_config_file=t/kv_multikv.json;kvstore_map_vbuckets=true"},
+        {"multivbuckets: kvstore vb assignment", test_kvstore_mapping, NULL, teardown, "kvstore_config_file=t/kv_multikv.json;kvstore_map_vbuckets=true"},
+        {"multivbuckets: kvstore online/offline", test_kvstore_online_offline, NULL, teardown, "kvstore_config_file=t/kv_multikv.json;kvstore_map_vbuckets=true"},
         // Flusher Perf tests
         {"flusher perf test", run_flusher_perf_test, NULL, teardown, 
         "max_size=400000000;eviction_headroom=10000000;ht_size=1572869;chk_period=60;ht_locks=10000"},
