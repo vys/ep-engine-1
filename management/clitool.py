@@ -51,6 +51,8 @@ class CliTool(object):
                     "Connection refused" % (host, port)
             else:
                 raise
+        except mc_bin_client.MemcachedError, e:
+            print str(e)
 
     def usage(self):
         cmds = sorted(c[1] for c in self.cmds.values())
