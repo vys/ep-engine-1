@@ -1554,7 +1554,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
             LockHolder rlh(restore.mutex);
             restore.itemsDeleted.insert(key);
         } else {
-            if (CheckpointManager::isInconsistentSlaveCheckpoint()) {
+            if (CheckpointManager::isInconsistentSlaveCheckpoint() ||
+                    vb->getState() == vbucket_state_replica) {
                 queueDirty(key, vbucket, queue_op_del, value_t(NULL), 0, 0, cas, rowid);
 
                 getLogger()->log(EXTENSION_LOG_INFO, NULL, "Forward del %s to checkpoint "
