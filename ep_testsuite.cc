@@ -6701,6 +6701,64 @@ static enum test_result test_kvstore_online_offline(ENGINE_HANDLE *h, ENGINE_HAN
     return SUCCESS;
 }
 
+static enum test_result test_tap_rcv_backfill_multivb(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Unable to set vbucket state");;
+    check(set_vbucket_state(h, h1, 2, vbucket_state_replica), "Unable to set vbucket state");;
+    check(set_vbucket_state(h, h1, 3, vbucket_state_replica), "Unable to set vbucket state");;
+
+    char eng_specific[64];
+    uint32_t tap_flag;
+    memset(eng_specific, 0, sizeof(eng_specific));
+    const void *cookie = testHarness.create_cookie();
+
+    for (int vb = 1 ; vb < 4; vb++) {
+        tap_flag = htonl(TAP_OPAQUE_ENABLE_CHECKPOINT_SYNC);
+        check(h1->tap_notify(h, cookie, &tap_flag, sizeof(uint32_t),1,
+                0, TAP_OPAQUE, 1, "", 0, 828, 0, 0, 0, "",0, vb, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+            "Failed tap notify.");
+
+        tap_flag = htonl(TAP_OPAQUE_INITIAL_VBUCKET_STREAM);
+        check(h1->tap_notify(h, cookie, &tap_flag, sizeof(uint32_t),1,
+                0, TAP_OPAQUE, 1, "", 0, 828, 0, 0, 0, "",0, vb, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+            "Failed tap notify.");
+
+        check(h1->get_stats(h, NULL, "checkpoint", strlen("checkpoint"), add_stats) == ENGINE_SUCCESS,
+                "Failed to get stats.");
+        std::stringstream ssvb;
+        ssvb<<"vb_"<<vb<<":backfillphase";
+        check(vals[ssvb.str()] == "true", "Expected backfill mode");
+
+        for (size_t i = 0; i < 100; ++i) {
+            std::stringstream ss;
+            ss<<vb<<" key_"<<i;
+            char *data = static_cast<char *>(malloc(i));
+            memset(data, 'x', i);
+            check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
+                                 1, 0, TAP_MUTATION, 1, ss.str().c_str(), ss.str().length(), 828, std::numeric_limits<uint32_t>::max(), 0, 0,
+                                 data, i, vb, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+                  "Failed tap notify.");
+            free(data);
+        }
+
+        tap_flag = htonl(TAP_OPAQUE_CLOSE_BACKFILL);
+        check(h1->tap_notify(h, cookie, &tap_flag, sizeof(uint32_t),1,
+                0, TAP_OPAQUE, 1, "", 0, 828, 0, 0, 0, "",0, vb, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
+            "Failed tap notify.");
+
+        check(h1->get_stats(h, NULL, "checkpoint", strlen("checkpoint"), add_stats) == ENGINE_SUCCESS,
+                "Failed to get stats.");
+        check(vals[ssvb.str()] == "false", "Expected checkpoint mode");
+
+        wait_for_flusher_to_settle(h, h1);
+
+    }
+    check(get_int_stat(h, h1, "curr_items_tot") == 300, "Expected 300 items");
+    testHarness.destroy_cookie(cookie);
+
+    return SUCCESS;
+}
+
+
 static int do_fill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, uint32_t keys,
                     uint32_t blobsize) {
     uint32_t i = 0;
@@ -7066,6 +7124,8 @@ engine_test_t* get_tests(void) {
          "max_size=1048576"},
         {"tap backfill: receive and persist data", test_tap_rcv_backfill, NULL, teardown,
         "inconsistent_slave_chk=true"},
+        {"tap backfill multivb: receive data from 3 vbs", test_tap_rcv_backfill_multivb, NULL, teardown,
+        "kvstore_map_vbuckets=true"},
         // restart tests
         {"test restart", test_restart, NULL, teardown, "kvstore_config_file=t/kv_multikv.json"},
         {"set+get+restart+hit (bin)", test_restart_bin_val, NULL, teardown, NULL},
