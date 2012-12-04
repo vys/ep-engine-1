@@ -61,6 +61,7 @@ public:
                              queue->size());
             delete queue;
         }
+        wakeup();
         pthread_join(myId, NULL);
     }
 
@@ -76,6 +77,17 @@ public:
         return ret;
     }
 
+    bool more() {
+        LockHolder lh(sync);
+        return queue != NULL;
+    }
+
+    void wakeup() {
+        LockHolder lh(sync);
+        sync.notify();
+        return;
+    }
+        
     void start();
     void run();
 
@@ -97,8 +109,8 @@ public:
         store(st), _state(initializing), dispatcher(d), flusherId(i),
         flushRv(0), prevFlushRv(0), minSleepTime(0.1),
         flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false),
-        forceShutdownReceived(false), rejectedItemsRequeued(false),
-        last_min_data_age(-1), last_queue_age_cap(-1), shouldFlushAll(false) {
+        forceShutdownReceived(false), last_min_data_age(-1),
+        last_queue_age_cap(-1), shouldFlushAll(false) {
             helper = new FlusherHelper(flusherId, store);
         }
 
@@ -144,6 +156,7 @@ public:
 private:
     bool transition_state(enum flusher_state to);
     int doFlush();
+    void setupFlushQueues();
     void completeFlush();
     void schedule_UNLOCKED();
     double computeMinSleepTime();
@@ -165,7 +178,6 @@ private:
     rel_time_t               flushStart;
     Atomic<bool>             vbStateLoaded;
     Atomic<bool>             forceShutdownReceived;
-    bool                     rejectedItemsRequeued;
     timeval                  waketime;
     int                      last_min_data_age;
     int                      last_queue_age_cap;

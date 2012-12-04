@@ -1699,10 +1699,10 @@ int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
     for (completed = 0;
          completed < tsz && !q->empty() && !shouldPreemptFlush(completed, id);
          ++completed) {
-
-        int n = flushOne(q, rejectQueue, id);
-        if (n != 0 && n < oldest) {
-            oldest = n;
+        bool wasRejected = false;
+        int n = flushOne(q, rejectQueue, id, wasRejected);
+        if (wasRejected) {
+            oldest = std::min(oldest, n);
         }
     }
     if (shouldPreemptFlush(completed, id)) {
@@ -1711,6 +1711,9 @@ int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
         tctx[id]->commit();
     }
     tctx[id]->leave(completed);
+    if (rejectQueue->empty()) {
+        return 0;
+    }
     return oldest;
 }
 
@@ -2117,7 +2120,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
 
 int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
                                         std::queue<FlushEntry> *rejectQueue,
-                                        int id) {
+                                        int id, bool &wasRejected) {
 
     size_t prevRejectCount = rejectQueue->size();
     FlushEntry fe = q->front();
@@ -2128,14 +2131,14 @@ int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
     if (fe.getVBucketVersion() == vbuckets.getBucketVersion(fe.getVBucketId())) {
         switch (fe.getOperation()) {
         case queue_op_set:
+        case queue_op_del:
             rv = flushOneDelOrSet(fe, rejectQueue, id);
             if (rejectQueue->size() == prevRejectCount) {
                 // flush operation was not rejected
                 tctx[id]->addUncommittedItem();
+            } else {
+                wasRejected = true;
             }
-            break;
-        case queue_op_del:
-            rv = flushOneDelOrSet(fe, rejectQueue, id);
             break;
         case queue_op_commit:
             tctx[id]->commit();

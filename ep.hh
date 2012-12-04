@@ -907,7 +907,8 @@ private:
                   int id);
     int flushOne(std::queue<FlushEntry> *q,
                  std::queue<FlushEntry> *rejectQueue,
-                 int id);
+                 int id,
+                 bool &wasRejected);
     int flushOneDeleteAll(int id);
     int flushOneDelOrSet(const FlushEntry &fe, std::queue<FlushEntry> *rejectQueue, int id);
 

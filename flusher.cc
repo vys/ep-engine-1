@@ -166,10 +166,10 @@ bool Flusher::step(Dispatcher &d, TaskId tid) {
                 last_queue_age_cap = store->stats.queue_age_cap;
                 doFlush();
                 if (_state == running) {
-                    double tosleep = computeMinSleepTime();
-                    gettimeofday(&waketime, NULL);
-                    advance_tv(waketime, tosleep);
-                    if (tosleep > 0) {
+                    if (flushQueue && flushRv > 0) {
+                        gettimeofday(&waketime, NULL);
+                        advance_tv(waketime, flushRv);
+                    } else if (!flushQueue) {
                         d.snooze(tid, DEFAULT_MIN_SLEEP_TIME);
                     }
                     return true;
@@ -213,35 +213,13 @@ bool Flusher::step(Dispatcher &d, TaskId tid) {
 
 void Flusher::completeFlush() {
     doFlush();
-    while (flushQueue) {
+    do {
         doFlush();
-    }
+    } while (helper->more());
 }
 
-double Flusher::computeMinSleepTime() {
-    // If we were preempted, keep going!
-    if (flushQueue && !flushQueue->empty() && !rejectedItemsRequeued) {
-        flushRv = 0;
-        prevFlushRv = 0;
-        return 0.0;
-    }
-
-    rejectedItemsRequeued = false;
-
-    if (flushRv + prevFlushRv == 0) {
-        minSleepTime = std::min(minSleepTime * 2, 1.0);
-    } else {
-        minSleepTime = DEFAULT_MIN_SLEEP_TIME;
-    }
-    prevFlushRv = flushRv;
-    return std::max(static_cast<double>(flushRv), minSleepTime);
-}
-
-int Flusher::doFlush() {
-
-    // On a fresh entry, flushQueue is null and we need to build one.
+void Flusher::setupFlushQueues() {
     if (!flushQueue) {
-        flushRv = store->stats.min_data_age;
         flushQueue = helper->getFlushQueue();
         if (flushQueue && !flushQueue->empty()) {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
@@ -250,6 +228,13 @@ int Flusher::doFlush() {
             flushStart = ep_current_time();
         }
     }
+}
+int Flusher::doFlush() {
+
+    flushRv = 0;
+
+    // On a fresh entry, flushQueue is null and we need to build one.
+    setupFlushQueues();
 
     if (shouldFlushAll) {
         store->flushOneDeleteAll(flusherId);
@@ -259,18 +244,16 @@ int Flusher::doFlush() {
     // Now do the every pass thing.
     if (flushQueue) {
         if (!flushQueue->empty()) {
-            int n = store->flushSome(flushQueue, rejectQueue, flusherId);
+            flushRv = store->flushSome(flushQueue, rejectQueue, flusherId);
             if (_state == pausing) {
                 transition_state(paused);
             }
-            flushRv = std::min(n, flushRv);
         }
 
         if (flushQueue->empty()) {
             if (rejectQueue && !rejectQueue->empty()) {
                 // Requeue the rejects.
                 store->requeueRejectedItems(rejectQueue, flushQueue, flusherId);
-                rejectedItemsRequeued = true;
             } else {
                 store->completeFlush(flushStart, flusherId);
                 getLogger()->log(EXTENSION_LOG_INFO, NULL,
@@ -283,8 +266,6 @@ int Flusher::doFlush() {
                 flushQueue = NULL;
             }
         }
-    } else {
-        flushRv = 0;
     }
 
     return flushRv;
@@ -304,12 +285,12 @@ void FlusherHelper::run() {
 
     while (1) {
         const Flusher *flusher = store->getFlusher(kvid);
+        if (flusher->state() == stopped) {
+            break;
+        }
         LockHolder lh(sync);
         if (!queue) {
             queue = store->beginFlush(kvid);
-        }
-        if (flusher->state() == stopped) {
-            break;
         }
         sync.wait();
     }
