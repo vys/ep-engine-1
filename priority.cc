@@ -33,13 +33,13 @@ const Priority Priority::StatSnapPriority("statsnap_priority", 9);
 const Priority Priority::InvalidItemDbPagerPriority("invalid_item_db_pager_priority", 9);
 
 // Priorities for NON-IO dispatcher
+const Priority Priority::TapResumePriority("tap_resume_priority", 3);
 const Priority Priority::NotifyVBStateChangePriority("notify_vb_state_change_priority", 4);
 const Priority Priority::CheckpointRemoverPriority("checkpoint_remover_priority", 6);
 const Priority Priority::ItemPagerPriority("item_pager_priority", 7);
 const Priority Priority::BackfillTaskPriority("backfill_task_priority", 8);
 const Priority Priority::HTResizePriority("hashtable_resize_priority", 211);
 const Priority Priority::SyncDestroyPriority("sync_destroy_priority", 314);
-const Priority Priority::TapResumePriority("tap_resume_priority", 316);
 const Priority Priority::SyncAbortPriority("sync_abort_priority", 316);
 /**
  * The tap connection reaper run with short iterations to give memory back to the
