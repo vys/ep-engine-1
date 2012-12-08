@@ -1678,6 +1678,9 @@ void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
     stats.cumulativeFlushTimes[id].incr(time_diff);
 }
 
+// Returns time in seconds after which flusher should come back.
+// If there were no rejects, returns 0 to come back immediately
+// else least amount of time remaining for an item to become eligible for flush.
 int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
                                          std::queue<FlushEntry> *rejectQueue,
                                          int id) {
@@ -1696,6 +1699,7 @@ int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
     int tsz = tctx[id]->remaining();
     int oldest = stats.min_data_age;
     int completed(0);
+    int rejected(0);
     for (completed = 0;
          completed < tsz && !q->empty() && !shouldPreemptFlush(completed, id);
          ++completed) {
@@ -1703,6 +1707,7 @@ int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
         int n = flushOne(q, rejectQueue, id, wasRejected);
         if (wasRejected) {
             oldest = std::min(oldest, n);
+            rejected++;
         }
     }
     if (shouldPreemptFlush(completed, id)) {
@@ -1711,10 +1716,7 @@ int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
         tctx[id]->commit();
     }
     tctx[id]->leave(completed);
-    if (rejectQueue->empty()) {
-        return 0;
-    }
-    return oldest;
+    return (rejected == 0 ? 0 : oldest);
 }
 
 size_t EventuallyPersistentStore::getWriteQueueSize(void) {

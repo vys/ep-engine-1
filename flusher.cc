@@ -172,7 +172,7 @@ bool Flusher::step(Dispatcher &d, TaskId tid) {
                 last_queue_age_cap = store->stats.queue_age_cap;
                 doFlush();
                 if (_state == running) {
-                    if (flushQueue && flushRv > 0) {
+                    if (flushRv > 0) {
                         gettimeofday(&waketime, NULL);
                         advance_tv(waketime, flushRv);
                     } else if (!flushQueue) {
@@ -232,15 +232,15 @@ void Flusher::setupFlushQueues() {
                              "Beginning a write queue flush.\n");
             rejectQueue = new std::queue<FlushEntry>();
             flushStart = ep_current_time();
+            prevFlushRv = store->stats.min_data_age;
         }
     }
 }
 int Flusher::doFlush() {
 
-    flushRv = 0;
-
     // On a fresh entry, flushQueue is null and we need to build one.
     setupFlushQueues();
+    flushRv = 0;
 
     if (shouldFlushAll) {
         store->flushOneDeleteAll(flusherId);
@@ -250,7 +250,8 @@ int Flusher::doFlush() {
     // Now do the every pass thing.
     if (flushQueue) {
         if (!flushQueue->empty()) {
-            flushRv = store->flushSome(flushQueue, rejectQueue, flusherId);
+            int n = store->flushSome(flushQueue, rejectQueue, flusherId);
+            prevFlushRv = std::min(n, prevFlushRv);
             if (_state == pausing) {
                 transition_state(paused);
             }
@@ -261,11 +262,11 @@ int Flusher::doFlush() {
                 // Requeue the rejects.
                 store->requeueRejectedItems(rejectQueue, flushQueue, flusherId);
                 store->stats.flusherRequeuedRejected[flusherId]++;
+                flushRv = prevFlushRv;
             } else {
                 store->completeFlush(flushStart, flusherId);
                 getLogger()->log(EXTENSION_LOG_INFO, NULL,
-                                 "Completed a flush, age of oldest item was %ds\n",
-                                 flushRv);
+                                 "Completed flush by id = %d, age of oldest item was %ds\n", flusherId, flushRv);
 
                 delete flushQueue;
                 delete rejectQueue;
