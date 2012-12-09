@@ -109,6 +109,7 @@ public:
         flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false),
         forceShutdownReceived(false), last_min_data_age(-1),
         last_queue_age_cap(-1), shouldFlushAll(false) {
+            gettimeofday(&waketime, NULL);
             helper = new FlusherHelper(flusherId, store);
         }
 
