@@ -430,8 +430,8 @@ int64_t StoredValue::getMemoryDeficit(size_t needed, EPStats &stats)
     MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes",
                                                     &allocated_memory);
 #elif defined(HAVE_JEMALLOC_JEMALLOC_H)
-    static size_t sz_am = sizeof(allocated_memory);
-    je_mallctl("stats.mapped", &allocated_memory, &sz_am, NULL, 0);
+    //static size_t sz_am = sizeof(allocated_memory);
+    //je_mallctl("stats.mapped", &allocated_memory, &sz_am, NULL, 0);
 #endif
     double current = allocated_memory > 0 ? allocated_memory : getCurrentSize(stats);
 	double max =  static_cast<double>(getMaxDataSize(stats)) * mutation_mem_threshold;
