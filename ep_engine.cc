@@ -2172,8 +2172,15 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
                                                         const char *cksum)
 {
     // Convert real time to engine time
-    if (queued != std::numeric_limits<uint32_t>::max()) {
-        queued = ep_current_time() - (static_cast<uint32_t>(ep_real_time()) - queued);
+    if (tap_event == TAP_MUTATION && queued != std::numeric_limits<uint32_t>::max()) {
+        uint32_t currTime = ep_current_time();
+        queued = currTime - (static_cast<uint32_t>(ep_real_time()) - queued);
+        if (queued > currTime) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "Queued time was in the future by %d seconds. Setting to current time\n",
+                             queued - currTime);
+            queued = currTime;
+        }
     }
 
     void *specific = serverApi->cookie->get_engine_specific(cookie);
