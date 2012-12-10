@@ -542,6 +542,9 @@ private:
      */
     queued_item next(bool &shouldPause);
 
+    // Peek into the queue and get the next item
+    queued_item peek();
+
     void addVBucketHighPriority_UNLOCKED(TapVBucketEvent &ev) {
         vBucketHighPriority.push(ev);
     }

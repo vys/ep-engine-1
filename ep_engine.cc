@@ -1812,8 +1812,23 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
             return TAP_PAUSE;
         }
 
+        queued_item qi = connection->peek();
+        if (qi->getOperation() == queue_op_set &&
+            (!(connection->getFlags() & TAP_CONNECT_REQUEST_KEYS_ONLY)) &&
+            qi->getValue()->length() == 0) {
+            size_t blobSize = epstore->getBlobSize(qi->getKey(), qi->getVBucketId());
+            size_t needed = qi->getKey().size() + blobSize + accountForNThreads();
+            int64_t deficit = StoredValue::getMemoryDeficit(needed, stats);
+            if (deficit > 0 && !eviction.disableInlineEviction) {
+                if (EvictionManager::getInstance()->evictSize(deficit) == false) {
+                    retry = true;
+                    return TAP_PAUSE;
+                }
+            }
+        }
+
         bool shouldPause = false;
-        queued_item qi = connection->next(shouldPause);
+        qi = connection->next(shouldPause);
         if (qi->getOperation() == queue_op_empty) {
             if (shouldPause) {
                 return TAP_PAUSE;
@@ -1855,20 +1870,6 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
                 retry = true;
                 return TAP_NOOP;
             } else if (r == ENGINE_EWOULDBLOCK) {
-                size_t blobSize = epstore->getBlobSize(qi->getKey(), qi->getVBucketId());
-                size_t needed = qi->getKey().size() + blobSize + accountForNThreads();
-                int64_t deficit = StoredValue::getMemoryDeficit(needed, stats);
-                if (deficit > 0) {
-                    if (!eviction.disableInlineEviction) {
-                        if (EvictionManager::getInstance()->evictSize(deficit) == false) {
-                            if (connection->hasQueuedItem() || connection->hasItem()) {
-                                retry = true;
-                                return TAP_NOOP;
-                            }
-                            return TAP_PAUSE;
-                        }
-                    }
-                }
                 connection->queueBGFetch(qi->getKey(), gv.getId(), *vbucket,
                                          epstore->getVBucketVersion(*vbucket), cookie);
                 // If there's an item ready, return NOOP so we'll come

@@ -1233,6 +1233,16 @@ bool TapProducer::cleanSome()
     return backfilledItems.empty();
 }
 
+queued_item TapProducer::peek() {
+    LockHolder lh(queueLock);
+    if (!queue->empty()) {
+        queued_item qi = queue->front();
+        return qi;
+    }
+    queued_item empty_item(new QueuedItem("", 0xffff, queue_op_empty));
+    return empty_item;
+}
+
 queued_item TapProducer::next(bool &shouldPause) {
     LockHolder lh(queueLock);
     shouldPause = false;
