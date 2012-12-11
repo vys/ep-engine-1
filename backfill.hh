@@ -58,7 +58,7 @@ public:
     BackFillVisitor(EventuallyPersistentEngine *e, TapProducer *tc,
                     const void *token, const VBucketFilter &backfillVBfilter, uint64_t sid):
         VBucketVisitor(backfillVBfilter), engine(e), name(tc->getName()),
-        queue(new std::list<queued_item>),
+        queue(new std::list<queued_item>), queueLength(0), queueMemSize(0),
         found(), validityToken(token),
         maxBackfillSize(e->getConfiguration().getTapBacklogLimit()), valid(true),
         efficientVBDump(false), //FIXME Fix effecient vbdump to work with multiple kvstores
@@ -102,6 +102,8 @@ private:
     EventuallyPersistentEngine *engine;
     const std::string name;
     std::list<queued_item> *queue;
+    size_t queueLength;
+    size_t queueMemSize;
     std::vector<std::pair<uint16_t, queued_item> > found;
     std::vector<uint16_t> vbuckets;
     const void *validityToken;

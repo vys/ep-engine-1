@@ -69,7 +69,9 @@ void TapConnMap::disconnect(const void *cookie, int tapKeepAlive) {
 }
 
 bool TapConnMap::setEvents(const std::string &name,
-                           std::list<queued_item> *q) {
+                           std::list<queued_item> *q,
+                           size_t &qlength,
+                           size_t &qmemsize) {
     bool shouldNotify(true);
     bool found(false);
     LockHolder lh(notifySync);
@@ -79,7 +81,7 @@ bool TapConnMap::setEvents(const std::string &name,
         TapProducer *tp = dynamic_cast<TapProducer*>(tc);
         assert(tp);
         found = true;
-        tp->appendQueue(q);
+        tp->appendQueue(q, qlength, qmemsize);
         shouldNotify = tp->paused; // notify if paused
     }
 

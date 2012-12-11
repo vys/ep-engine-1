@@ -805,14 +805,14 @@ private:
     }
 
     // This method is called while holding the tapNotifySync lock.
-    void appendQueue(std::list<queued_item> *q) {
+    void appendQueue(std::list<queued_item> *q, size_t &qlength, size_t &qmemsize) {
         LockHolder lh(queueLock);
         queue->splice(queue->end(), *q);
-        queueSize = queue->size();
 
-        for(std::list<queued_item>::iterator i = q->begin(); i != q->end(); ++i)  {
-            queueMemSize.incr((*i)->size());
-        }
+        queueSize += qlength;
+        queueMemSize += qmemsize;
+        qlength = 0;  // this function might be called under some if conditions causing resets
+        qmemsize = 0; // on these variables difficult to track; must reset here for this reason
     }
 
     bool isPendingDiskBackfill() {

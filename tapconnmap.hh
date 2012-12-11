@@ -192,7 +192,9 @@ public:
      * Set some backfilled events for a named conn.
      */
     bool setEvents(const std::string &name,
-                   std::list<queued_item> *q);
+                   std::list<queued_item> *q,
+                   size_t &qlength,
+                   size_t &qmemsize);
 
     /**
      * Get the size of the named backfill queue.

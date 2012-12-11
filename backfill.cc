@@ -149,9 +149,11 @@ void BackFillVisitor::setEvents() {
             std::vector<std::pair<uint16_t, queued_item> >::iterator it(found.begin());
             for (; it != found.end(); ++it) {
                 queue->push_back(it->second);
+                queueLength++;
+                queueMemSize += it->second->size();
             }
             found.clear();
-            engine->tapConnMap.setEvents(name, queue);
+            engine->tapConnMap.setEvents(name, queue, queueLength, queueMemSize);
         }
     }
 }
