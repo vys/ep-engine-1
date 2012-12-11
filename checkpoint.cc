@@ -585,7 +585,7 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(const RCPtr<VBucket> &vbu
             if (getOpenCheckpointId_UNLOCKED() == (*it)->getId()) {
                 break;
             }
-            numUnrefItems += (*it)->getNumItems() + 2; // 2 is for checkpoint start and end items.
+            numUnrefItems += (*it)->getNumItems() + 1; // 1 is for checkpoint start item.
             ++numCheckpointsRemoved;
             if (keepClosedCheckpoints &&
                 (checkpointList.size() - numCheckpointsRemoved) <= maxCheckpoints) {
@@ -673,7 +673,7 @@ void CheckpointManager::collapseClosedCheckpoints(std::list<Checkpoint*> &collap
         for (; rit != checkpointList.rend(); ++rit) {
             size_t numAddedItems = (*lastClosedChk)->mergePrevCheckpoint(*rit);
             numDuplicatedItems += ((*rit)->getNumItems() - numAddedItems);
-            numMetaItems += 2; // checkpoint start and end meta items
+            numMetaItems += 1; // checkpoint start meta item
             slowCursors.insert((*rit)->getCursorNameList().begin(),
                               (*rit)->getCursorNameList().end());
         }
@@ -1145,7 +1145,7 @@ bool CheckpointManager::checkAndAddNewCheckpoint(uint64_t id, bool &pCursorRepos
                 }
             }
             if ((*curr)->getState() == closed) {
-                numItems -= ((*curr)->getNumItems() + 2); // 2 is for checkpoint start and end items.
+                numItems -= ((*curr)->getNumItems() + 1); // 1 is for checkpoint start item.
             } else if ((*curr)->getState() == opened) {
                 numItems -= ((*curr)->getNumItems() + 1); // 1 is for checkpoint start.
             }
