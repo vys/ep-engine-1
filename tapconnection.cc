@@ -1269,7 +1269,6 @@ queued_item TapProducer::next(bool &shouldPause) {
                     if (it->second.lastSeqNum > seqnoAcked) {
                         vb->checkpointManager.decrTapCursorFromCheckpointEnd(name);
                         ++wait_for_ack_count;
-                        break;
                     }
                 } else {
                     it->second.lastItem = false;
