@@ -631,7 +631,7 @@ public:
                                                    allocated));
         allocator_stats.insert(std::pair<std::string, size_t>("jemalloc_stats.active",
                                                    active));
-#elif 
+#else 
         (void) allocator_stats;
 #endif
     }

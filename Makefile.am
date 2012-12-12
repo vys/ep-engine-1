@@ -326,7 +326,7 @@ ep_testsuite_la_LIBADD += $(BETTER_MALLOC_LIBS)
 management_mbdbconvert_LDADD += $(BETTER_MALLOC_LIBS)
 endif
 if BUILD_JEMALLOC_STATS
-#ep_la_SOURCES += jemalloc/jemalloc_stats.hh jemalloc/jemalloc_stats.cc
+ep_la_SOURCES += jemalloc/jemalloc_stats.hh jemalloc/jemalloc_stats.cc
 endif
 
 pythonlibdir=$(libdir)/python
