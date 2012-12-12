@@ -8,6 +8,7 @@
 #include "common.hh"
 #include "atomic.hh"
 #include "histo.hh"
+#include <jemalloc/jemalloc_stats.hh>
 
 #ifndef DEFAULT_MAX_DATA_SIZE
 /* Something something something ought to be enough for anybody */
@@ -620,7 +621,17 @@ public:
     static void getAllocatorStats(std::map<std::string, size_t> &allocator_stats) {
 #if defined(HAVE_LIBTCMALLOC) || defined(HAVE_LIBTCMALLOC_MINIMAL)
         TCMallocStats::getStats(allocator_stats);
-#else
+#elif defined(HAVE_JEMALLOC_JEMALLOC_H)
+        size_t mapped = JemallocStats::getJemallocMapped();
+        size_t allocated = JemallocStats::getJemallocAllocated();
+        size_t active = JemallocStats::getJemallocActive();
+        allocator_stats.insert(std::pair<std::string, size_t>("jemalloc_stats.mapped",
+                                                   mapped));
+        allocator_stats.insert(std::pair<std::string, size_t>("jemalloc_stats.allocated",
+                                                   allocated));
+        allocator_stats.insert(std::pair<std::string, size_t>("jemalloc_stats.active",
+                                                   active));
+#elif 
         (void) allocator_stats;
 #endif
     }

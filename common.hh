@@ -50,8 +50,6 @@ using UNORDERED_MAP_NAMESPACE::unordered_map;
 
 #if defined(HAVE_LIBTCMALLOC) || defined(HAVE_LIBTCMALLOC_MINIMAL)
 # include "tcmalloc/tcmalloc_stats.hh"
-#elif defined(HAVE_JEMALLOC_JEMALLOC_H)
-//#include "jemalloc/jemalloc.h"
 #endif
 
 #include <sstream>

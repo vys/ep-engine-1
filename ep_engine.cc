@@ -3084,8 +3084,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doMemoryStats(const void *cookie,
 
     std::map<std::string, size_t> allocator_stats;
     MemoryAllocatorStats::getAllocatorStats(allocator_stats);
-    std::map<std::string, size_t>::iterator it = allocator_stats.begin();
-    for (; it != allocator_stats.end(); ++it) {
+    for (std::map<std::string, size_t>::iterator it = allocator_stats.begin(); it != allocator_stats.end(); ++it) {
         add_casted_stat(it->first.c_str(), it->second, add_stat, cookie);
     }
 

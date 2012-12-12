@@ -218,6 +218,7 @@ AS_IF(test "x${ac_enable_tcmalloc_stats}" = "xyes",
              CXXFLAGS="${CXXFLAGS} -isystem ${ac_cv_with_memcached}/include")])
 
 AM_CONDITIONAL(BUILD_TCMALLOC_STATS, test "x${ac_enable_tcmalloc_stats}" = "xyes")
+AM_CONDITIONAL(BUILD_JEMALLOC_STATS, test "x${ac_cv_header_jemalloc_jemalloc_h}" = "xyes")
 
 dnl ----------------------------------------------------------------------------
 
