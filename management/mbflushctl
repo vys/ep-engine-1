@@ -75,6 +75,8 @@ Available params for "set":
     enable_eviction_job       - Enable or Disable eviction job
     eviction_policy           - Change the eviction policy 
     eviction_headroom         - Change the headroom to be kept aside through eviction
+    eviction_quantum_size     - Change the eviction quantum size in bytes
+    eviction_quantum_max_count- Change the maximum number of quanta that might be evicted at once
     disable_inline_eviction   - Disable inline eviction
     prune_lru_age             - Prune keys that are older than the speificed timestamp
     lru_rebuild_percent       - Rebuild LRU when no. of items in the queue reaches the percent

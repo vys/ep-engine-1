@@ -426,8 +426,14 @@ bool StoredValue::hasAvailableSpace(EPStats &st, const Item &item) {
     return newSize <= maxSize;
 }
 
-int64_t StoredValue::getMemoryDeficit(size_t needed, EPStats &stats)
-{
+// Purge this?
+int64_t StoredValue::getMemoryDeficit(size_t needed, EPStats &stats) {
+    size_t current = StoredValue::getAllocatedMemory(stats);
+	double max =  static_cast<double>(getMaxDataSize(stats)) * mutation_mem_threshold;
+    return (int64_t) ((current + needed) - max);
+}
+
+size_t StoredValue::getAllocatedMemory(EPStats &stats) {
     size_t allocated_memory = 0;
 #if defined(HAVE_LIBTCMALLOC) || defined(HAVE_LIBTCMALLOC_MINIMAL)
     MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes",
@@ -435,7 +441,5 @@ int64_t StoredValue::getMemoryDeficit(size_t needed, EPStats &stats)
 #elif defined(HAVE_JEMALLOC_JEMALLOC_H)
     allocated_memory = JemallocStats::getJemallocMapped();
 #endif
-    double current = allocated_memory > 0 ? allocated_memory : getCurrentSize(stats);
-	double max =  static_cast<double>(getMaxDataSize(stats)) * mutation_mem_threshold;
-    return (int64_t) ((current + needed) - max);
+    return (allocated_memory > 0 ? allocated_memory : getCurrentSize(stats));
 }

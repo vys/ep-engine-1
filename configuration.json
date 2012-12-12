@@ -28,6 +28,10 @@
             "default": "true",
             "type": "bool"
         },
+        "enable_flushall": {
+            "default": "false",
+            "type": "bool"
+        },
         "eviction_headroom": {
             "default": "max",
             "type": "size_t"
@@ -36,9 +40,13 @@
             "default": "lru",
             "type": "std::string"
         },
-        "enable_flushall": {
-            "default": "false",
-            "type": "bool"
+        "eviction_quantum_max_count": {
+            "default": "10",
+            "type": "size_t"
+        },
+        "eviction_quantum_size": {
+            "default": "10485760",
+            "type": "size_t"
         },
         "exp_pager_stime": {
             "default": "3600",

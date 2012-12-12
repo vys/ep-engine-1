@@ -614,9 +614,9 @@ public:
         return managerInstance;
     }
 
-    static void createInstance(EventuallyPersistentStore *s, EPStats &st, std::string p) {
+    static void createInstance(EventuallyPersistentStore *s, EPStats &st, std::string p, size_t headroom, bool disableInlineEviction) {
         if (managerInstance == NULL) {
-            managerInstance = new EvictionManager(s, st, p);
+            managerInstance = new EvictionManager(s, st, p, headroom, disableInlineEviction);
         }
     }
 
@@ -648,7 +648,7 @@ public:
 
     EvictionPolicy *evictionBGJob();
 
-    bool evictSize(size_t size);
+    bool evictHeadroom();
 
     int getMaxSize(void) {
         return maxSize;
@@ -670,6 +670,56 @@ public:
         pruneAge = val;
     }
 
+    // Avoid using unless absolutely necessary
+    size_t getEvictionQuantumSize() {
+        LockHolder lh(evictionLock);
+        return getEvictionQuantumSize_UNLOCKED();
+    }
+
+    size_t getEvictionQuantumSize_UNLOCKED() {
+        return evictionQuantumSize;
+    }
+
+    void setEvictionQuantumSize(size_t to) {
+        LockHolder lh(evictionLock);
+        evictionQuantumSize = to;
+    }
+
+    // Avoid using unless absolutely necessary
+    size_t getEvictionQuantumMaxCount() {
+        LockHolder lh(evictionLock);
+        return getEvictionQuantumMaxCount_UNLOCKED();
+    }
+
+    size_t getEvictionQuantumMaxCount_UNLOCKED() {
+        return evictionQuantumMaxCount;
+    }
+
+    void setEvictionQuantumMaxCount(size_t to) {
+        LockHolder lh(evictionLock);
+        evictionQuantumMaxCount = to;
+    }
+
+    bool allowOps(size_t mem) {
+        return mem < StoredValue::getMaxDataSize(stats);
+    }
+
+    size_t getEvictionHeadroom() {
+        return headroom;
+    }
+
+    void setEvictionHeadroom(size_t to) {
+        headroom = to;
+    }
+
+    bool getEvictionDisable() {
+        return disableInlineEviction;
+    }
+
+    void setEvictionDisable(bool doit) {
+        disableInlineEviction = doit;
+    }
+
     static void setMinBlobSize(size_t ss) {
         minBlobSize = ss;
     }
@@ -687,14 +737,20 @@ private:
     EvictionPolicy* evpolicy;
     std::set<std::string> policies;
     time_t pruneAge;
+    Mutex evictionLock;
+    size_t evictionQuantumSize;
+    size_t evictionQuantumMaxCount;
+    size_t headroom;
+    bool disableInlineEviction;
     static Atomic<size_t> minBlobSize;
     static EvictionManager *managerInstance;
 
-    EvictionManager(EventuallyPersistentStore *s, EPStats &st, std::string &p) :
+    EvictionManager(EventuallyPersistentStore *s, EPStats &st, std::string &p, size_t hr, bool die) :
         maxSize(MAX_EVICTION_ENTRIES),
         pauseJob(false), store(s), stats(st), policyName(p),
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
-        pruneAge(0) {
+        pruneAge(0), evictionQuantumSize(10485760), evictionQuantumMaxCount(10),
+        headroom(hr), disableInlineEviction(die) {
         policies.insert("lru");
         policies.insert("random");
         policies.insert("bgeviction");

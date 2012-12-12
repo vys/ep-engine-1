@@ -38,63 +38,98 @@ EvictionPolicy *EvictionManager::evictionBGJob(void) {
     }
 }
 
-// Evict keys from memory to make room for 'size' bytes
-bool EvictionManager::evictSize(size_t size)
+// Evict keys in quanta till current allocated memory reaches the headroom mark
+// For all kinds of throttle and op-fails, use this function as the first check to
+// ensure eviction takes place when memory is above the headroom mark
+bool EvictionManager::evictHeadroom()
 {
-    size_t cur = 0;
+    bool queueEmpty = false;
+    size_t total = 0;
+    size_t attempts = 0;
+    size_t mem = stats.maxDataSize - headroom;
+    size_t allocatedMemory;
 
-    if (!evpolicy->supportsInlineEviction) {
+    if ((allocatedMemory = StoredValue::getAllocatedMemory(stats)) <= mem) {
         return true;
     }
 
-    while(cur < size) {
-        EvictItem *ent = evpolicy->evict();
-        if (ent == NULL) {
-            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty list, ejection failed.  Evicted only %uB out of a total %uB required.", cur, size);
-            stats.evictionStats.numEmptyQueue++;
-            return false;
-        }
-        std::string k;
-        uint16_t b;
-        k = ent->getKey();
-        b = ent->vbucketId();
-
-        RCPtr<VBucket> vb = store->getVBucket(b);
-        int bucket_num;
-        LockHolder lh = vb->ht.getLockedBucket(k, &bucket_num);
-        StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
-
-        if (!v) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not present.");
-            stats.evictionStats.failedTotal.numKeyNotPresent++;
-        } else if (!v->eligibleForEviction()) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
-            if (v->isResident() == false) {
-                stats.evictionStats.failedTotal.numAlreadyEvicted++;
-            } else if (v->isClean() == false) {
-                stats.evictionStats.failedTotal.numDirties++;
-            } else if (v->isDeleted() == false) {
-                // this never occurs
-            }
-        } else if (!evpolicy->eligibleForEviction(v, ent)) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
-            stats.evictionStats.failedTotal.numPolicyIneligible++;
-        } else {
-            bool inCheckpoint = vb->checkpointManager.isKeyResidentInCheckpoints(v->getKey(),
-                                                                                 v->getCas());
-            if (inCheckpoint) {
-                stats.evictionStats.failedTotal.numInCheckpoints++;
-            } else if (v->ejectValue(stats, vb->ht)) {
-                cur += v->valLength(); 
-                /* update stats for eviction that just happened */
-                stats.evictionStats.numTotalKeysEvicted++;
-                stats.evictionStats.numKeysEvicted++;
-            }
-        }
-        delete ent;
+    if (disableInlineEviction || !evpolicy->supportsInlineEviction) {
+        return allowOps(allocatedMemory);
     }
 
-    return true;
+    LockHolder lhe(evictionLock);
+
+    size_t quantumSize = getEvictionQuantumSize_UNLOCKED();
+    size_t quantumCount = getEvictionQuantumMaxCount_UNLOCKED();
+
+    if (!quantumCount) {
+        return allowOps(allocatedMemory);
+    }
+
+    // Using do-while in place of while eliminates two calls of getAllocatedMemory
+    do {
+        size_t cur = 0;
+
+        while (cur < quantumSize) {
+            EvictItem *ent = evpolicy->evict();
+            if (ent == NULL) {
+                queueEmpty = true;
+                break;
+            }
+            std::string k;
+            uint16_t b;
+            k = ent->getKey();
+            b = ent->vbucketId();
+
+            RCPtr<VBucket> vb = store->getVBucket(b);
+            int bucket_num;
+            LockHolder lh = vb->ht.getLockedBucket(k, &bucket_num);
+            StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
+
+            if (!v) {
+                getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not present.");
+                stats.evictionStats.failedTotal.numKeyNotPresent++;
+            } else if (!v->eligibleForEviction()) {
+                getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
+                if (v->isResident() == false) {
+                    stats.evictionStats.failedTotal.numAlreadyEvicted++;
+                } else if (v->isClean() == false) {
+                    stats.evictionStats.failedTotal.numDirties++;
+                } else if (v->isDeleted() == false) {
+                    // this never occurs
+                }
+            } else if (!evpolicy->eligibleForEviction(v, ent)) {
+                getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
+                stats.evictionStats.failedTotal.numPolicyIneligible++;
+            } else {
+                bool inCheckpoint = vb->checkpointManager.isKeyResidentInCheckpoints(v->getKey(),
+                        v->getCas());
+                if (inCheckpoint) {
+                    stats.evictionStats.failedTotal.numInCheckpoints++;
+                } else if (v->ejectValue(stats, vb->ht)) {
+                    cur += v->valLength();
+                    /* update stats for eviction that just happened */
+                    stats.evictionStats.numTotalKeysEvicted++;
+                    stats.evictionStats.numKeysEvicted++;
+                }
+            }
+            delete ent;
+        }
+
+        total += cur;
+    } while (!queueEmpty && attempts++ < quantumCount && (allocatedMemory = StoredValue::getAllocatedMemory(stats)) > mem);
+
+    if (allocatedMemory > mem) {
+        if (queueEmpty) {
+            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty list, ejection failed. Evicted %uB in an attempt to get allocated memory to %uB.", total, mem);
+            stats.evictionStats.numEmptyQueue++;
+        } else { // attempts == quantumCount
+            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty list, ejection failed. Quantum maximum count reached, evicted %uB.", total);
+            stats.evictionStats.numMaxQuanta++;
+        }
+    }
+
+    return allowOps(allocatedMemory);
 }
 
 // Evict key if it is older than the timestamp

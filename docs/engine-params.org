@@ -67,6 +67,10 @@ memcached like this:
 |                        |        | eviction                                   |
 | eviction_headroom      | int    | Watermark to be used by lru policy before  |
 |                        |        | triggering eviction.                       |
+| eviction_quantum_max_count| int | Maximum number of attempts to evict        |
+|                        |        | a quantum of keys to bring memory to mark  |
+| eviction_quantum_size  | int    | Memory size in bytes of a single quantum   |
+|                        |        | of eviction.                               |
 | max_evict_entries      | int    | Maximum entries used by the LRU queues     |
 | enable_eviction_job    | bool   | Enable/disable the eviction job exection   |
 | disable_inline_eviction| bool   | Enable/disable inline eviction             |

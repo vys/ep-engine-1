@@ -360,14 +360,30 @@ extern "C" {
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction_headroom to %d via flush params.", vsize);
-                e->setEvictionHeadroom(vsize);
+                EvictionManager::getInstance()->setEvictionHeadroom(vsize);
+            } else if (strcmp(keyz, "eviction_quantum_size") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         std::numeric_limits<uint64_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction_quantum_size to %d via flush params.", vsize);
+                EvictionManager::getInstance()->setEvictionQuantumSize(vsize);
+            } else if (strcmp(keyz, "eviction_quantum_max_count") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         std::numeric_limits<uint64_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction_quantum_max_count to %d via flush params.", vsize);
+                EvictionManager::getInstance()->setEvictionQuantumMaxCount(vsize);
             } else if (strcmp(keyz, "disable_inline_eviction") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
                 int val = strtoull(valz, &ptr, 10);
                 validate(val, static_cast<int>(0), 1);
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting disable_inline_eviction to %d via flush params.", val);
-                e->setEvictionDisable((size_t)val);
+                EvictionManager::getInstance()->setEvictionDisable((size_t)val);
             } else if (strcmp(keyz, "lru_rebuild_percent") == 0) {
                 validate(v, 0, 100);
                 LRUPolicy::setRebuildPercent(static_cast<double>(v) / 100.0);
@@ -1242,9 +1258,6 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     HashTable::setDefaultNumLocks(configuration.getHtLocks());
 
     size_t maxSize = configuration.getMaxSize();
-    size_t eh = configuration.getEvictionHeadroom();
-    eviction.headroom = (eh == std::numeric_limits<size_t>::max() ? (maxSize / 10) : eh);
-    eviction.disableInlineEviction = configuration.isDisableInlineEviction();
 
     StoredValue::setMaxDataSize(stats, maxSize);
     StoredValue::setMutationMemoryThreshold(configuration.getMutationMemThreshold());
@@ -1395,8 +1408,12 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
         epstore->scheduleVBSnapshot(Priority::VBucketPersistHighPriority, i);
     }
 
+    size_t eh = configuration.getEvictionHeadroom();
+
     // Initialize the eviction manager
-    EvictionManager::createInstance(epstore, stats, configuration.getEvictionPolicy());
+    EvictionManager::createInstance(epstore, stats, configuration.getEvictionPolicy(),
+                                    eh == std::numeric_limits<size_t>::max() ? (maxSize / 10) : eh,
+                                    configuration.isDisableInlineEviction());
 
     if (HashTable::getDefaultStorageValueType() != small) {
         shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
@@ -1405,6 +1422,8 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
         setExpiryPagerSleeptime(configuration.getLruRebuildStime(), true);
         EvictionManager::getInstance()->setMaxSize(configuration.getMaxEvictEntries());
         EvictionManager::getInstance()->enableJob(configuration.isEnableEvictionJob());
+        EvictionManager::getInstance()->setEvictionQuantumSize(configuration.getEvictionQuantumSize());
+        EvictionManager::getInstance()->setEvictionQuantumMaxCount(configuration.getEvictionQuantumMaxCount());
     }
 
     shared_ptr<DispatcherCallback> htr(new HashtableResizer(epstore));
@@ -1819,14 +1838,9 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
         if (qi->getOperation() == queue_op_set &&
             (!(connection->getFlags() & TAP_CONNECT_REQUEST_KEYS_ONLY)) &&
             qi->getValue()->length() == 0) {
-            size_t blobSize = epstore->getBlobSize(qi->getKey(), qi->getVBucketId());
-            size_t needed = qi->getKey().size() + blobSize + accountForNThreads();
-            int64_t deficit = StoredValue::getMemoryDeficit(needed, stats);
-            if (deficit > 0 && !eviction.disableInlineEviction) {
-                if (EvictionManager::getInstance()->evictSize(deficit) == false) {
-                    retry = true;
-                    return TAP_PAUSE;
-                }
+            if (!EvictionManager::getInstance()->evictHeadroom()) {
+                retry = true;
+                return TAP_PAUSE;
             }
         }
 
@@ -2263,22 +2277,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
     case TAP_MUTATION:
         {
 #define METADATA_OVERHEAD (sizeof(StoredValue))
-            bool throttled = false;
-            if (tapThrottle->persistenceQueueSmallEnough()) {
-                size_t needed = nkey + ndata + METADATA_OVERHEAD + accountForNThreads();
-                int64_t deficit = tapThrottle->hasSomeMemory(needed);
-                if (deficit > 0) {
-                    if (!eviction.disableInlineEviction) {
-                        EvictionManager::getInstance()->evictSize(deficit);
-                    } else {
-                        throttled = true;
-                    }
-                }
-            } else {
-                throttled = true;
-            }
-
-            if (throttled) {
+            if (!EvictionManager::getInstance()->evictHeadroom() || !tapThrottle->persistenceQueueSmallEnough()) {
                 ++stats.tapThrottled;
                 if (connection->supportsAck()) {
                     ret = ENGINE_TMPFAIL;
@@ -3045,9 +3044,14 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     add_stat, cookie);
     add_casted_stat("ep_max_evict_entries", EvictionManager::getInstance()->getMaxSize(),
                     add_stat, cookie);
-    add_casted_stat("eviction_headroom", eviction.headroom, add_stat, cookie);
+    add_casted_stat("eviction_headroom", EvictionManager::getInstance()->getEvictionHeadroom(), add_stat, cookie);
+    // Obtain the following two values without locking
+    add_casted_stat("eviction_quantum_size", EvictionManager::getInstance()->getEvictionQuantumSize_UNLOCKED(),
+                    add_stat, cookie);
+    add_casted_stat("eviction_quantum_max_count", EvictionManager::getInstance()->getEvictionQuantumMaxCount_UNLOCKED(),
+                    add_stat, cookie);
     add_casted_stat("disable_inline_eviction",
-                    (eviction.disableInlineEviction == false) ? 0 : 1,
+                    EvictionManager::getInstance()->getEvictionDisable() ? 0 : 1,
                     add_stat, cookie);
 
     add_casted_stat("ep_inconsistent_slave_chk", CheckpointManager::isInconsistentSlaveCheckpoint(),
@@ -3644,6 +3648,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
     add_casted_stat("eviction_total_evicts", stats.evictionStats.numTotalEvictions, add_stat, cookie);
     add_casted_stat("eviction_keys_evicted", stats.evictionStats.numTotalKeysEvicted, add_stat, cookie);
     add_casted_stat("eviction_failed_empty", stats.evictionStats.numEmptyQueue, add_stat, cookie);
+    add_casted_stat("eviction_failed_quantum_max_count", stats.evictionStats.numMaxQuanta, add_stat, cookie);
     add_casted_stat("eviction_failed_key_absent", stats.evictionStats.failedTotal.numKeyNotPresent, add_stat, cookie);
     add_casted_stat("eviction_failed_dirty", stats.evictionStats.failedTotal.numDirties, add_stat, cookie);
     add_casted_stat("eviction_failed_already_evicted", stats.evictionStats.failedTotal.numAlreadyEvicted, add_stat, cookie);
@@ -4444,9 +4449,10 @@ EventuallyPersistentEngine::resetReplicationChain(const void *cookie,
  * If that ever changes, fix this as well.
  * Total accounting: No. of threads * Max per thread + Configured headroom
  */
+// Purge this?
 size_t EventuallyPersistentEngine::accountForNThreads() {
 #define PARALLELISM 4
 #define MAX_PER_THREAD (2 * 1024 * 1024)
 
-    return eviction.headroom + MAX_PER_THREAD * (PARALLELISM - 1);
+    return EvictionManager::getInstance()->getEvictionHeadroom() + MAX_PER_THREAD * (PARALLELISM - 1);
 }

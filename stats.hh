@@ -54,6 +54,7 @@ public:
     Atomic<uint32_t>        numTotalKeysEvicted; // Total evictions so far
     Atomic<uint32_t>        numKeysEvicted;      // Evictions in this run
     Atomic<uint32_t>        numEmptyQueue;
+    Atomic<uint32_t>        numMaxQuanta;
     //! Total size of objects used by eviction.
     Atomic<size_t>          memSize;
     FailedEvictions         failedTotal;         // All failures so far
@@ -72,6 +73,7 @@ private:
         numEvictions = 0;
         numTotalKeysEvicted = 0;
         numEmptyQueue = 0;
+        numMaxQuanta = 0;
         numKeysEvicted = 0;
         failedTotal.reset();
     }

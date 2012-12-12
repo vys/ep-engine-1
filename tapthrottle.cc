@@ -10,6 +10,7 @@ bool TapThrottle::persistenceQueueSmallEnough() const {
     return queueSize < MAXIMUM_QUEUE;
 }
 
+// Purge this?
 int64_t TapThrottle::hasSomeMemory(size_t needed) const {
     double currentSize = static_cast<double>(stats.currentSize.get() + stats.memOverhead.get());
     double maxSize = static_cast<double>(stats.maxDataSize.get()) * stats.tapThrottleThreshold;

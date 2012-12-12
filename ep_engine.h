@@ -198,15 +198,8 @@ public:
 
         time_t expiretime = (exptime == 0) ? 0 : ep_abs_time(ep_reltime(exptime));
 
-        size_t needed = nkey + nbytes + METADATA_OVERHEAD + accountForNThreads();
-        int64_t deficit = StoredValue::getMemoryDeficit(needed, stats);
-        if (deficit > 0) {
-            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "XXX: No memory, attempting ejection.");
-            if (!eviction.disableInlineEviction) {
-                if (EvictionManager::getInstance()->evictSize(deficit) == false) {
-                    return memoryCondition();
-                }
-            }
+        if (!EvictionManager::getInstance()->evictHeadroom()) {
+            return memoryCondition();
         }
 
         *item = new Item(key, nkey, nbytes, flags, expiretime, cksum, nck);
@@ -699,14 +692,6 @@ public:
         return EvictionManager::getInstance()->getPolicyNames();
     }
 
-    void setEvictionHeadroom(size_t room) {
-        eviction.headroom = room;
-    }
-
-    void setEvictionDisable(bool doit) {
-        eviction.disableInlineEviction = doit;
-    }
-
     size_t accountForNThreads();
 
 private:
@@ -914,11 +899,6 @@ private:
         RestoreManager *manager;
         Atomic<bool> enabled;
     } restore;
-
-    struct evictionConfig {
-        size_t headroom;
-        bool disableInlineEviction;
-    } eviction;
 };
 
 #endif
