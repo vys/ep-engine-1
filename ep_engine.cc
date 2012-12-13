@@ -989,6 +989,7 @@ extern "C" {
                     static_cast<uint16_t>(res), item->getCas(),
                     cookie);
             }
+            delete item;
         } else if (item) {
             std::string key  = item->getKey();
             uint32_t flags = item->getFlags();
