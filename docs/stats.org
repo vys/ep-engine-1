@@ -203,6 +203,8 @@ ep_item_commit_failed
 | eviction_keys_evicted         | Number of keys successfully evicted        |
 | eviction_failed_empty         | Number of times eviction failed because the| 
 |                               | LRU queue was empty.                       |
+| eviction_failed_quantum_max_count| Number of times the max count threshold |
+|                               | is hit while attempting to evict quanta    |
 | eviction_failed_key_absent    | Number of times key could not be evicted as|
 |                               | it no longer existed.                      |
 | eviction_failed_dirty         | Number of times key could not be evicted as|
