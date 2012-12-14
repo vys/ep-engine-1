@@ -3051,7 +3051,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     add_casted_stat("eviction_quantum_max_count", EvictionManager::getInstance()->getEvictionQuantumMaxCount_UNLOCKED(),
                     add_stat, cookie);
     add_casted_stat("disable_inline_eviction",
-                    EvictionManager::getInstance()->getEvictionDisable() ? 0 : 1,
+                    EvictionManager::getInstance()->getEvictionDisable() ? 1 : 0,
                     add_stat, cookie);
 
     add_casted_stat("ep_inconsistent_slave_chk", CheckpointManager::isInconsistentSlaveCheckpoint(),
