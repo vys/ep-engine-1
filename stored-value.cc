@@ -3,6 +3,9 @@
 #include <cassert>
 #include <limits>
 
+#include <sys/time.h>
+#include <sys/resource.h>
+
 #include "stored-value.hh"
 
 #ifndef DEFAULT_HT_SIZE

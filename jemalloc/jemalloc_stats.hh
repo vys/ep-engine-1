@@ -3,6 +3,7 @@
 
 class JemallocStats {
 public:
+    static size_t getSelfRss();
     static size_t getJemallocMapped();
     static size_t getJemallocAllocated();
     static size_t getJemallocActive();

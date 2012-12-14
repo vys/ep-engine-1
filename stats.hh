@@ -623,14 +623,16 @@ public:
         TCMallocStats::getStats(allocator_stats);
 #elif defined(HAVE_JEMALLOC_JEMALLOC_H)
         size_t mapped = JemallocStats::getJemallocMapped();
+        allocator_stats.insert(std::pair<std::string, size_t>("total_usage",
+                                                   mapped));
+#if 0
         size_t allocated = JemallocStats::getJemallocAllocated();
         size_t active = JemallocStats::getJemallocActive();
-        allocator_stats.insert(std::pair<std::string, size_t>("jemalloc_stats.mapped",
-                                                   mapped));
         allocator_stats.insert(std::pair<std::string, size_t>("jemalloc_stats.allocated",
                                                    allocated));
         allocator_stats.insert(std::pair<std::string, size_t>("jemalloc_stats.active",
                                                    active));
+#endif
 #else 
         (void) allocator_stats;
 #endif
