@@ -57,7 +57,11 @@ bool EvictionManager::evictHeadroom()
         return allowOps(allocatedMemory);
     }
 
-    LockHolder lhe(evictionLock);
+    bool lock;
+    LockHolder lhe(evictionLock, &lock);
+    if (!lock) {
+        return allowOps(allocatedMemory);
+    }
 
     size_t quantumSize = getEvictionQuantumSize_UNLOCKED();
     size_t quantumCount = getEvictionQuantumMaxCount_UNLOCKED();

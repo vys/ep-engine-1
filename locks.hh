@@ -21,9 +21,18 @@ class LockHolder {
 public:
     /**
      * Acquire the lock in the given mutex.
+     * If try_lock is a non-NULL pointer, attempt trylock and set status in try_lock
      */
-    LockHolder(Mutex &m) : mutex(m), locked(false) {
-        lock();
+    LockHolder(Mutex &m, bool *try_lock = NULL) : mutex(m), locked(false) {
+        if (try_lock) {
+            if (trylock()) {
+                *try_lock = true;
+            } else {
+                *try_lock = false;
+            }
+        } else {
+            lock();
+        }
     }
 
     /**
@@ -47,6 +56,18 @@ public:
     void lock() {
         mutex.acquire();
         locked = true;
+    }
+
+    /**
+     * Try relocking a lock that was manually unlocked.
+     * Return true on success.
+     */
+    bool trylock() {
+        if (mutex.tryAcquire()) {
+            locked = true;
+            return true;
+        }
+        return false;
     }
 
     /**

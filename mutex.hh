@@ -75,6 +75,20 @@ protected:
         setHolder(true);
     }
 
+    bool tryAcquire() {
+        int e;
+        if ((e = pthread_mutex_trylock(&mutex)) != 0) {
+            if (e == EBUSY) {
+                return false;
+            }
+            std::string message = "MUTEX ERROR: Failed to acquire lock: ";
+            message.append(std::strerror(e));
+            throw std::runtime_error(message);
+        }
+        setHolder(true);
+        return true;
+    }
+
     void release() {
         assert(held && pthread_equal(holder, pthread_self()));
         setHolder(false);
