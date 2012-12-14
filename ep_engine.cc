@@ -4442,17 +4442,3 @@ EventuallyPersistentEngine::resetReplicationChain(const void *cookie,
     }
     return ENGINE_FAILED;
 }
-
-/* 
- * Account for all threads that could be doing the memory check right now
- * CAUTION: PARALLELISM is defined as 4 to account for the 4 memcache threads.
- * If that ever changes, fix this as well.
- * Total accounting: No. of threads * Max per thread + Configured headroom
- */
-// Purge this?
-size_t EventuallyPersistentEngine::accountForNThreads() {
-#define PARALLELISM 4
-#define MAX_PER_THREAD (2 * 1024 * 1024)
-
-    return EvictionManager::getInstance()->getEvictionHeadroom() + MAX_PER_THREAD * (PARALLELISM - 1);
-}

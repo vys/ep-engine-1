@@ -422,15 +422,9 @@ void StoredValue::reduceCurrentSize(EPStats &st, size_t by) {
 bool StoredValue::hasAvailableSpace(EPStats &st, const Item &item) {
     double newSize = static_cast<double>(getCurrentSize(st) +
                                          sizeof(StoredValue) + item.getNKey());
-    double maxSize=  static_cast<double>(getMaxDataSize(st)) * mutation_mem_threshold;
+    //double maxSize=  static_cast<double>(getMaxDataSize(st)) * mutation_mem_threshold;
+    double maxSize = static_cast<double>(getMaxDataSize(st));
     return newSize <= maxSize;
-}
-
-// Purge this?
-int64_t StoredValue::getMemoryDeficit(size_t needed, EPStats &stats) {
-    size_t current = StoredValue::getAllocatedMemory(stats);
-	double max =  static_cast<double>(getMaxDataSize(stats)) * mutation_mem_threshold;
-    return (int64_t) ((current + needed) - max);
 }
 
 size_t StoredValue::getAllocatedMemory(EPStats &stats) {

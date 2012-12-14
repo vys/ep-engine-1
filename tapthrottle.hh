@@ -21,8 +21,6 @@ public:
 
     bool persistenceQueueSmallEnough() const;
 
-    int64_t hasSomeMemory(size_t needed) const;
-
 private:
     EPStats &stats;
 };
