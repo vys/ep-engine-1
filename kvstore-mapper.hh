@@ -42,7 +42,7 @@ public:
         LockHolder lh(instance->mutex);
         KVSTOREMAPPER_ERROR_CODE rv = KVSTORE_ALLOCATION_SUCCESS;
         int eligibleKVStore(-1);
-        size_t kvstoreSize;
+        size_t kvstoreSize(0);
 
         if (instance->mapVBuckets) {
             std::map<int, std::vector<uint16_t> >::iterator it;
