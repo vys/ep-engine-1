@@ -7,6 +7,8 @@
 #include "jemalloc_stats.hh"
 
 #define BUF_SIZE 1024
+size_t GetSelfRSS();
+
 size_t GetSelfRSS() {
     static int fd = -1;
     char buf[BUF_SIZE];
