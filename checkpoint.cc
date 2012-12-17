@@ -176,6 +176,16 @@ uint64_t CheckpointManager::getOpenCheckpointId() {
     return getOpenCheckpointId_UNLOCKED();
 }
 
+size_t CheckpointManager::getNumOpenCheckpointItems() {
+    LockHolder lh(queueLock);
+    if (checkpointList.size() == 0) {
+        return 0;
+    }
+
+    size_t s = checkpointList.back()->getNumItems();
+    return checkpointList.back()->getState() == opened ? s : 0;
+}
+
 uint64_t CheckpointManager::getLastClosedCheckpointId_UNLOCKED() {
     if (!isCollapsedCheckpoint) {
         uint64_t id = getOpenCheckpointId_UNLOCKED();
@@ -1013,6 +1023,13 @@ bool CheckpointManager::isKeyResidentInCheckpoints(const std::string &key, uint6
     for (; it != checkpointList.end(); ++it) {
         if ((*it)->getNumberOfCursors() > 0) {
             break;
+        }
+    }
+
+    // If there are no cursors, search in open checkpoint
+    if (it == checkpointList.end()) {
+        if (checkpointList.size() && checkpointList.back()->getState() == opened) {
+            it--;
         }
     }
 

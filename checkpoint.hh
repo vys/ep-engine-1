@@ -394,6 +394,11 @@ public:
         return numItems;
     }
 
+    /**
+     * Return the number of items in the open checkpoint
+     */
+    size_t getNumOpenCheckpointItems();
+
     size_t getNumCheckpoints();
 
     /**
