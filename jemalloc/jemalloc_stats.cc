@@ -1,26 +1,36 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "jemalloc_stats.hh"
+#include "locks.hh"
 
 #define BUF_SIZE 1024
 size_t GetSelfRSS();
+Mutex rssLock;
 
 size_t GetSelfRSS() {
     static int fd = -1;
     char buf[BUF_SIZE];
 
+    LockHolder lh(rssLock);
     if (fd < 1 ) {
-        fd = open("/proc/self/stat", O_RDONLY);
+        fd = open("/proc/self/statm", O_RDONLY);
     }
-    lseek(fd, 0, SEEK_SET);
-    int n = read(fd, buf, BUF_SIZE);
+
+    int n = 0;
+    if ((n = lseek(fd, 0, SEEK_SET)) < 0) {
+        assert(0);
+    }
+    n = read(fd, buf, BUF_SIZE);
     if (n < 1) {
+        assert(0);
         return 0;
     }
+    lh.unlock();
 
     n = 0;
 
@@ -30,7 +40,7 @@ size_t GetSelfRSS() {
         if (buf[i] == ' ') {
             n++;
         }
-        if (n == 23) {
+        if (n == 1) {
             found = true;
             break;
         }
