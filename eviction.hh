@@ -222,14 +222,7 @@ public:
         if (lruSleepTime == 0) {
             return false;
         }
-        size_t allocated_memory = 0;
-#if defined(HAVE_LIBTCMALLOC) || defined(HAVE_LIBTCMALLOC_MINIMAL)
-        MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes",
-                                                    &allocated_memory);
-#elif defined(HAVE_JEMALLOC_JEMALLOC_H)
-        allocated_memory = JemallocStats::getJemallocMapped();
-#endif
-        size_t mem_used = allocated_memory > 0 ? allocated_memory : (stats.currentSize + stats.memOverhead);
+        size_t mem_used = StoredValue::getAllocatedMemory(stats);
         size_t max_size = StoredValue::getMaxDataSize(stats);
         if (mem_used < (size_t)(memThresholdPercent * max_size)) {
             return false;
