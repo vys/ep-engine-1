@@ -2888,6 +2888,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     add_stat, cookie);
     add_casted_stat("ep_bg_fetched", epstats.bg_fetched, add_stat,
                     cookie);
+    add_casted_stat("ep_bg_fetch_failed", epstats.bg_fetch_failed, add_stat,
+                    cookie);
     add_casted_stat("ep_tap_bg_fetched", stats.numTapBGFetched, add_stat, cookie);
     add_casted_stat("ep_tap_bg_fetch_requeued", stats.numTapBGFetchRequeued,
                     add_stat, cookie);

@@ -1019,6 +1019,12 @@ void EventuallyPersistentStore::completeBGFetch(const std::string &key,
        << std::endl;
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, ss.str().c_str());
 
+    if (!EvictionManager::getInstance()->evictHeadroom()) {
+        ++stats.bg_fetch_failed;
+        engine.notifyIOComplete(cookie, ENGINE_TMPFAIL);
+        return;
+    }
+
     // Go find the data
     RememberingCallback<GetValue> gcb;
 
@@ -1044,8 +1050,6 @@ void EventuallyPersistentStore::completeBGFetch(const std::string &key,
     }
 
     lh.unlock();
-
-    EvictionManager::getInstance()->evictHeadroom();
 
     hrtime_t stop = gethrtime();
 

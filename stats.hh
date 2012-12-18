@@ -207,6 +207,8 @@ public:
     Atomic<int> queue_age_cap;
     //! Number of times background fetches occurred.
     Atomic<size_t> bg_fetched;
+    //! Number of times background fetches failed due to OOM.
+    Atomic<size_t> bg_fetch_failed;
     //! Number of times we needed to kick in the pager
     Atomic<size_t> pagerRuns;
     //! Number of times the expiry pager runs for purging expired items
