@@ -707,6 +707,10 @@ public:
         headroom = to;
     }
 
+    uint32_t getEvictionQuietWindow() {
+        return evictionQuietWindow;
+    }
+
     bool getEvictionDisable() {
         return disableInlineEviction;
     }
@@ -739,13 +743,17 @@ private:
     bool disableInlineEviction;
     static Atomic<size_t> minBlobSize;
     static EvictionManager *managerInstance;
+    bool shouldEvict;
+    uint32_t evictionQuietWindow;
+    uint32_t lastEvicted;
 
     EvictionManager(EventuallyPersistentStore *s, EPStats &st, std::string &p, size_t hr, bool die) :
         maxSize(MAX_EVICTION_ENTRIES),
         pauseJob(false), store(s), stats(st), policyName(p),
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
         pruneAge(0), evictionQuantumSize(10485760), evictionQuantumMaxCount(10),
-        headroom(hr), disableInlineEviction(die) {
+        headroom(hr), disableInlineEviction(die), shouldEvict(true),
+        evictionQuietWindow(60), lastEvicted(ep_current_time()) {
         policies.insert("lru");
         policies.insert("random");
         policies.insert("bgeviction");
