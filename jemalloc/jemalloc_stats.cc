@@ -8,11 +8,28 @@
 #include "jemalloc_stats.hh"
 #include "locks.hh"
 
+#if defined __APPLE__ && defined __MACH__
+#include <mach/task.h>
+#include <mach/mach_init.h>
+#else
+Mutex rssLock;
+#endif
+
 #define BUF_SIZE 1024
 size_t GetSelfRSS();
-Mutex rssLock;
 
 size_t GetSelfRSS() {
+#if defined __APPLE__ && defined __MACH__
+    task_t task = MACH_PORT_NULL;
+
+    if (task_for_pid(current_task(), getpid(), &task) == KERN_SUCCESS) {
+        struct task_basic_info t_info;
+        mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
+        task_info(task, TASK_BASIC_INFO, (task_info_t)&t_info, &t_info_count);
+        return t_info.resident_size;
+    }
+    return 0;
+#else
     static int fd = -1;
     char buf[BUF_SIZE];
 
@@ -47,6 +64,7 @@ size_t GetSelfRSS() {
     }
 
     return found ? atoll(&buf[i]) * 4096 : 0;
+#endif
 }
 
 size_t JemallocStats::getJemallocMapped() {

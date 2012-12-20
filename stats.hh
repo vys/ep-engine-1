@@ -627,7 +627,7 @@ public:
         TCMallocStats::getStats(allocator_stats);
 #elif defined(HAVE_JEMALLOC_JEMALLOC_H)
         size_t mapped = JemallocStats::getJemallocMapped();
-        allocator_stats.insert(std::pair<std::string, size_t>("total_usage",
+        allocator_stats.insert(std::pair<std::string, size_t>("process_rss",
                                                    mapped));
 #if 0
         size_t allocated = JemallocStats::getJemallocAllocated();
