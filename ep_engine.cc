@@ -3292,7 +3292,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doVBucketStats(const void *cookie,
             } else {
                 ss<<VBucket::toString(vb->getState());
             }
-            ss<<" kvstore "<<KVStoreMapper::getVBucketToKVId(vb);
+            ss<<" curr_items "<<vb->ht.getNumItems()
+            <<" kvstore "<<KVStoreMapper::getVBucketToKVId(vb);
             add_casted_stat(buf, ss.str(), add_stat, cookie);
             return false;
         }
