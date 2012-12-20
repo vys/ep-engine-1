@@ -60,7 +60,7 @@ bool EvictionManager::evictHeadroom()
     size_t quantumSize = getEvictionQuantumSize_UNLOCKED();
     size_t quantumCount = getEvictionQuantumMaxCount_UNLOCKED();
 
-    if (!shouldEvict && ep_current_time() < (lastEvicted + getEvictionQuietWindow()) &&
+    if (stopEvict && ep_current_time() < (lastEvicted + getEvictionQuietWindow()) &&
         allocatedMemory >= (stats.maxDataSize - (quantumCount * quantumSize / 2))) {
         return false;
     }
@@ -71,7 +71,7 @@ bool EvictionManager::evictHeadroom()
         return allowOps(allocatedMemory);
     }
 
-    shouldEvict = true;
+    stopEvict = false;
 
     if (!quantumCount) {
         return allowOps(allocatedMemory);
@@ -140,8 +140,8 @@ bool EvictionManager::evictHeadroom()
         }
     }
 
-    if (allocatedMemory >= stats.maxDataSize && attempts == quantumCount) {
-        shouldEvict = false;
+    if (!allowOps(allocatedMemory) && attempts >= quantumCount) {
+        stopEvict = true;
         lastEvicted = ep_current_time();
     }
     return allowOps(allocatedMemory);

@@ -737,13 +737,13 @@ private:
     std::set<std::string> policies;
     time_t pruneAge;
     Mutex evictionLock;
-    size_t evictionQuantumSize;
-    size_t evictionQuantumMaxCount;
+    Atomic<size_t> evictionQuantumSize;
+    Atomic<size_t> evictionQuantumMaxCount;
     size_t headroom;
     bool disableInlineEviction;
     static Atomic<size_t> minBlobSize;
     static EvictionManager *managerInstance;
-    bool shouldEvict;
+    Atomic<bool> stopEvict;
     uint32_t evictionQuietWindow;
     uint32_t lastEvicted;
 
@@ -752,7 +752,7 @@ private:
         pauseJob(false), store(s), stats(st), policyName(p),
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
         pruneAge(0), evictionQuantumSize(10485760), evictionQuantumMaxCount(10),
-        headroom(hr), disableInlineEviction(die), shouldEvict(true),
+        headroom(hr), disableInlineEviction(die), stopEvict(false),
         evictionQuietWindow(120), lastEvicted(ep_current_time()) {
         policies.insert("lru");
         policies.insert("random");
