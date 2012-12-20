@@ -753,7 +753,7 @@ private:
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
         pruneAge(0), evictionQuantumSize(10485760), evictionQuantumMaxCount(10),
         headroom(hr), disableInlineEviction(die), shouldEvict(true),
-        evictionQuietWindow(60), lastEvicted(ep_current_time()) {
+        evictionQuietWindow(120), lastEvicted(ep_current_time()) {
         policies.insert("lru");
         policies.insert("random");
         policies.insert("bgeviction");
