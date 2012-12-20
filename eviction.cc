@@ -164,6 +164,12 @@ bool EvictionPolicy::evictItemByAge(time_t timestamp, StoredValue *v, RCPtr<VBuc
 void LRUPolicy::initRebuild() {
     stopBuild = !(EvictionManager::getInstance()->enableJob());
     if (!stopBuild) {
+        if (freshStart) {
+            LockHolder lh(swapLock); // it is possible that this was built and the frontend swapped it
+            clearTemplist();
+        } else {
+            assert(templist == NULL);
+        }
         templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
         stats.evictionStats.memSize.incr(templist->memSize());
         startTime = ep_real_time();
@@ -175,7 +181,11 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
     if (stopBuild) {
         return false;
     }
-    LRUItem *item = new LRUItem(v, currentBucket->getId(), v->getDataAge());
+    time_t t = v->getDataAge();
+    if (!freshStart && t > oldest && t < newest) {
+        return false;
+    }
+    LRUItem *item = new LRUItem(v, currentBucket->getId(), t);
     size_t size = templist->size();
     if (size && (size == maxSize) &&
             (lruItemCompare(*templist->last(), *item) < 0)) {
@@ -212,22 +222,31 @@ void LRUPolicy::completeRebuild() {
         clearTemplist();
         clearStage(true);
     } else {
+        LockHolder lh(swapLock); // the moment templist is built, the front-end could potentially swap it
         templist->build();
         curSize = templist->size();
-        count.incr(curSize);
-        genLruHisto();
-        FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
-        tempit = it.swap(tempit);
-        while (tempit != list->end()) {
-            LRUItem *item = tempit++;
-            count--;
-            item->reduceCurrentSize(stats);
-            delete item;
+        if (curSize) {
+            oldest = templist->first()->getAttr();
+            newest = templist->last()->getAttr();
+        } else {
+            oldest = newest = 0;
         }
-        stats.evictionStats.memSize.decr(templist->memSize());
-        delete list;
-        list = templist;
-        templist = NULL;
+        genLruHisto();
+        if (*it == NULL || freshStart) {
+            FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
+            count.incr(curSize);
+            tempit = it.swap(tempit);
+            while (tempit != list->end()) {
+                LRUItem *item = tempit++;
+                count--;
+                item->reduceCurrentSize(stats);
+                delete item;
+            }
+            stats.evictionStats.memSize.decr(list->memSize());
+            delete list;
+            list = templist;
+            templist = NULL;
+        }
     }
     assert(stage.size() == 0);
     endTime = ep_real_time();

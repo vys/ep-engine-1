@@ -238,6 +238,17 @@ public:
         return ret;
     }
 
+    bool isBuilt() {
+        return built;
+    }
+
+    T* first() {
+        if (currentSize == 0 || !built) {
+            return NULL;
+        }
+        return data[0];
+    }
+
     T* last() {
         if (currentSize == 0) {
             return NULL;

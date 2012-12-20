@@ -146,6 +146,9 @@ public:
               templist(NULL),
               stopBuild(false),
               count(0),
+              freshStart(false),
+              oldest(0),
+              newest(0),
               lastRun(ep_real_time()) {
         list->build();
         it = list->begin();
@@ -177,6 +180,7 @@ public:
     }
 
     size_t getPrimaryQueueSize() {
+        // list will never be NULL after the first iteration and doesn't require a lock
         if (list) {
             return list->size();
         } else {
@@ -185,6 +189,7 @@ public:
     }
 
     size_t getSecondaryQueueSize() {
+        LockHolder lh(swapLock); // templist access requires a lock
         if (templist) {
             return templist->size();
         } else {
@@ -211,7 +216,27 @@ public:
     EvictItem *evict(void) {
         LRUItem *ent = it++;
         if (ent == NULL) {
-            return NULL;
+            if (templist != NULL) {
+                bool lock;
+                LockHolder lh(swapLock, &lock);
+                if (lock) {
+                    if (templist != NULL && templist->isBuilt()) { // in case swap happened just before the lock
+                        // no nodes to delete from list, it's empty
+                        count.incr(templist->size());
+                        it.swap(templist->begin());
+                        stats.evictionStats.memSize.decr(list->memSize());
+                        delete list;
+                        list = templist;
+                        templist = NULL;
+                    }
+                    lh.unlock();
+                }
+                if ((ent = it++) == NULL) {
+                    return NULL;
+                }
+            } else {
+                return NULL;
+            }
         }
         count--;
         ent->reduceCurrentSize(stats);
@@ -229,15 +254,18 @@ public:
         }
         time_t currTime = ep_real_time();
         if (lastRun + lruSleepTime <= currTime) {
+            freshStart = true;
             lastRun = currTime;
             return true;
         }
         size_t target = (size_t)(rebuildPercent * curSize);
         if (evictAge() != 0) {
+            freshStart = true;
             return true;
         }
         if (curSize == 0 || count <= target) {
-            return true;
+            // Build only if templist is empty
+            return (templist == NULL);
         }
         return false;
     }
@@ -330,6 +358,10 @@ private:
     time_t startTime, endTime;
     bool stopBuild;
     Atomic<size_t> count;
+    Mutex swapLock;
+    bool freshStart;
+    time_t oldest;
+    time_t newest;
     static double rebuildPercent;
     static double memThresholdPercent;
     time_t lastRun;
