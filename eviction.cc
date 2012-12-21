@@ -62,6 +62,7 @@ bool EvictionManager::evictHeadroom()
 
     if (stopEvict && ep_current_time() < (lastEvicted + getEvictionQuietWindow()) &&
         allocatedMemory >= (stats.maxDataSize - (quantumCount * quantumSize / 2))) {
+        stats.evictionStats.failedTotal.evictionStopped++;
         return false;
     }
 
