@@ -49,6 +49,7 @@ void ObjectRegistry::onCreateBlob(Blob *blob)
        stats.currentSize.incr(blob->getSize());
        stats.totalValueSize.incr(blob->getSize());
        assert(stats.currentSize.get() < GIGANTOR);
+       stats.numBlobs++;
    }
 }
 
@@ -60,6 +61,7 @@ void ObjectRegistry::onDeleteBlob(Blob *blob)
        stats.currentSize.decr(blob->getSize());
        stats.totalValueSize.decr(blob->getSize());
        assert(stats.currentSize.get() < GIGANTOR);
+       stats.numBlobs--;
    }
 }
 
