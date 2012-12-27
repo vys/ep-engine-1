@@ -8,6 +8,12 @@
 
 #define MAX_EVICTION_ENTRIES 500000
 
+#define MIN_EVICTION_QUANTUM_SIZE 524288 // 512KB
+#define MAX_EVICTION_QUANTUM_SIZE 33554432 // 32MB
+
+#define MIN_EVICTION_QUANTUM_MAX_COUNT 2
+#define MAX_EVICTION_QUANTUM_MAX_COUNT 32
+
 //Generic class for identifying evictable items.
 class EvictItem {
 public:
@@ -224,6 +230,7 @@ public:
                         // no nodes to delete from list, it's empty
                         count.incr(templist->size());
                         it.swap(templist->begin());
+                        stats.evictionStats.frontendSwaps++;
                         stats.evictionStats.memSize.decr(list->memSize());
                         delete list;
                         list = templist;
@@ -697,33 +704,35 @@ public:
         pruneAge = val;
     }
 
-    // Avoid using unless absolutely necessary
     size_t getEvictionQuantumSize() {
-        LockHolder lh(evictionLock);
-        return getEvictionQuantumSize_UNLOCKED();
-    }
-
-    size_t getEvictionQuantumSize_UNLOCKED() {
         return evictionQuantumSize;
     }
 
     void setEvictionQuantumSize(size_t to) {
-        LockHolder lh(evictionLock);
+        if (to < MIN_EVICTION_QUANTUM_SIZE || to > MAX_EVICTION_QUANTUM_SIZE) {
+            std::stringstream ss;
+            ss << "New eviction_quantum_size param value " << to
+                << " is not ranged between the min allowed value " << MIN_EVICTION_QUANTUM_SIZE
+                << " and max value " << MAX_EVICTION_QUANTUM_SIZE;
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL, ss.str().c_str());
+            return;
+        }
         evictionQuantumSize = to;
     }
 
-    // Avoid using unless absolutely necessary
     size_t getEvictionQuantumMaxCount() {
-        LockHolder lh(evictionLock);
-        return getEvictionQuantumMaxCount_UNLOCKED();
-    }
-
-    size_t getEvictionQuantumMaxCount_UNLOCKED() {
         return evictionQuantumMaxCount;
     }
 
     void setEvictionQuantumMaxCount(size_t to) {
-        LockHolder lh(evictionLock);
+        if (to < MIN_EVICTION_QUANTUM_MAX_COUNT || to > MAX_EVICTION_QUANTUM_MAX_COUNT) {
+            std::stringstream ss;
+            ss << "New eviction_quantum_max_count param value " << to
+                << " is not ranged between the min allowed value " << MIN_EVICTION_QUANTUM_MAX_COUNT
+                << " and max value " << MAX_EVICTION_QUANTUM_MAX_COUNT;
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL, ss.str().c_str());
+            return;
+        }
         evictionQuantumMaxCount = to;
     }
 

@@ -49,23 +49,29 @@ bool EvictionManager::evictHeadroom()
     size_t mem = stats.maxDataSize - headroom;
     size_t allocatedMemory;
 
+    // Evict only if we are above headroom
     if ((allocatedMemory = StoredValue::getAllocatedMemory(stats)) <= mem) {
         return true;
     }
 
+    size_t quantumSize = getEvictionQuantumSize();
+    size_t quantumCount = getEvictionQuantumMaxCount();
+
+    // If eviction is disabled globally or if the policy doesn't support inline
+    // eviction, return a bool to indicate whether ops are allowed.
     if (disableInlineEviction || !evpolicy->supportsInlineEviction) {
         return allowOps(allocatedMemory);
     }
 
-    size_t quantumSize = getEvictionQuantumSize_UNLOCKED();
-    size_t quantumCount = getEvictionQuantumMaxCount_UNLOCKED();
-
+    // When the allocated memory is over maxSize less a quantum padding, we return false
+    // to wait till the allocator releases memory to the system and RSS comes down.
     if (stopEvict && ep_current_time() < (lastEvicted + getEvictionQuietWindow()) &&
         allocatedMemory >= (stats.maxDataSize - (quantumCount * quantumSize / 2))) {
         stats.evictionStats.failedTotal.evictionStopped++;
         return false;
     }
 
+    // Attempt eviction only when the lock is available, otherwise return immediately
     bool lock;
     LockHolder lhe(evictionLock, &lock);
     if (!lock) {
@@ -73,10 +79,6 @@ bool EvictionManager::evictHeadroom()
     }
 
     stopEvict = false;
-
-    if (!quantumCount) {
-        return allowOps(allocatedMemory);
-    }
 
     // Using do-while in place of while eliminates two calls of getAllocatedMemory
     do {
@@ -237,6 +239,7 @@ void LRUPolicy::completeRebuild() {
             FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
             count.incr(curSize);
             tempit = it.swap(tempit);
+            stats.evictionStats.backgroundSwaps++;
             while (tempit != list->end()) {
                 LRUItem *item = tempit++;
                 count--;

@@ -56,6 +56,8 @@ public:
     Atomic<uint32_t>        numKeysEvicted;      // Evictions in this run
     Atomic<uint32_t>        numEmptyQueue;
     Atomic<uint32_t>        numMaxQuanta;
+    Atomic<uint32_t>        frontendSwaps;
+    Atomic<uint32_t>        backgroundSwaps;
     //! Total size of objects used by eviction.
     Atomic<size_t>          memSize;
     FailedEvictions         failedTotal;         // All failures so far
@@ -76,6 +78,8 @@ private:
         numEmptyQueue = 0;
         numMaxQuanta = 0;
         numKeysEvicted = 0;
+        frontendSwaps = 0;
+        backgroundSwaps = 0;
         failedTotal.reset();
     }
 };

@@ -3050,9 +3050,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     add_stat, cookie);
     add_casted_stat("eviction_headroom", EvictionManager::getInstance()->getEvictionHeadroom(), add_stat, cookie);
     // Obtain the following two values without locking
-    add_casted_stat("eviction_quantum_size", EvictionManager::getInstance()->getEvictionQuantumSize_UNLOCKED(),
+    add_casted_stat("eviction_quantum_size", EvictionManager::getInstance()->getEvictionQuantumSize(),
                     add_stat, cookie);
-    add_casted_stat("eviction_quantum_max_count", EvictionManager::getInstance()->getEvictionQuantumMaxCount_UNLOCKED(),
+    add_casted_stat("eviction_quantum_max_count", EvictionManager::getInstance()->getEvictionQuantumMaxCount(),
                     add_stat, cookie);
     add_casted_stat("disable_inline_eviction",
                     EvictionManager::getInstance()->getEvictionDisable() ? 1 : 0,
@@ -3634,6 +3634,8 @@ void LRUPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("lru_policy_ev_queue_size", getPrimaryQueueSize(), add_stat, cookie);
     add_casted_stat("lru_policy_secondary_ev_queue_size", getSecondaryQueueSize(), 
                     add_stat, cookie);
+    add_casted_stat("lru_policy_background_swaps", stats.evictionStats.backgroundSwaps, add_stat, cookie);
+    add_casted_stat("lru_policy_frontend_swaps", stats.evictionStats.frontendSwaps, add_stat, cookie);
     timestats.getStats(cookie, add_stat);
     add_casted_stat("lru_age_histogram", getLruHisto(), add_stat, cookie);
 }
