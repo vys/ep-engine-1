@@ -3801,6 +3801,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getStats(const void* cookie,
     ENGINE_ERROR_CODE rv = ENGINE_KEY_ENOENT;
     if (stat_key == NULL) {
         rv = doEngineStats(cookie, add_stat);
+        rv = doEvictionStats(cookie, add_stat);
     } else if (nkey > 7 && strncmp(stat_key, "tapagg ", 7) == 0) {
         rv = doTapAggStats(cookie, add_stat, stat_key + 7, nkey - 7);
     } else if (nkey == 3 && strncmp(stat_key, "tap", 3) == 0) {
