@@ -11,6 +11,8 @@
 
 long page_size = sysconf(_SC_PAGE_SIZE);
 
+size_t GetSelfRSS();
+
 size_t GetSelfRSS() {
 #if defined __APPLE__ && defined __MACH__
     task_t task = MACH_PORT_NULL;
@@ -28,11 +30,11 @@ size_t GetSelfRSS() {
     std::ifstream ifs;
     ifs.rdbuf()->pubsetbuf(buf,30);
     ifs.open("/proc/self/statm");
-    int tSize = 0, resident = 0;
+    size_t tSize = 0, resident = 0;
     ifs >> tSize >> resident;
     ifs.close();
 
-    int rss = resident * page_size;
+    size_t rss = resident * page_size;
     assert(rss != 0);
     return rss;
 #endif
