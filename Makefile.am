@@ -34,6 +34,14 @@ man_MANS += mbadm-online-update.1m \
             mbbackup-incremental.1m
 endif
 
+if BUILD_TCMALLOC_STATS
+malloc_SOURCES = tcmalloc/tcmalloc_stats.hh tcmalloc/tcmalloc_stats.cc
+endif
+if BUILD_JEMALLOC_STATS
+malloc_SOURCES = jemalloc/jemalloc_stats.hh jemalloc/jemalloc_stats.cc
+endif
+
+
 mbadm-online-update.1m: docs/mbadm-online-update.pod
 	${POD2MAN} -c "$*" -r "" -s 1m $< $@
 
@@ -242,9 +250,9 @@ dispatcher_test_LDADD = libobjectregistry.la
 
 hash_table_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
 hash_table_test_SOURCES = t/hash_table_test.cc item.cc stored-value.cc stored-value.hh \
-                          testlogger.cc meta.cc
+                          testlogger.cc meta.cc $(malloc_SOURCES) 
 hash_table_test_DEPENDENCIES = stored-value.cc stored-value.hh ep.hh item.hh \
-                               libobjectregistry.la
+                               libobjectregistry.la 
 hash_table_test_LDADD = libobjectregistry.la
 
 fixedlist_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
@@ -275,14 +283,14 @@ management_sqlite3_LDADD = libsqlite3.la
 vbucket_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
 vbucket_test_SOURCES = t/vbucket_test.cc t/threadtests.hh vbucket.hh vbucket.cc \
                stored-value.cc stored-value.hh testlogger.cc \
-		       checkpoint.hh checkpoint.cc byteorder.c
+		       checkpoint.hh checkpoint.cc byteorder.c $(malloc_SOURCES)
 vbucket_test_DEPENDENCIES = vbucket.hh stored-value.cc stored-value.hh \
                checkpoint.hh checkpoint.cc libobjectregistry.la
 vbucket_test_LDADD = libobjectregistry.la
 
 checkpoint_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
 checkpoint_test_SOURCES = t/checkpoint_test.cc checkpoint.hh checkpoint.cc vbucket.hh vbucket.cc \
-			  testlogger.cc stored-value.cc stored-value.hh queueditem.hh byteorder.c
+			  testlogger.cc stored-value.cc stored-value.hh queueditem.hh byteorder.c $(malloc_SOURCES)
 checkpoint_test_DEPENDENCIES = checkpoint.hh vbucket.hh stored-value.cc stored-value.hh \
               queueditem.hh libobjectregistry.la
 checkpoint_test_LDADD = libobjectregistry.la
@@ -320,14 +328,12 @@ fixedlist_test_SOURCES += gethrtime.c
 endif
 
 if BUILD_TCMALLOC_STATS
-ep_la_SOURCES += tcmalloc/tcmalloc_stats.hh tcmalloc/tcmalloc_stats.cc
 ep_la_LIBADD += $(BETTER_MALLOC_LIBS)
 ep_testsuite_la_LIBADD += $(BETTER_MALLOC_LIBS)
 management_mbdbconvert_LDADD += $(BETTER_MALLOC_LIBS)
 endif
-if BUILD_JEMALLOC_STATS
-ep_la_SOURCES += jemalloc/jemalloc_stats.hh jemalloc/jemalloc_stats.cc
-endif
+
+ep_la_SOURCES += $(malloc_SOURCES)
 
 pythonlibdir=$(libdir)/python
 pythonlib_DATA= \

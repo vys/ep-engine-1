@@ -3,6 +3,7 @@
 #include <fixed_list.hh>
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 #define TOTAL_SIZE 5000000
 #define LIST_SIZE   500000
@@ -128,7 +129,7 @@ int main() {
     cout << "Time spent in seconds: " << difftime(end, start) << endl;
 #endif
 
-    sort(v.begin(), v.end());
+    std::sort(v.begin(), v.end());
 
     checkNumLessThan(l, v);
 
