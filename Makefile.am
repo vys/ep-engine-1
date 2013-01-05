@@ -38,7 +38,7 @@ if BUILD_TCMALLOC_STATS
 malloc_SOURCES = tcmalloc/tcmalloc_stats.hh tcmalloc/tcmalloc_stats.cc
 endif
 if BUILD_JEMALLOC_STATS
-malloc_SOURCES = jemalloc/jemalloc_stats.hh jemalloc/jemalloc_stats.cc
+#malloc_SOURCES = jemalloc/jemalloc_stats.hh jemalloc/jemalloc_stats.cc
 endif
 
 
@@ -55,6 +55,7 @@ ep_la_SOURCES = \
                  atomic/libatomic.h \
                  atomic.hh \
                  rss.hh \
+                 rss.cc \
                  backfill.hh \
                  backfill.cc \
                  callbacks.hh \

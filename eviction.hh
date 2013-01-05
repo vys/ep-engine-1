@@ -5,6 +5,7 @@
 
 #include<ep.hh>
 #include<fixed_list.hh>
+#include "rss.hh"
 
 #define MAX_EVICTION_ENTRIES 500000
 
@@ -254,7 +255,7 @@ public:
         if (lruSleepTime == 0) {
             return false;
         }
-        size_t mem_used = StoredValue::getAllocatedMemory(stats);
+        size_t mem_used = GetSelfRSS();
         size_t max_size = StoredValue::getMaxDataSize(stats);
         if (mem_used < (size_t)(memThresholdPercent * max_size)) {
             return false;

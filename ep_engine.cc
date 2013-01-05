@@ -2883,7 +2883,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     add_stat, cookie);
     add_casted_stat("ep_oom_errors", stats.oom_errors, add_stat, cookie);
     add_casted_stat("ep_tmp_oom_errors", stats.tmp_oom_errors, add_stat, cookie);
-    add_casted_stat("ep_process_rss", StoredValue::getAllocatedMemory(stats), add_stat, cookie);
+    add_casted_stat("ep_process_rss", GetSelfRSS(), add_stat, cookie);
     add_casted_stat("ep_storage_type",
                     HashTable::getDefaultStorageValueTypeStr(),
                     add_stat, cookie);

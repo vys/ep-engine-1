@@ -7,6 +7,7 @@
 #include <sys/resource.h>
 
 #include "stored-value.hh"
+#include "rss.hh"
 
 #ifndef DEFAULT_HT_SIZE
 #define DEFAULT_HT_SIZE 1531
@@ -420,20 +421,10 @@ void StoredValue::reduceCurrentSize(EPStats &st, size_t by) {
  * Is there enough space for this thing?
  */
 bool StoredValue::hasAvailableSpace(EPStats &st, const Item &item) {
-    double newSize = static_cast<double>(StoredValue::getAllocatedMemory(st) +
+    double newSize = static_cast<double>(GetSelfRSS() +
                                          sizeof(StoredValue) + item.getNKey());
     //double maxSize=  static_cast<double>(getMaxDataSize(st)) * mutation_mem_threshold;
     double maxSize = static_cast<double>(getMaxDataSize(st));
     return newSize <= maxSize;
 }
 
-size_t StoredValue::getAllocatedMemory(EPStats &stats) {
-    size_t allocated_memory = 0;
-#if defined(HAVE_LIBTCMALLOC) || defined(HAVE_LIBTCMALLOC_MINIMAL)
-    MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes",
-                                                    &allocated_memory);
-#elif defined(HAVE_JEMALLOC_JEMALLOC_H)
-    allocated_memory = JemallocStats::getJemallocMapped();
-#endif
-    return (allocated_memory > 0 ? allocated_memory : getCurrentSize(stats));
-}

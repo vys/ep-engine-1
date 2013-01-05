@@ -8,7 +8,7 @@
 #include "common.hh"
 #include "atomic.hh"
 #include "histo.hh"
-#include <jemalloc/jemalloc_stats.hh>
+#include "rss.hh"
 
 #ifndef DEFAULT_MAX_DATA_SIZE
 /* Something something something ought to be enough for anybody */
@@ -630,12 +630,12 @@ struct key_stats {
 class MemoryAllocatorStats {
 public:
     static void getAllocatorStats(std::map<std::string, size_t> &allocator_stats) {
+        size_t mapped = GetSelfRSS();
+        allocator_stats.insert(std::pair<std::string, size_t>("process_rss", mapped));
+
 #if defined(HAVE_LIBTCMALLOC) || defined(HAVE_LIBTCMALLOC_MINIMAL)
         TCMallocStats::getStats(allocator_stats);
 #elif defined(HAVE_JEMALLOC_JEMALLOC_H)
-        size_t mapped = JemallocStats::getJemallocMapped();
-        allocator_stats.insert(std::pair<std::string, size_t>("process_rss",
-                                                   mapped));
 #if 0
         size_t allocated = JemallocStats::getJemallocAllocated();
         size_t active = JemallocStats::getJemallocActive();
