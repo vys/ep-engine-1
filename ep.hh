@@ -928,7 +928,7 @@ private:
     Dispatcher                 **roDispatcher;
     Dispatcher                 *nonIODispatcher;
     Flusher                    **flusher;
-    AtomicQueue<FlushEntry >    *toFlush;
+    AtomicList<FlushEntry >    *toFlush;
     InvalidItemDbPager         *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;

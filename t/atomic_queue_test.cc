@@ -10,7 +10,7 @@
 struct thread_args {
     SyncObject mutex;
     SyncObject gate;
-    AtomicQueue<int> queue;
+    AtomicList<int> list;
     int counter;
 };
 
@@ -18,7 +18,7 @@ extern "C" {
 static void *launch_consumer_thread(void *arg) {
     struct thread_args *args = static_cast<struct thread_args *>(arg);
     int count(0);
-    std::queue<int> outQueue;
+    std::list<int> outList;
     LockHolder lh(args->mutex);
     LockHolder lhg(args->gate);
     args->counter++;
@@ -28,16 +28,16 @@ static void *launch_consumer_thread(void *arg) {
     lh.unlock();
 
     while(count < NUM_THREADS * NUM_ITEMS) {
-        args->queue.size();
-        args->queue.getAll(outQueue);
-        while (!outQueue.empty()) {
+        args->list.size();
+        args->list.getAll(outList);
+        while (!outList.empty()) {
             count++;
-            outQueue.pop();
+            outList.pop_front();
         }
     }
     sleep(1);
-    assert(args->queue.empty());
-    assert(outQueue.empty());
+    assert(args->list.empty());
+    assert(outList.empty());
     return NULL;
 }
 
@@ -52,7 +52,7 @@ static void *launch_test_thread(void *arg) {
     args->mutex.wait();
     lh.unlock();
     for (i = 0; i < NUM_ITEMS; ++i) {
-        args->queue.push(i);
+        args->list.push(i);
     }
 
     return NULL;
@@ -96,5 +96,5 @@ int main() {
 
     rc = pthread_join(consumer, NULL);
     assert(rc == 0);
-    assert(args.queue.empty());
+    assert(args.list.empty());
 }

@@ -3,7 +3,7 @@
 #define ATOMIC_HH
 
 #include <pthread.h>
-#include <queue>
+#include <list>
 #include <sched.h>
 #include <errno.h>
 #include <stdio.h>
@@ -416,133 +416,137 @@ private:
 };
 
 /**
- * Efficient approximate-FIFO queue optimize for concurrent writers.
+ * Efficient approximate-FIFO list optimize for concurrent writers.
+ *
+ * Multiple-producer threads, single consumer-thread.
+ * 
+ * Maintains a per-producer-thread thread-local list, push() in each thread adds to local thread list.
+ * There is no pop(). Consumer thread can reap the whole list atomically.
+ * 
  */
 template <typename T>
-class AtomicQueue {
+class AtomicList {
 public:
-    AtomicQueue() : counter(0), numItems(0) {}
+    AtomicList() : counter(0), numItems(0) {}
 
-    ~AtomicQueue() {
+    ~AtomicList() {
         size_t i;
         for (i = 0; i < counter; ++i) {
-            delete queues[i];
+            delete lists[i];
         }
     }
 
     /**
-     * Place an item in the queue.
+     * Place an item in the list.
      */
     void push(T value) {
-        std::queue<T> *q = swapQueue(); // steal our queue
-        q->push(value);
+        std::list<T> *l = swapList(); // steal our list
+        l->push_back(value);
         ++numItems;
-        q = swapQueue(q);
+        l = swapList(l);
     }
 
-    void pushQueue(std::queue<T> &inQueue) {
-        std::queue<T> *q = swapQueue(); // steal our queue
-        numItems.incr(inQueue.size());
-        while (!inQueue.empty()) {
-            q->push(inQueue.front());
-            inQueue.pop();
+    void pushList(std::list<T> &inList) {
+        std::list<T> *l = swapList(); // steal our list
+        numItems.incr(inList.size());
+        while (!inList.empty()) {
+            l->push_back(inList.front());
+            inList.pop_front();
         }
-        q = swapQueue(q);
+        l = swapList(l);
     }
 
     /**
-     * Grab all items from this queue an place them into the provided
-     * output queue.
+     * Grab all items from this list an place them into the provided
+     * output list.
      *
-     * @param outQueue a destination queue to fill
+     * @param outList a destination list to fill
      */
-    void getAll(std::queue<T> &outQueue) {
-        std::queue<T> *q(swapQueue()); // Grab my own queue
-        std::queue<T> *newQueue(NULL);
+    void getAll(std::list<T> &outList) {
+        std::list<T> *l(swapList()); // Grab my own list
+        std::list<T> *newList(NULL);
         int count(0);
 
         // Will start empty unless this thread is adding stuff
-        while (!q->empty()) {
-            outQueue.push(q->front());
-            q->pop();
-            ++count;
+        if (!l->empty()) {
+            count += l->size();
+            outList.splice(outList.end(), *l);
         }
 
         size_t c(counter);
         for (size_t i = 0; i < c; ++i) {
             // Swap with another thread
-            newQueue = queues[i].swapIfNot(NULL, q);
-            // Empty the queue
-            if (newQueue != NULL) {
-                q = newQueue;
-                while (!q->empty()) {
-                    outQueue.push(q->front());
-                    q->pop();
-                    ++count;
+            newList = lists[i].swapIfNot(NULL, l);
+            // Empty the list
+            if (newList != NULL) {
+                l = newList;
+                if (!l->empty()) {
+                    count += l->size();
+                    outList.splice(outList.end(), *l);
                 }
             }
         }
 
-        q = swapQueue(q);
+        l = swapList(l);
         numItems -= count;
     }
 
     /**
-     * Pop all the items from this queue and put them into the output vector instance.
+     * Pop all the items from this list and put them into the output vector instance.
      *
      * @param outVector a destination vector to fill
      */
     void toArray(std::vector<T> &outVector) {
-        std::queue<T> q;
+        std::list<T> q;
         getAll(q);
         while (!q.empty()) {
             outVector.push_back(q.front());
-            q.pop();
+            q.pop_front();
         }
     }
 
     /**
-     * Get the number of queues internally maintained.
+     * Get the number of lists internally maintained.
      */
-    size_t getNumQueues() const {
+    size_t getNumLists() const {
         return counter;
     }
 
     /**
-     * True if this queue is empty.
+     * True if this list is empty.
      */
     bool empty() const {
         return size() == 0;
     }
 
     /**
-     * Return the number of queued items.
+     * Return the number of listd items.
      */
     size_t size() const {
         return numItems;
     }
 private:
-    AtomicPtr<std::queue<T> > *initialize() {
-        std::queue<T> *q = new std::queue<T>;
+    AtomicPtr<std::list<T> > *initialize() {
+        std::list<T> *l = new std::list<T>;
         size_t i(counter++);
-        queues[i] = q;
-        threadQueue = &queues[i];
-        return &queues[i];
+        lists[i] = l;
+        threadList = &lists[i];
+        return &lists[i];
     }
 
-    std::queue<T> *swapQueue(std::queue<T> *newQueue = NULL) {
-        AtomicPtr<std::queue<T> > *qPtr(threadQueue);
-        if (qPtr == NULL) {
-            qPtr = initialize();
+    std::list<T> *swapList(std::list<T> *newList = NULL) {
+        AtomicPtr<std::list<T> > *lPtr(threadList);
+        if (lPtr == NULL) {
+            lPtr = initialize();
         }
-        return qPtr->swap(newQueue);
+        return lPtr->swap(newList);
     }
 
-    ThreadLocalPtr<AtomicPtr<std::queue<T> > > threadQueue;
-    AtomicPtr<std::queue<T> > queues[MAX_THREADS];
-    Atomic<size_t> counter;
-    Atomic<size_t> numItems;
-    DISALLOW_COPY_AND_ASSIGN(AtomicQueue);
+    ThreadLocalPtr<AtomicPtr<std::list<T> > > threadList;   // This thread's local list
+    AtomicPtr<std::list<T> > lists[MAX_THREADS];            // Collection of lists across all the threads.
+    Atomic<size_t> counter;                                 // number of lists
+    Atomic<size_t> numItems;                                // Total items held by this AtomicList
+    DISALLOW_COPY_AND_ASSIGN(AtomicList);
 };
 
 #endif // ATOMIC_HH

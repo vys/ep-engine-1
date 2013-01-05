@@ -855,7 +855,7 @@ private:
     size_t nextTapNoop;
     pthread_t notifyThreadId;
     bool startedEngineThreads;
-    AtomicQueue<QueuedItem> pendingTapNotifications;
+    AtomicList<QueuedItem> pendingTapNotifications;
     volatile bool shutdown;
     GET_SERVER_API getServerApiFunc;
     union {

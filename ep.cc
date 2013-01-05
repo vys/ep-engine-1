@@ -370,7 +370,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     flusher = new Flusher *[numKVStores];
     tctx = new TransactionContext *[numKVStores];
     storageProperties = new StorageProperties *[numKVStores];
-    toFlush = new AtomicQueue<FlushEntry> [numKVStores];
+    toFlush = new AtomicList<FlushEntry> [numKVStores];
 
     KVStoreMapper::createKVMapper(numKVStores, stats.kvstoreMapVbuckets);
 
@@ -2502,7 +2502,7 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
     toFlush[kvid].push(fe);
 }
 
-std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) {
+std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) { // Change vector to list and replace toArray with getAll
     std::vector<FlushEntry> *flushing = new std::vector<FlushEntry>();
     toFlush[kvid].toArray(*flushing);
     return flushing;
