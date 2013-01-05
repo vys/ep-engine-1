@@ -34,7 +34,6 @@
 #include "eviction.hh"
 #include "crc32.hh"
 
-size_t GetSelfRSS(); 
 
 static void assembleSyncResponse(std::stringstream &resp,
                                  SyncListener *syncListener,
@@ -1221,7 +1220,6 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
         return ENGINE_FAILED;
     }
 
-    GetSelfRSS();
     TapProducer::bgMaxPending = configuration.getTapBgMaxPending();
     TapProducer::backoffSleepTime = (double)configuration.getTapBackoffPeriod();
     TapProducer::ackWindowSize = (uint32_t)configuration.getTapAckWindowSize();

@@ -7,7 +7,7 @@
 #include <sys/stat.h>
 #include "jemalloc_stats.hh"
 #include "locks.hh"
-
+/*
 #if defined __APPLE__ && defined __MACH__
 #include <mach/task.h>
 #include <mach/mach_init.h>
@@ -66,12 +66,13 @@ size_t GetSelfRSS() {
     return found ? atoll(&buf[i]) * 4096 : 0;
 #endif
 }
+*/
 
+#if 0
 size_t JemallocStats::getJemallocMapped() {
     return GetSelfRSS();
 
 }
-#if 0
     size_t param = -1;
     size_t sz_am = sizeof(param);
     uint64_t epoch = 1;

@@ -20,9 +20,9 @@ public:
     EvictItem(StoredValue *v, uint16_t vb) : key(v->getKey()), vbid(vb) {}
 
     EvictItem() : key(""), vbid(0) {}
-    
+
     ~EvictItem() {}
-    
+
     void increaseCurrentSize(EPStats &st) {
         size_t by = sizeof(EvictItem) + key.size();
         st.evictionStats.memSize.incr(by);
@@ -33,12 +33,12 @@ public:
         st.evictionStats.memSize.decr(by);
     }
 
-    std::string const getKey() { 
-        return key; 
+    std::string const getKey() {
+        return key;
     }
-    
-    uint16_t vbucketId() const { 
-        return vbid; 
+
+    uint16_t vbucketId() const {
+        return vbid;
     }
 
 protected:
@@ -48,7 +48,7 @@ protected:
 
 class EvictionPolicy {
 public:
-    EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, 
+    EvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job,
                    bool inlineEviction) :
                    backgroundJob(job), supportsInlineEviction(inlineEviction),
                    store(s), stats(st), age(0) {}
@@ -67,7 +67,7 @@ public:
 
     bool evictItemByAge(time_t age, StoredValue *v, RCPtr<VBucket> vb);
 
-    // Following set of functions are needed only by policies that need a 
+    // Following set of functions are needed only by policies that need a
     // background job to build their data structures.
     virtual void setSize(size_t val) = 0;
     virtual void initRebuild() = 0;
@@ -82,7 +82,7 @@ public:
         return true;
     }
     bool backgroundJob;
-    
+
     bool supportsInlineEviction;
 
 protected:
@@ -203,14 +203,14 @@ public:
         }
     }
 
-    void setSize(size_t val) { 
+    void setSize(size_t val) {
         if (maxSize != val) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                              "Eviction: Setting max entries to %llu", maxSize);
         }
-        maxSize = val; 
+        maxSize = val;
     }
-    
+
     void initRebuild();
 
     bool addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket);
@@ -374,7 +374,7 @@ private:
     time_t lastRun;
 };
 
-/* 
+/*
  * Implementation of a simple policy that does FIFO based eviction.
  * It walks the hash table and uses the first 'n' elements for eviction.
  */
@@ -392,7 +392,7 @@ class RandomPolicy : public EvictionPolicy {
 
     public:
         RandomList() : head(new RandomNode) {}
-        
+
         ~RandomList() {
             while (head != NULL) {
                 RandomNode *next = head->next;
@@ -400,7 +400,7 @@ class RandomPolicy : public EvictionPolicy {
                 head = next;
             }
         }
-    
+
         class RandomListIterator {
         public:
             RandomListIterator(RandomNode *node = NULL) : _node(node) {}
@@ -508,7 +508,7 @@ public:
     std::string description() const { return std::string("random"); }
 
 private:
-    
+
     void clearTemplist() {
         if (templist) {
             EvictItem *node;
@@ -542,7 +542,7 @@ private:
 class BGEvictionPolicy : public EvictionPolicy {
 public:
     BGEvictionPolicy(EventuallyPersistentStore *s, EPStats &st, bool job) :
-                     EvictionPolicy(s, st, job, false), shouldRun(true), 
+                     EvictionPolicy(s, st, job, false), shouldRun(true),
                      ejected(0), startTime(0), endTime(0) {}
 
     ~BGEvictionPolicy() {}
@@ -562,7 +562,7 @@ public:
                 ++stats.numFailedEjects;
                 return false;
             }
-            // Check if the key with its CAS value exists in the open or closed referenced  
+            // Check if the key with its CAS value exists in the open or closed referenced
             //checkpoints.
             bool foundInCheckpoints =
                 currentBucket->checkpointManager.isKeyResidentInCheckpoints(v->getKey(),
@@ -578,8 +578,8 @@ public:
     }
 
     bool storeEvictItem() {
-        // Background eviction does not stop till it has completed the hash walk 
-        return true; 
+        // Background eviction does not stop till it has completed the hash walk
+        return true;
     }
 
     void completeRebuild() {
@@ -635,7 +635,7 @@ public:
         } else if (desc == "bgeviction") {
             p = new BGEvictionPolicy(s, st, true);
         } else {
-            getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Invalid policy name"); 
+            getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Invalid policy name");
         }
         return p;
     }
@@ -643,7 +643,7 @@ public:
 
 class EvictionManager {
 public:
-    
+
     static EvictionManager *getInstance() {
         return managerInstance;
     }
@@ -662,7 +662,7 @@ public:
     ~EvictionManager() {
         delete evpolicy;
     }
-   
+
     bool setPolicy(const char *name) {
         if (policies.find(name) != policies.end()) {
             policyName = name;
@@ -769,32 +769,39 @@ public:
     }
 
 private:
-    uint32_t maxSize; // Total number of entries for eviction
-    bool pauseJob;
+    static EvictionManager *managerInstance;
+    static Atomic<size_t> minBlobSize;
+
     EventuallyPersistentStore *store;
     EPStats &stats;
+
     std::string policyName;
+    uint32_t maxSize; // Total number of entries for eviction
     EvictionPolicy* evpolicy;
-    std::set<std::string> policies;
+
+    bool pauseJob;
     time_t pruneAge;
-    Mutex evictionLock;
     Atomic<size_t> evictionQuantumSize;
     Atomic<size_t> evictionQuantumMaxCount;
+    uint32_t evictionQuietWindow;
     size_t headroom;
     bool disableInlineEviction;
-    static Atomic<size_t> minBlobSize;
-    static EvictionManager *managerInstance;
-    Atomic<bool> stopEvict;
-    uint32_t evictionQuietWindow;
-    uint32_t lastEvicted;
 
-    EvictionManager(EventuallyPersistentStore *s, EPStats &st, std::string &p, size_t hr, bool die) :
-        maxSize(MAX_EVICTION_ENTRIES),
-        pauseJob(false), store(s), stats(st), policyName(p),
+    Atomic<bool> pauseEvict;
+
+    Mutex evictionLock; // below variables are mutated only under this mutex.
+    uint32_t lastEvictTime;
+    size_t lastRSSTarget;
+
+    std::set<std::string> policies;
+
+    EvictionManager(EventuallyPersistentStore *s, EPStats &st, std::string &policy, size_t headRoom, bool die) :
+        store(s), stats(st), policyName(policy), maxSize(MAX_EVICTION_ENTRIES),
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
-        pruneAge(0), evictionQuantumSize(10485760), evictionQuantumMaxCount(10),
-        headroom(hr), disableInlineEviction(die), stopEvict(false),
-        evictionQuietWindow(120), lastEvicted(ep_current_time()) {
+        pauseJob(false),
+        pruneAge(0), evictionQuantumSize(10485760), evictionQuantumMaxCount(10), evictionQuietWindow(120),
+        headroom(headRoom), disableInlineEviction(die), pauseEvict(false),
+        lastEvictTime(0), lastRSSTarget(0) {
         policies.insert("lru");
         policies.insert("random");
         policies.insert("bgeviction");

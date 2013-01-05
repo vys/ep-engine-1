@@ -1,4 +1,5 @@
-#include <eviction.hh>
+#include "eviction.hh"
+#include "rss.hh"
 
 double LRUPolicy::rebuildPercent = 0.5;
 double LRUPolicy::memThresholdPercent = 0.5;
@@ -38,49 +39,68 @@ EvictionPolicy *EvictionManager::evictionBGJob(void) {
     }
 }
 
-// Evict keys in quanta till current allocated memory reaches the headroom mark
-// For all kinds of throttle and op-fails, use this function as the first check to
-// ensure eviction takes place when memory is above the headroom mark
+/**
+ * Checks if process RSS is above RSS threshold and if so, tries to evict
+ * keys to bring the RSS down.
+ *
+ * This function should be called by all frontend threads before any operation
+ * to decide if it should let the operation proceed or fail temporarily.
+ *
+ * Returns: true - caller can proceed with current operation as memory is within limit.
+ *          false - caller should not proceed with current operation as we are temporarily out of memory.
+ */
 bool EvictionManager::evictHeadroom()
 {
-    bool queueEmpty = false;
-    size_t total = 0;
-    size_t attempts = 0;
-    size_t mem = stats.maxDataSize - headroom;
-    size_t allocatedMemory;
+    size_t RSSThreshold = stats.maxDataSize - headroom;
+    size_t currentRSS = GetSelfRSS();
 
-    // Evict only if we are above headroom
-    if ((allocatedMemory = StoredValue::getAllocatedMemory(stats)) <= mem) {
+    if (currentRSS < RSSThreshold) {
         return true;
+    }
+
+    if (disableInlineEviction || !evpolicy->supportsInlineEviction) {
+        return allowOps(currentRSS);
     }
 
     size_t quantumSize = getEvictionQuantumSize();
     size_t quantumCount = getEvictionQuantumMaxCount();
 
-    // If eviction is disabled globally or if the policy doesn't support inline
-    // eviction, return a bool to indicate whether ops are allowed.
-    if (disableInlineEviction || !evpolicy->supportsInlineEviction) {
-        return allowOps(allocatedMemory);
-    }
+
 
     // When the allocated memory is over maxSize less a quantum padding, we return false
     // to wait till the allocator releases memory to the system and RSS comes down.
-    if (stopEvict && ep_current_time() < (lastEvicted + getEvictionQuietWindow()) &&
-        allocatedMemory >= (stats.maxDataSize - (quantumCount * quantumSize / 2))) {
-        stats.evictionStats.failedTotal.evictionStopped++;
-        return false;
-    }
+    do {
+        if (pauseEvict) {
+            if (ep_current_time() > (lastEvictTime + getEvictionQuietWindow())) {
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "pauseEvict timed out. lastEvictTime=%d", lastEvictTime, getEvictionQuietWindow());
+                continue;
+            }
+            if (currentRSS < lastRSSTarget) {
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "pauseEvict can be reset. currentRSS=%d < lastRSSTarget=%d", currentRSS, lastRSSTarget);
+                continue;
+            }
+            stats.evictionStats.failedTotal.evictionStopped++;
+            getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "pauseEvict=true. currentRSS=%d > lastRSSTarget=%d. lastEvictTime=%d. Denying request", currentRSS, lastRSSTarget, lastEvictTime);
+            return false;
+        }
+    } while (0); // Using do-while trickery to be able to use continue inside if-condition above.
 
     // Attempt eviction only when the lock is available, otherwise return immediately
     bool lock;
     LockHolder lhe(evictionLock, &lock);
     if (!lock) {
-        return allowOps(allocatedMemory);
+        return allowOps(currentRSS);
     }
 
-    stopEvict = false;
+    getLogger()->log(EXTENSION_LOG_INFO, NULL, "Resetting pauseEvict");
+    pauseEvict = false;
 
-    // Using do-while in place of while eliminates two calls of getAllocatedMemory
+    bool queueEmpty = false;
+    size_t total = 0;
+    size_t attempts = 0;
+
+    lastRSSTarget = currentRSS - (quantumCount * quantumSize / 2);
+
     do {
         size_t cur = 0;
 
@@ -131,11 +151,12 @@ bool EvictionManager::evictHeadroom()
         }
 
         total += cur;
-    } while (!queueEmpty && attempts++ < quantumCount && (allocatedMemory = StoredValue::getAllocatedMemory(stats)) > mem);
+        currentRSS = GetSelfRSS();
+    } while (!queueEmpty && attempts++ < quantumCount && currentRSS > RSSThreshold);
 
-    if (allocatedMemory > mem) {
+    if (currentRSS > RSSThreshold) {
         if (queueEmpty) {
-            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty list, ejection failed. Evicted %uB in an attempt to get allocated memory to %uB.", total, mem);
+            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty list, ejection failed. Evicted %uB in an attempt to get allocated memory to %uB.", total, RSSThreshold);
             stats.evictionStats.numEmptyQueue++;
         } else { // attempts == quantumCount
             getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty list, ejection failed. Quantum maximum count reached, evicted %uB.", total);
@@ -143,11 +164,11 @@ bool EvictionManager::evictHeadroom()
         }
     }
 
-    if (!allowOps(allocatedMemory) && attempts >= quantumCount) {
-        stopEvict = true;
-        lastEvicted = ep_current_time();
+    if (!allowOps(currentRSS) && attempts >= quantumCount) {
+        pauseEvict = true;
+        lastEvictTime = ep_current_time();
     }
-    return allowOps(allocatedMemory);
+    return allowOps(currentRSS);
 }
 
 // Evict key if it is older than the timestamp
