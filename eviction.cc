@@ -72,15 +72,15 @@ bool EvictionManager::evictHeadroom()
     do {
         if (pauseEvict) {
             if (ep_current_time() > (lastEvictTime + getEvictionQuietWindow())) {
-                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "pauseEvict timed out. lastEvictTime=%uz", lastEvictTime, getEvictionQuietWindow());
+                getLogger()->log(EXTENSION_LOG_INFO, NULL, "pauseEvict timed out. lastEvictTime=%zu", lastEvictTime, getEvictionQuietWindow());
                 continue;
             }
             if (currentRSS < lastRSSTarget) {
-                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "pauseEvict can be reset. currentRSS=%uz < lastRSSTarget=%uz", currentRSS, lastRSSTarget);
+                getLogger()->log(EXTENSION_LOG_INFO, NULL, "pauseEvict can be reset. currentRSS=%zu < lastRSSTarget=%zu", currentRSS, lastRSSTarget);
                 continue;
             }
             stats.evictionStats.failedTotal.evictionStopped++;
-            getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "pauseEvict=true. currentRSS=%uz > lastRSSTarget=%uz. lastEvictTime=%uz. Denying request", currentRSS, lastRSSTarget, lastEvictTime);
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "pauseEvict=true. currentRSS=%zu > lastRSSTarget=%zu. lastEvictTime=%zu. Denying request", currentRSS, lastRSSTarget, lastEvictTime);
             return false;
         }
     } while (0); // Using do-while trickery to be able to use continue inside if-condition above.
@@ -89,10 +89,11 @@ bool EvictionManager::evictHeadroom()
     bool lock;
     LockHolder lhe(evictionLock, &lock);
     if (!lock) {
+        getLogger()->log(EXTENSION_LOG_INFO, NULL, "Unable to get eviction lock, returning");
         return allowOps(currentRSS);
     }
 
-    getLogger()->log(EXTENSION_LOG_INFO, NULL, "Resetting pauseEvict");
+    getLogger()->log(EXTENSION_LOG_INFO, NULL, "Got lock, Resetting pauseEvict");
     pauseEvict = false;
 
     bool queueEmpty = false;

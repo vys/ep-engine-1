@@ -206,8 +206,7 @@ public:
 
     void setSize(size_t val) {
         if (maxSize != val) {
-            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                             "Eviction: Setting max entries to %llu", maxSize);
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: Setting max entries to %zu", maxSize);
         }
         maxSize = val;
     }
@@ -220,9 +219,10 @@ public:
 
     void completeRebuild();
 
-    EvictItem *evict(void) {
+    EvictItem* evict(void) {
         LRUItem *ent = it++;
         if (ent == NULL) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: could not get item from current list");
             if (templist != NULL) {
                 bool lock;
                 LockHolder lh(swapLock, &lock);
@@ -240,9 +240,11 @@ public:
                     lh.unlock();
                 }
                 if ((ent = it++) == NULL) {
+                    getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: just swapped eviction list, but got no item from this new list!!");
                     return NULL;
                 }
             } else {
+                getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: could not get item from primary list, and secondary list is also empty!");
                 return NULL;
             }
         }
@@ -590,7 +592,7 @@ public:
         timestats.endTime = endTime;
     }
 
-    EvictItem *evict() {
+    EvictItem* evict() {
         // No evictions in the front-end op
         return NULL;
     }
