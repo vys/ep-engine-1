@@ -55,6 +55,8 @@ public:
     Atomic<uint32_t>        numTotalKeysEvicted; // Total evictions so far
     Atomic<uint32_t>        numKeysEvicted;      // Evictions in this run
     Atomic<uint32_t>        numEmptyQueue;
+    Atomic<uint32_t>        numActiveListItems;
+    Atomic<uint32_t>        numInactiveListItems;
     Atomic<uint32_t>        numMaxQuanta;
     Atomic<uint32_t>        frontendSwaps;
     Atomic<uint32_t>        backgroundSwaps;
@@ -78,6 +80,8 @@ private:
         numEmptyQueue = 0;
         numMaxQuanta = 0;
         numKeysEvicted = 0;
+        numActiveListItems = 0;
+        numInactiveListItems = 0;
         frontendSwaps = 0;
         backgroundSwaps = 0;
         failedTotal.reset();

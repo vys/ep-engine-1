@@ -18,65 +18,6 @@ public:
 
 template <typename T, typename Compare = less<T> >
 class FixedList {
-private:
-    void clear() {
-        delete [] data;
-        data = NULL;
-    }
-
-    void swap(int i, int j) {
-        T *tmp = data[i];
-        data[i] = data[j];
-        data[j] = tmp;
-    }
-
-    void siftDown(int p, int s) {
-        int l;
-        while ((l = hleft(p)) < s) {
-            int c = p;
-            if (comparator(*data[c], *data[l]) < 0) {
-                c = l;
-            }
-            l = hright(p);
-            if (l < s && comparator(*data[c], *data[l]) < 0) {
-                c = l;
-            }
-            if (c == p) {
-                return;
-            } else {
-                swap(c, p);
-                p = c;
-            }
-        }
-    }
-
-    void siftUp(int p) {
-        while (p != 0) {
-            int parent = hparent(p);
-            if (comparator(*data[p], *data[parent]) > 0) {
-                swap(p, parent);
-            } else {
-                return;
-            }
-            p = parent;
-        }
-    }
-
-    void sortHeapToArray() {
-        int s = currentSize;
-        while (s > 1) {
-            swap(s - 1, 0);
-            s--;
-            siftDown(0, s);
-        }
-    }
-
-    size_t      currentSize;
-    size_t      maxSize;
-    Compare     comparator;
-    T           **data;
-    bool        built;
-
 public:
     class FixedListIterator {
     public:
@@ -142,6 +83,14 @@ public:
         currentSize = 0;
         data = new T*[maxSize + 1]; // the last one is potentially a tail (when array is full)
         built = false;
+        fresh = false;
+    }
+
+    // Reset values without reallocating array
+    void reset() {
+        currentSize = 0;
+        built = false;
+        fresh = false;
     }
 
     /**
@@ -164,6 +113,7 @@ public:
         sortHeapToArray();
         data[currentSize] = NULL;
         built = true;
+        fresh = true;
     }
 
     size_t size() {
@@ -242,6 +192,14 @@ public:
         return built;
     }
 
+    bool isFresh() {
+        return fresh;
+    }
+
+    void setFresh(bool to = true) {
+        fresh = to;
+    }
+
     T* first() {
         if (currentSize == 0 || !built) {
             return NULL;
@@ -269,6 +227,66 @@ public:
     T** getArray() {
         return data;
     }
+
+private:
+    void clear() {
+        delete [] data;
+        data = NULL;
+    }
+
+    void swap(int i, int j) {
+        T *tmp = data[i];
+        data[i] = data[j];
+        data[j] = tmp;
+    }
+
+    void siftDown(int p, int s) {
+        int l;
+        while ((l = hleft(p)) < s) {
+            int c = p;
+            if (comparator(*data[c], *data[l]) < 0) {
+                c = l;
+            }
+            l = hright(p);
+            if (l < s && comparator(*data[c], *data[l]) < 0) {
+                c = l;
+            }
+            if (c == p) {
+                return;
+            } else {
+                swap(c, p);
+                p = c;
+            }
+        }
+    }
+
+    void siftUp(int p) {
+        while (p != 0) {
+            int parent = hparent(p);
+            if (comparator(*data[p], *data[parent]) > 0) {
+                swap(p, parent);
+            } else {
+                return;
+            }
+            p = parent;
+        }
+    }
+
+    void sortHeapToArray() {
+        int s = currentSize;
+        while (s > 1) {
+            swap(s - 1, 0);
+            s--;
+            siftDown(0, s);
+        }
+    }
+
+    size_t      currentSize;
+    size_t      maxSize;
+    Compare     comparator;
+    T           **data;
+    bool        built;
+    bool        fresh;
 };
 
 #endif // FIXED_LIST_HH

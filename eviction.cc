@@ -106,39 +106,34 @@ bool EvictionManager::evictHeadroom()
         size_t cur = 0;
 
         while (cur < quantumSize) {
-            EvictItem *ent = evpolicy->evict();
-            if (ent == NULL) {
+            EvictItem *evictItem = evpolicy->getOneEvictItem();
+            if (evictItem == NULL) {
                 queueEmpty = true;
                 break;
             }
-            std::string k;
-            uint16_t b;
-            k = ent->getKey();
-            b = ent->vbucketId();
+            std::string key = evictItem->getKey();
 
-            RCPtr<VBucket> vb = store->getVBucket(b);
+            RCPtr<VBucket> vb = store->getVBucket(evictItem->vbucketId());
             int bucket_num;
-            LockHolder lh = vb->ht.getLockedBucket(k, &bucket_num);
-            StoredValue *v = vb->ht.unlocked_find(k, bucket_num, false);
+            LockHolder lh = vb->ht.getLockedBucket(key, &bucket_num);
+            StoredValue *v = vb->ht.unlocked_find(key, bucket_num, false);
 
             if (!v) {
-                getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not present.");
                 stats.evictionStats.failedTotal.numKeyNotPresent++;
             } else if (!v->eligibleForEviction()) {
-                getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
                 if (v->isResident() == false) {
                     stats.evictionStats.failedTotal.numAlreadyEvicted++;
                 } else if (v->isClean() == false) {
                     stats.evictionStats.failedTotal.numDirties++;
                 } else if (v->isDeleted() == false) {
-                    // this never occurs
+                    // this shoud never occurs
+                    assert("v is not eligible for eviction but is already deleted!");
                 }
-            } else if (!evpolicy->eligibleForEviction(v, ent)) {
+            } else if (!evpolicy->eligibleForEviction(v, evictItem)) {
                 getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
                 stats.evictionStats.failedTotal.numPolicyIneligible++;
             } else {
-                bool inCheckpoint = vb->checkpointManager.isKeyResidentInCheckpoints(v->getKey(),
-                        v->getCas());
+                bool inCheckpoint = vb->checkpointManager.isKeyResidentInCheckpoints(v->getKey(), v->getCas());
                 if (inCheckpoint) {
                     stats.evictionStats.failedTotal.numInCheckpoints++;
                 } else if (v->ejectValue(stats, vb->ht)) {
@@ -148,7 +143,6 @@ bool EvictionManager::evictHeadroom()
                     stats.evictionStats.numKeysEvicted++;
                 }
             }
-            delete ent;
         }
 
         total += cur;
@@ -157,10 +151,10 @@ bool EvictionManager::evictHeadroom()
 
     if (currentRSS > RSSThreshold) {
         if (queueEmpty) {
-            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty list, ejection failed. Evicted %uB in an attempt to get allocated memory to %uB.", total, RSSThreshold);
+            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty activeList, ejection failed. Evicted %uB in an attempt to get allocated memory to %uB.", total, RSSThreshold);
             stats.evictionStats.numEmptyQueue++;
         } else { // attempts == quantumCount
-            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty list, ejection failed. Quantum maximum count reached, evicted %uB.", total);
+            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: Empty activeList, ejection failed. Quantum maximum count reached, evicted %uB.", total);
             stats.evictionStats.numMaxQuanta++;
         }
     }
@@ -189,14 +183,6 @@ bool EvictionPolicy::evictItemByAge(time_t timestamp, StoredValue *v, RCPtr<VBuc
 void LRUPolicy::initRebuild() {
     stopBuild = !(EvictionManager::getInstance()->enableJob());
     if (!stopBuild) {
-        if (freshStart) {
-            LockHolder lh(swapLock); // it is possible that this was built and the frontend swapped it
-            clearTemplist();
-        } else {
-            assert(templist == NULL);
-        }
-        templist = new FixedList<LRUItem, LRUItemCompare>(maxSize);
-        stats.evictionStats.memSize.incr(templist->memSize());
         startTime = ep_real_time();
     }
 }
@@ -211,15 +197,15 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
         return false;
     }
     LRUItem *item = new LRUItem(v, currentBucket->getId(), t);
-    size_t size = templist->size();
+    size_t size = tempList->size();
     if (size && (size == maxSize) &&
-            (lruItemCompare(*templist->last(), *item) < 0)) {
+            (lruItemCompare(*tempList->last(), *item) < 0)) {
         delete item;
         return false;
     }
     item->increaseCurrentSize(stats);
     stage.push_front(item);
-    // this assumes that three pointers are used per node of list
+    // this assumes that three pointers are used per node of activeList
     stats.evictionStats.memSize.incr(3 * sizeof(int*));
     return true;
 }
@@ -229,7 +215,7 @@ bool LRUPolicy::storeEvictItem() {
     if (stopBuild) {
         return false;
     }
-    std::list<LRUItem*> *l = templist->insert(stage);
+    std::list<LRUItem*> *l = tempList->insert(stage);
     for (std::list<LRUItem*>::iterator iter = l->begin(); iter != l->end(); iter++) {
         LRUItem *item = *iter;
         item->reduceCurrentSize(stats);
@@ -244,34 +230,34 @@ void LRUPolicy::completeRebuild() {
     BlockTimer timer(&timestats.completeHisto);
     stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
-        clearTemplist();
+        clearLRUFixedList(tempList);
         clearStage(true);
     } else {
-        LockHolder lh(swapLock); // the moment templist is built, the front-end could potentially swap it
-        templist->build();
-        curSize = templist->size();
+        tempList->build();
+
+        curSize = tempList->size();
         if (curSize) {
-            oldest = templist->first()->getAttr();
-            newest = templist->last()->getAttr();
+            oldest = tempList->first()->getAttr();
+            newest = tempList->last()->getAttr();
         } else {
             oldest = newest = 0;
         }
         genLruHisto();
+
+        LockHolder lh(swapLock);
+        LRUFixedList* tmp = inactiveList;  
+        inactiveList = tempList;
+        tempList = tmp;
+        count.incr(inactiveList->size());
+        stats.evictionStats.numInactiveListItems = inactiveList->size();
+        lh.unlock();
+        clearLRUFixedList(tempList);
+
         if (*it == NULL || freshStart) {
-            FixedList<LRUItem, LRUItemCompare>::iterator tempit = templist->begin();
-            count.incr(curSize);
-            tempit = it.swap(tempit);
-            stats.evictionStats.backgroundSwaps++;
-            while (tempit != list->end()) {
-                LRUItem *item = tempit++;
-                count--;
-                item->reduceCurrentSize(stats);
-                delete item;
+            bool switched = switchActiveListIter(true);
+            if (switched) {
+                stats.evictionStats.backgroundSwaps++;
             }
-            stats.evictionStats.memSize.decr(list->memSize());
-            delete list;
-            list = templist;
-            templist = NULL;
         }
     }
     assert(stage.size() == 0);
@@ -283,7 +269,7 @@ void LRUPolicy::completeRebuild() {
 void RandomPolicy::initRebuild() {
     stopBuild = !(EvictionManager::getInstance()->enableJob());
     if (!stopBuild) {
-        templist = new RandomList();
+        tempList = new RandomList();
         startTime = ep_real_time();
         stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
     }
@@ -296,7 +282,7 @@ bool RandomPolicy::addEvictItem(StoredValue *v,RCPtr<VBucket> currentBucket) {
     }
     EvictItem *item = new EvictItem(v, currentBucket->getId());
     item->increaseCurrentSize(stats);
-    templist->add(item);
+    tempList->add(item);
     stats.evictionStats.memSize.incr(RandomList::nodeSize());
     size++;
     return true;
@@ -316,7 +302,7 @@ void RandomPolicy::completeRebuild() {
     if (stopBuild) {
         clearTemplist();
     } else {
-        RandomList::iterator tempit = templist->begin();
+        RandomList::iterator tempit = tempList->begin();
         queueSize = size;
         tempit = it.swap(tempit);
         EvictItem *node;
@@ -326,9 +312,9 @@ void RandomPolicy::completeRebuild() {
             delete node;
         }
         stats.evictionStats.memSize.decr(sizeof(RandomList) + RandomList::nodeSize());
-        delete list;
-        list = templist;
-        templist = NULL;
+        delete activeList;
+        activeList = tempList;
+        tempList = NULL;
         size = 0;
     }
     endTime = ep_real_time();

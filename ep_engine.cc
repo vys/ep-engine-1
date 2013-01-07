@@ -3630,9 +3630,8 @@ void LRUPolicy::getStats(const void *cookie, ADD_STAT add_stat) {
     add_casted_stat("lru_rebuild_percent", rebuildPercent, add_stat, cookie);
     add_casted_stat("lru_mem_threshold_percent", memThresholdPercent, add_stat, cookie);
     add_casted_stat("lru_policy_evictable_items", getNumEvictableItems(), add_stat, cookie);
-    add_casted_stat("lru_policy_ev_queue_size", getPrimaryQueueSize(), add_stat, cookie);
-    add_casted_stat("lru_policy_secondary_ev_queue_size", getSecondaryQueueSize(), 
-                    add_stat, cookie);
+    add_casted_stat("lru_num_activelist_items", stats.evictionStats.numActiveListItems, add_stat, cookie);
+    add_casted_stat("lru_num_inactivelist_items", stats.evictionStats.numInactiveListItems, add_stat, cookie);
     add_casted_stat("lru_policy_background_swaps", stats.evictionStats.backgroundSwaps, add_stat, cookie);
     add_casted_stat("lru_policy_frontend_swaps", stats.evictionStats.frontendSwaps, add_stat, cookie);
     timestats.getStats(cookie, add_stat);

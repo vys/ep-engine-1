@@ -57,7 +57,7 @@ public:
     virtual ~EvictionPolicy() {}
 
     // Inline eviction method. Called during front-end operations.
-    virtual EvictItem* evict() = 0;
+    virtual EvictItem* getOneEvictItem() = 0;
 
     virtual std::string description () const = 0;
     virtual void getStats(const void *cookie, ADD_STAT add_stat) = 0;
@@ -149,35 +149,34 @@ class LRUPolicy : public EvictionPolicy {
 public:
     LRUPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz) :
               EvictionPolicy(s, st, job, true), maxSize(sz), curSize(0),
-              list(new FixedList<LRUItem, LRUItemCompare>(maxSize)),
-              templist(NULL),
+              activeList(new LRUFixedList(maxSize)),
+              inactiveList(new LRUFixedList(maxSize)),
+              tempList(new LRUFixedList(maxSize)),
               stopBuild(false),
               count(0),
               freshStart(false),
               oldest(0),
               newest(0),
               lastRun(ep_real_time()) {
-        list->build();
-        it = list->begin();
-        stats.evictionStats.memSize.incr(list->memSize());
-        // this assumes that three pointers are used per node of list
+        activeList->build();
+        it = activeList->begin();
+        stats.evictionStats.memSize.incr(activeList->memSize() + inactiveList->memSize() + tempList->memSize());
+        // this assumes that three pointers are used per node of activeList
         stats.evictionStats.memSize.incr(3 * sizeof(int*));
     }
 
     ~LRUPolicy() {
         clearStage(true);
-        // this assumes that three pointers are used per node of list
+        // this assumes that three pointers are used per node of activeList
         stats.evictionStats.memSize.decr(3 * sizeof(int*));
-        clearTemplist();
-        if (list) {
-            while (it != list->end()) {
-                LRUItem *item = it++;
-                item->reduceCurrentSize(stats);
-                delete item;
-            }
-            stats.evictionStats.memSize.decr(list->memSize());
-            delete list;
-        }
+
+        clearLRUFixedList(activeList);
+        clearLRUFixedList(inactiveList);
+        clearLRUFixedList(tempList);
+        stats.evictionStats.memSize.decr(activeList->memSize() + inactiveList->memSize() + tempList->memSize());
+        delete activeList;
+        delete inactiveList;
+        delete tempList;
     }
 
     LRUItemCompare lruItemCompare;
@@ -186,19 +185,19 @@ public:
         return count.get();
     }
 
-    size_t getPrimaryQueueSize() {
-        // list will never be NULL after the first iteration and doesn't require a lock
-        if (list) {
-            return list->size();
+    size_t getActiveListSize() {
+        // activeList will never be NULL after the first iteration and doesn't require a lock
+        if (activeList) {
+            return activeList->size();
         } else {
             return 0;
         }
     }
 
-    size_t getSecondaryQueueSize() {
-        LockHolder lh(swapLock); // templist access requires a lock
-        if (templist) {
-            return templist->size();
+    size_t getInactiveListSize() {
+        LockHolder lh(swapLock); // inactiveList access requires a lock
+        if (inactiveList) {
+            return inactiveList->size();
         } else {
             return 0;
         }
@@ -219,38 +218,49 @@ public:
 
     void completeRebuild();
 
-    EvictItem* evict(void) {
-        LRUItem *ent = it++;
-        if (ent == NULL) {
-            getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: could not get item from current list");
-            if (templist != NULL) {
-                bool lock;
-                LockHolder lh(swapLock, &lock);
-                if (lock) {
-                    if (templist != NULL && templist->isBuilt()) { // in case swap happened just before the lock
-                        // no nodes to delete from list, it's empty
-                        count.incr(templist->size());
-                        it.swap(templist->begin());
-                        stats.evictionStats.frontendSwaps++;
-                        stats.evictionStats.memSize.decr(list->memSize());
-                        delete list;
-                        list = templist;
-                        templist = NULL;
-                    }
-                    lh.unlock();
-                }
-                if ((ent = it++) == NULL) {
-                    getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: just swapped eviction list, but got no item from this new list!!");
+    bool switchActiveListIter(bool forceLock = false) {
+        bool lock = false;
+        LockHolder lh(swapLock, forceLock ? NULL : &lock);
+        if (forceLock || lock) {
+            if (inactiveList->isFresh()) {
+                it.swap(inactiveList->begin());
+
+                LRUFixedList *tmp = activeList;
+                activeList = inactiveList;
+                inactiveList = tmp;
+
+                inactiveList->setFresh(false);
+
+                stats.evictionStats.numActiveListItems = activeList->size();
+                stats.evictionStats.numInactiveListItems = 0;
+
+                return true;
+            }
+        }
+        return false;
+    }
+
+    EvictItem* getOneEvictItem() {
+        LRUItem *evictItem = it++;
+        if (evictItem == NULL) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: could not get item from activeList");
+            if (switchActiveListIter()) {
+                stats.evictionStats.frontendSwaps++;
+                evictItem = it++;
+                if (evictItem == NULL) {
+                    getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: just switched activeList, but got no item from new activeList as well!!");
                     return NULL;
                 }
             } else {
-                getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: could not get item from primary list, and secondary list is also empty!");
+                getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: switchActiveList failed!");
                 return NULL;
             }
         }
+
         count--;
-        ent->reduceCurrentSize(stats);
-        return static_cast<EvictItem *>(ent);
+        stats.evictionStats.numActiveListItems--;
+        evictItem->reduceCurrentSize(stats);
+        return static_cast<EvictItem *>(evictItem);
     }
 
     bool evictionJobNeeded(time_t lruSleepTime) {
@@ -268,14 +278,17 @@ public:
             lastRun = currTime;
             return true;
         }
-        size_t target = (size_t)(rebuildPercent * curSize);
+
         if (evictAge() != 0) {
             freshStart = true;
             return true;
         }
+
+        size_t target = (size_t)(rebuildPercent * curSize);
         if (curSize == 0 || count <= target) {
-            // Build only if templist is empty
-            return (templist == NULL);
+            // Build only if inactiveList is not fresh
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "evictionJobNeeded: target=%zu, currSize=%zu, inactiveList->isFresh is %d", target, curSize, inactiveList->isFresh() ? 1 : 0);
+            return (!inactiveList->isFresh());
         }
         return false;
     }
@@ -301,6 +314,9 @@ public:
         memThresholdPercent = v;
     }
 
+    typedef FixedList<LRUItem, LRUItemCompare> LRUFixedList;
+    typedef FixedList<LRUItem, LRUItemCompare>::iterator LRUFixedListIter;
+
 private:
 
     // Generate histogram representing distribution of all the keys in the
@@ -311,41 +327,39 @@ private:
         int total = 0;
         // Handle keys that are not accessed since startup. Those keys have
         // the timestamp as 0 and cannot be used with a relative timestamp.
-        if (templist->size() && (*templist->begin())->getAttr() == 0) {
+        if (inactiveList->size() && (*inactiveList->begin())->getAttr() == 0) {
             LRUItem l(1);
-            total = templist->numLessThan(&l);
+            total = inactiveList->numLessThan(&l);
             lruHisto.add(cur, total);
         }
-        int remaining = templist->size() - total;
+        int remaining = inactiveList->size() - total;
         int i = 1;
         total = 0;
         while (total < remaining) {
             time_t t = cur - 2 * i;
             LRUItem l(t);
-            int curtotal = templist->numGreaterThan(&l);
+            int curtotal = inactiveList->numGreaterThan(&l);
             lruHisto.add(2 * i, curtotal - total);
             total = curtotal;
             i++;
         }
     }
 
-    void clearTemplist() {
-        if (templist) {
-            int k = templist->size();
-            LRUItem** array = templist->getArray();
-            for (int i = 0; i < k; i++) {
+    void clearLRUFixedList(LRUFixedList *l) {
+        if (l) {
+            int listSize = l->size();
+            LRUItem** array = l->getArray();
+            for (int i = 0; i < listSize; i++) {
                 LRUItem *item = array[i];
                 item->reduceCurrentSize(stats);
                 delete item;
             }
-            stats.evictionStats.memSize.decr(templist->memSize());
-            delete templist;
-            templist = NULL;
+            l->reset();
         }
     }
 
     void clearStage(bool deleteItems = false) {
-        // this assumes that three pointers are used per node of list
+        // this assumes that three pointers are used per node of activeList
         stats.evictionStats.memSize.decr(stage.size() * 3 * sizeof(int*));
         if (deleteItems) {
             for (std::list<LRUItem*>::iterator iter = stage.begin(); iter != stage.end(); iter++) {
@@ -360,9 +374,10 @@ private:
     size_t maxSize;
     size_t curSize;
     std::list<LRUItem*> stage;
-    FixedList<LRUItem, LRUItemCompare> *list;
-    FixedList<LRUItem, LRUItemCompare>::iterator it;
-    FixedList<LRUItem, LRUItemCompare> *templist;
+    LRUFixedList *activeList;
+    LRUFixedList *inactiveList;
+    LRUFixedListIter it;
+    LRUFixedList *tempList;
     BGTimeStats timestats;
     Histogram<int> lruHisto;
     time_t startTime, endTime;
@@ -459,22 +474,22 @@ public:
     RandomPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz)
         :   EvictionPolicy(s, st, job, true),
             maxSize(sz),
-            list(new RandomList()),
-            it(list->begin()),
+            activeList(new RandomList()),
+            it(activeList->begin()),
             stopBuild(false) {
         stats.evictionStats.memSize.incr(sizeof(RandomList) + RandomList::nodeSize());
     }
 
     ~RandomPolicy() {
         clearTemplist();
-        if (list) {
+        if (activeList) {
             EvictItem *node;
             while ((node = ++it) != NULL) {
                 node->reduceCurrentSize(stats);
                 delete node;
             }
             stats.evictionStats.memSize.decr(queueSize.get() * RandomList::nodeSize());
-            delete list;
+            delete activeList;
         }
     }
 
@@ -490,15 +505,15 @@ public:
 
     void completeRebuild();
 
-    EvictItem *evict() {
-        EvictItem *ent = ++it;
-        if (ent == NULL) {
+    EvictItem *getOneEvictItem() {
+        EvictItem *evictItem = ++it;
+        if (evictItem == NULL) {
             return NULL;
         }
-        ent->reduceCurrentSize(stats);
+        evictItem->reduceCurrentSize(stats);
         stats.evictionStats.memSize.decr(RandomList::nodeSize());
         queueSize--;
-        return ent;
+        return evictItem;
     }
 
     bool evictionJobNeeded(time_t lruSleepTime) {
@@ -513,9 +528,9 @@ public:
 private:
 
     void clearTemplist() {
-        if (templist) {
+        if (tempList) {
             EvictItem *node;
-            RandomList::iterator tempit = templist->begin();
+            RandomList::iterator tempit = tempList->begin();
             int c = 0;
             while ((node = ++tempit) != NULL) {
                 c++;
@@ -524,14 +539,14 @@ private:
                 stats.evictionStats.memSize.decr(RandomList::nodeSize());
             }
             stats.evictionStats.memSize.decr((c+1) * RandomList::nodeSize());
-            delete templist;
-            templist = NULL;
+            delete tempList;
+            tempList = NULL;
         }
     }
 
     size_t maxSize;
-    RandomList *list;
-    RandomList *templist;
+    RandomList *activeList;
+    RandomList *tempList;
     RandomList::iterator it;
     size_t size;
     Atomic<size_t> queueSize;
@@ -592,7 +607,7 @@ public:
         timestats.endTime = endTime;
     }
 
-    EvictItem* evict() {
+    EvictItem* getOneEvictItem() {
         // No evictions in the front-end op
         return NULL;
     }
