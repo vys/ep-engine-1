@@ -286,7 +286,7 @@ public:
         }
 
         size_t target = (size_t)(rebuildPercent * activeList->size());
-        if (!inactiveList->isFresh() || numEvictableItems <= target) {
+        if (!inactiveList->isFresh() && numEvictableItems <= target) {
             getLogger()->log(EXTENSION_LOG_INFO, NULL, "evictionJobNeeded: target=%zu, inactiveList->isFresh is %d", target, inactiveList->isFresh() ? 1 : 0);
             return true;
         }
