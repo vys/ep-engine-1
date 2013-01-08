@@ -228,7 +228,7 @@ void Flusher::completeFlush() {
     doFlush();
     do {
         doFlush();
-    } while (helper->more());
+    } while (helper->more() || store->stats.queue_size > 0);
 }
 
 void Flusher::setupFlushQueues() {

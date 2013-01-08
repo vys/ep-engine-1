@@ -927,7 +927,7 @@ void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t v
                                                    double delay=0) {
     int id = KVStoreMapper::getVBucketToKVId(vb->getId());
     if (vbuckets.setBucketDeletion(vb->getId(), true)) {
-        if (rwUnderlying[id]->getStorageProperties().hasEfficientVBDeletion()) {
+        if (storageProperties[id]->hasEfficientVBDeletion()) {
             shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
                                                                               vb_version,
                                                                               stats));
@@ -1577,6 +1577,9 @@ std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
         if (num_items > 0 ) {
             for (; vb_it != vblist.end(); vb_it++) {
                 RCPtr<VBucket> vb = getVBucket(*vb_it);
+                if (!vb) {
+                    continue;
+                }
                 rwUnderlying[id]->setPersistenceCheckpointId(*vb_it, vb->checkpointManager.getOpenCheckpointId());
             }
 
@@ -2261,7 +2264,9 @@ void EventuallyPersistentStore::warmup(Atomic<bool> &vbStateLoaded, int id) {
     // Hack Alert:: Fix for multiple vbuckets
     if (id == 0) {
         RCPtr<VBucket> vb = getVBucket(0, vbucket_state_active);
-        stats.totalEvictable = vb->ht.getNumItems() - vb->ht.getNumNonResidentItems();
+        if (vb) {
+            stats.totalEvictable = vb->ht.getNumItems() - vb->ht.getNumNonResidentItems();
+        }
     }
 }
 
