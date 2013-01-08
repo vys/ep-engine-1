@@ -260,7 +260,6 @@ public:
 
         numEvictableItems--;
         stats.evictionStats.numActiveListItems--;
-        evictItem->reduceCurrentSize(stats);
         return static_cast<EvictItem *>(evictItem);
     }
 
