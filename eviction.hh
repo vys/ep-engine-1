@@ -148,12 +148,12 @@ public:
 class LRUPolicy : public EvictionPolicy {
 public:
     LRUPolicy(EventuallyPersistentStore *s, EPStats &st, bool job, size_t sz) :
-              EvictionPolicy(s, st, job, true), maxSize(sz), curSize(0),
+              EvictionPolicy(s, st, job, true), maxSize(sz),
               activeList(new LRUFixedList(maxSize)),
               inactiveList(new LRUFixedList(maxSize)),
               tempList(new LRUFixedList(maxSize)),
               stopBuild(false),
-              count(0),
+              numEvictableItems(0),
               freshStart(false),
               oldest(0),
               newest(0),
@@ -182,7 +182,7 @@ public:
     LRUItemCompare lruItemCompare;
 
     size_t getNumEvictableItems() {
-        return count.get();
+        return numEvictableItems.get();
     }
 
     size_t getActiveListSize() {
@@ -231,6 +231,7 @@ public:
 
                 inactiveList->setFresh(false);
 
+                numEvictableItems = activeList->size();
                 stats.evictionStats.numActiveListItems = activeList->size();
                 stats.evictionStats.numInactiveListItems = 0;
 
@@ -257,7 +258,7 @@ public:
             }
         }
 
-        count--;
+        numEvictableItems--;
         stats.evictionStats.numActiveListItems--;
         evictItem->reduceCurrentSize(stats);
         return static_cast<EvictItem *>(evictItem);
@@ -284,11 +285,10 @@ public:
             return true;
         }
 
-        size_t target = (size_t)(rebuildPercent * curSize);
-        if (curSize == 0 || count <= target) {
-            // Build only if inactiveList is not fresh
-            getLogger()->log(EXTENSION_LOG_INFO, NULL, "evictionJobNeeded: target=%zu, currSize=%zu, inactiveList->isFresh is %d", target, curSize, inactiveList->isFresh() ? 1 : 0);
-            return (!inactiveList->isFresh());
+        size_t target = (size_t)(rebuildPercent * activeList->size());
+        if (!inactiveList->isFresh() || numEvictableItems <= target) {
+            getLogger()->log(EXTENSION_LOG_INFO, NULL, "evictionJobNeeded: target=%zu, inactiveList->isFresh is %d", target, inactiveList->isFresh() ? 1 : 0);
+            return true;
         }
         return false;
     }
@@ -372,7 +372,6 @@ private:
     }
 
     size_t maxSize;
-    size_t curSize;
     std::list<LRUItem*> stage;
     LRUFixedList *activeList;
     LRUFixedList *inactiveList;
@@ -382,7 +381,7 @@ private:
     Histogram<int> lruHisto;
     time_t startTime, endTime;
     bool stopBuild;
-    Atomic<size_t> count;
+    Atomic<size_t> numEvictableItems;
     Mutex swapLock;
     bool freshStart;
     time_t oldest;

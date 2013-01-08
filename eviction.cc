@@ -235,20 +235,19 @@ void LRUPolicy::completeRebuild() {
     } else {
         tempList->build();
 
-        curSize = tempList->size();
-        if (curSize) {
+        if (tempList->size()) {
             oldest = tempList->first()->getAttr();
             newest = tempList->last()->getAttr();
         } else {
             oldest = newest = 0;
         }
+
         genLruHisto();
 
         LockHolder lh(swapLock);
         LRUFixedList* tmp = inactiveList;  
         inactiveList = tempList;
         tempList = tmp;
-        count.incr(inactiveList->size());
         stats.evictionStats.numInactiveListItems = inactiveList->size();
         lh.unlock();
         clearLRUFixedList(tempList);
