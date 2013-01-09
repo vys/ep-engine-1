@@ -211,10 +211,11 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
     }
     if (*stageIter == NULL) {
         *stageIter = new LRUItem(item);
-        (*stageIter)->increaseCurrentSize(stats);
     } else {
+        (*stageIter)->reduceCurrentSize(stats);
         **stageIter = item;
     }
+    (*stageIter)->increaseCurrentSize(stats);
     stageIter++;
     return true;
 }
