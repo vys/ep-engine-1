@@ -158,6 +158,22 @@ public:
               oldest(0),
               newest(0),
               lastRun(ep_real_time()) {
+        LRUItem *item;
+        for (size_t i = 0; i < maxSize; i++) {
+            item = new LRUItem(0);
+            activeList->insert(item);
+            item->increaseCurrentSize(stats);
+            item = new LRUItem(0);
+            inactiveList->insert(item);
+            item->increaseCurrentSize(stats);
+            item = new LRUItem(0);
+            tempList->insert(item);
+            item->increaseCurrentSize(stats);
+        }
+        activeList->reset();
+        inactiveList->reset();
+        tempList->reset();
+
         activeList->build();
         it = activeList->begin();
         stats.evictionStats.memSize.incr(activeList->memSize() + inactiveList->memSize() + tempList->memSize());
