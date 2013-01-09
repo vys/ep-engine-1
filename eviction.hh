@@ -346,14 +346,15 @@ private:
 
     void clearLRUFixedList(LRUFixedList *l) {
         if (l) {
-            int listSize = l->size();
+            int listSize = l->getMaxSize();
             LRUItem** array = l->getArray();
-            for (int i = 0; i < listSize; i++) {
+            for (int i = 0; i <= listSize; i++) {
                 LRUItem *item = array[i];
-                item->reduceCurrentSize(stats);
-                delete item;
+                if (item != NULL) {
+                    item->reduceCurrentSize(stats);
+                    delete item;
+                }
             }
-            l->reset();
         }
     }
 
@@ -363,8 +364,10 @@ private:
         if (deleteItems) {
             for (std::list<LRUItem*>::iterator iter = stage.begin(); iter != stage.end(); iter++) {
                 LRUItem *item = *iter;
-                item->reduceCurrentSize(stats);
-                delete item;
+                if (item != NULL) {
+                    item->reduceCurrentSize(stats);
+                    delete item;
+                }
             }
         }
         stage.clear();
@@ -372,6 +375,7 @@ private:
 
     size_t maxSize;
     std::list<LRUItem*> stage;
+    std::list<LRUItem*>::iterator stageIter;
     LRUFixedList *activeList;
     LRUFixedList *inactiveList;
     LRUFixedListIter it;

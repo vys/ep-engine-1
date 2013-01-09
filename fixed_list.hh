@@ -82,42 +82,45 @@ public:
         maxSize = sz;
         currentSize = 0;
         data = new T*[maxSize + 1]; // the last one is potentially a tail (when array is full)
+        memset(data, NULL, sizeof(T*) * (maxSize + 1));
         built = false;
         fresh = false;
     }
 
     // Reset values without reallocating array
     void reset() {
+        data[currentSize] = data[0];
+        data[0] = NULL;
         currentSize = 0;
         built = false;
         fresh = false;
     }
 
     /**
-     * Inserts all items from l and returns a list of items that were either rejected
-     *  or removed from the list
+     * Inserts items from l and leaves behind all items that were either rejected
+     * or removed from the heap till it reaches endIter
+     * Note: It is impossible to have more items in the final reject list than in the
+     * original list. This leaves gaps in the list that are set to NULL.
      */
-    std::list<T*> *insert(std::list<T*> &l) {
-        std::list<T*> *ret = new std::list<T*>;
-        T *dummy;
+    void insert(std::list<T*> &l, typename std::list<T*>::iterator &endIter) {
         typename std::list<T*>::iterator it;
-        for (it = l.begin(); it != l.end(); it++) {
-            if ((dummy = insert(*it)) != NULL) {
-                ret->push_back(dummy);
-            }
+        for (it = l.begin(); it != endIter; it++) {
+            *it = insert(*it);
         }
-        return ret;
     }
 
     void build() {
         sortHeapToArray();
-        data[currentSize] = NULL;
         built = true;
         fresh = true;
     }
 
     size_t size() {
         return currentSize;
+    }
+
+    size_t getMaxSize() {
+        return maxSize;
     }
 
     size_t memSize() {
@@ -178,6 +181,8 @@ public:
         if (currentSize < maxSize) {
             data[currentSize++] = item;
             siftUp(currentSize - 1);
+            ret = data[currentSize];
+            data[currentSize] = NULL;
         } else if (comparator(*data[0], *item) > 0) {
             ret = data[0];
             data[0] = item;

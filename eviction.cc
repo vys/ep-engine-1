@@ -184,6 +184,7 @@ void LRUPolicy::initRebuild() {
     stopBuild = !(EvictionManager::getInstance()->enableJob());
     if (!stopBuild) {
         startTime = ep_real_time();
+        stageIter = stage.begin();
     }
 }
 
@@ -196,17 +197,25 @@ bool LRUPolicy::addEvictItem(StoredValue *v, RCPtr<VBucket> currentBucket) {
     if (!freshStart && t > oldest && t < newest) {
         return false;
     }
-    LRUItem *item = new LRUItem(v, currentBucket->getId(), t);
+    LRUItem item(v, currentBucket->getId(), t);
     size_t size = tempList->size();
     if (size && (size == maxSize) &&
-            (lruItemCompare(*tempList->last(), *item) < 0)) {
-        delete item;
+            (lruItemCompare(*tempList->last(), item) < 0)) {
         return false;
     }
-    item->increaseCurrentSize(stats);
-    stage.push_front(item);
-    // this assumes that three pointers are used per node of activeList
-    stats.evictionStats.memSize.incr(3 * sizeof(int*));
+    if (stageIter == stage.end()) {
+        stage.push_back(NULL);
+        // this assumes that three pointers are used per node of activeList
+        stats.evictionStats.memSize.incr(3 * sizeof(int*));
+        stageIter--;
+    }
+    if (*stageIter == NULL) {
+        *stageIter = new LRUItem(item);
+        (*stageIter)->increaseCurrentSize(stats);
+    } else {
+        **stageIter = item;
+    }
+    stageIter++;
     return true;
 }
 
@@ -215,14 +224,8 @@ bool LRUPolicy::storeEvictItem() {
     if (stopBuild) {
         return false;
     }
-    std::list<LRUItem*> *l = tempList->insert(stage);
-    for (std::list<LRUItem*>::iterator iter = l->begin(); iter != l->end(); iter++) {
-        LRUItem *item = *iter;
-        item->reduceCurrentSize(stats);
-        delete item;
-    }
-    delete l;
-    clearStage();
+    tempList->insert(stage, stageIter);
+    stageIter = stage.begin();
     return true;
 }
 
@@ -230,8 +233,7 @@ void LRUPolicy::completeRebuild() {
     BlockTimer timer(&timestats.completeHisto);
     stopBuild |= !(EvictionManager::getInstance()->enableJob());
     if (stopBuild) {
-        clearLRUFixedList(tempList);
-        clearStage(true);
+        tempList->reset();
     } else {
         tempList->build();
 
@@ -250,7 +252,7 @@ void LRUPolicy::completeRebuild() {
         tempList = tmp;
         stats.evictionStats.numInactiveListItems = inactiveList->size();
         lh.unlock();
-        clearLRUFixedList(tempList);
+        tempList->reset();
 
         if (*it == NULL || freshStart) {
             bool switched = switchActiveListIter(true);
@@ -259,7 +261,6 @@ void LRUPolicy::completeRebuild() {
             }
         }
     }
-    assert(stage.size() == 0);
     endTime = ep_real_time();
     timestats.startTime = startTime;
     timestats.endTime = endTime;
