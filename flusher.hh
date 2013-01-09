@@ -54,7 +54,6 @@ class FlusherHelper {
 public:
     FlusherHelper(int kv, EventuallyPersistentStore *st) :
         kvid(kv), store(st), flushList(NULL), sync() {
-        start();
     }
 
     ~FlusherHelper() {

@@ -469,6 +469,7 @@ class FlushLists {
         }
 
         void push(int kvId, int shardId, FlushEntry &flushEntry) {
+            assert(flushLists != NULL);
             flushLists[kvId*maxShards+shardId].push(flushEntry);
         }
 
@@ -491,6 +492,7 @@ class FlushLists {
         }
 
         size_t size(int kvId, int shardId) {
+            assert(flushLists != NULL);
             return flushLists[kvId*maxShards+shardId].size();
         }
 

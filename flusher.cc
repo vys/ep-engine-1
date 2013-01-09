@@ -138,6 +138,7 @@ void Flusher::schedule_UNLOCKED() {
 void Flusher::start(void) {
     LockHolder lh(taskMutex);
     schedule_UNLOCKED();
+    helper->start();
 }
 
 void Flusher::wake(void) {
