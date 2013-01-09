@@ -72,6 +72,14 @@ def readTap(mc):
         val = data[extlen+keylen:]
     return cmd, opaque, cas, vbucketId, key, ext, val
 
+def encodeVBucketList(vbl):
+    l = list(vbl) # in case it's a generator
+    vals = [struct.pack("!H", len(l))]
+    for v in vbl:
+        vals.append(struct.pack("!H", v))
+    return ''.join(vals)
+
+
 def encodeTAPConnectOpts(opts):
     header = 0
     val = []
@@ -83,6 +91,8 @@ def encodeTAPConnectOpts(opts):
         elif op == memcacheConstants.TAP_FLAG_CHECKPOINT:
             if opts[op][2] >= 0:
                 val.append(struct.pack(">HHQ", opts[op][0], opts[op][1], opts[op][2]))
+        elif op == memcacheConstants.TAP_FLAG_LIST_VBUCKETS:
+            val.append(encodeVBucketList(opts[op]))
         else:
             val.append(opts[op])
     return struct.pack(">I", header), ''.join(val)
@@ -107,7 +117,8 @@ if __name__ == '__main__':
             memcacheConstants.TAP_FLAG_SUPPORT_ACK: '',
             memcacheConstants.TAP_FLAG_REGISTERED_CLIENT: closed_checkpoint_only,
             memcacheConstants.TAP_FLAG_BACKFILL: backfill_age,
-            memcacheConstants.TAP_FLAG_CKSUM: ''
+            memcacheConstants.TAP_FLAG_CKSUM: '',
+            memcacheConstants.TAP_FLAG_LIST_VBUCKETS: (0,)
             })
             mc._sendCmd(memcacheConstants.CMD_TAP_CONNECT, tap_name, val, 0, ext)
             cmd, opaque, cas, vbucketId, key, ext, val = readTap(mc)
