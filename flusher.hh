@@ -42,42 +42,47 @@ private:
 };
 
 /*
- * FlusherHelper class uses a separate thread to do preprocessing of mutations
- * before flusher executes them.
+ * FlusherHelper
+ *
+ * A helper thread to execute beginFlush in parallel to regular flushSome.
+ *
+ * This thread holds a flushList that it prepared.
+ * When it's corresponding flusher takes that list for further processing,
+ * this thread goes and prepares next list in parallel and keeps it ready for next run.  
  */
 class FlusherHelper {
 public:
     FlusherHelper(int kv, EventuallyPersistentStore *st) :
-        kvid(kv), store(st), queue(NULL), sync() {
+        kvid(kv), store(st), flushList(NULL), sync() {
         start();
     }
 
     ~FlusherHelper() {
-        if (queue != NULL) {
+        if (flushList != NULL) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                             "FlusherHelper dying with %d items in the queue\n",
-                             queue->size());
-            delete queue;
+                             "FlusherHelper dying with %d items in the flushList\n",
+                             flushList->size());
+            delete flushList;
         }
         wakeup();
         pthread_join(myId, NULL);
     }
 
-    std::queue<FlushEntry> *getFlushQueue() {
+    std::list<FlushEntry>* getFlushQueue() {
         LockHolder lh(sync);
-        if (!queue) {
+        if (!flushList) {
             sync.notify();
             return NULL;
         }
-        std::queue<FlushEntry> *ret = queue;
-        queue = NULL;
+        std::list<FlushEntry> *ret = flushList;
+        flushList = NULL;
         sync.notify();
         return ret;
     }
 
     bool more() {
         LockHolder lh(sync);
-        return queue != NULL;
+        return flushList != NULL;
     }
 
     void wakeup() {
@@ -93,7 +98,7 @@ private:
     int kvid;
     pthread_t myId;
     EventuallyPersistentStore *store;
-    std::queue<FlushEntry> *queue;
+    std::list<FlushEntry> *flushList;
     SyncObject sync;
 };
 
@@ -106,7 +111,7 @@ public:
     Flusher(EventuallyPersistentStore *st, Dispatcher *d, int i) :
         store(st), _state(initializing), dispatcher(d), flusherId(i),
         flushRv(0), prevFlushRv(0), minSleepTime(0.1),
-        flushQueue(NULL), rejectQueue(NULL), vbStateLoaded(false),
+        flushList(NULL), rejectList(NULL), vbStateLoaded(false),
         forceShutdownReceived(false), last_min_data_age(-1),
         last_queue_age_cap(-1), shouldFlushAll(false) {
             gettimeofday(&waketime, NULL);
@@ -120,11 +125,11 @@ public:
                              stateName(_state));
 
         }
-        if (rejectQueue != NULL) {
+        if (rejectList != NULL) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                              "Flusher being destroyed with %d tasks in the reject queue\n",
-                             rejectQueue->size());
-            delete rejectQueue;
+                             rejectList->size());
+            delete rejectList;
         }
 
         delete helper;
@@ -158,7 +163,7 @@ private:
     bool transition_state(enum flusher_state to);
     int doFlush();
     void setupFlushQueues();
-    void completeFlush();
+    void flushAllPending();
     void schedule_UNLOCKED();
     double computeMinSleepTime();
 
@@ -174,8 +179,8 @@ private:
     int                      flushRv;
     int                      prevFlushRv;
     double                   minSleepTime;
-    std::queue<FlushEntry>   *flushQueue;
-    std::queue<FlushEntry>   *rejectQueue;
+    std::list<FlushEntry>   *flushList;
+    std::list<FlushEntry>   *rejectList;
     rel_time_t               flushStart;
     Atomic<bool>             vbStateLoaded;
     Atomic<bool>             forceShutdownReceived;

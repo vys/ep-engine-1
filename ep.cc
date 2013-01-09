@@ -353,6 +353,18 @@ private:
 
 KVStoreMapper *KVStoreMapper::instance = NULL;
 
+void FlushLists::get(std::list<FlushEntry>& out, int kvId) {
+    std::list<FlushEntry> shardList;
+    int nShards = epStore->getRWUnderlying(kvId)->getNumShards();
+    for (int i = 0; i < nShards; i++) {
+        flushLists[kvId*maxShards+i].getAll(shardList); // This will get all per-thread caches into a single list from the AtomicList specific to this shard.
+        epStore->getRWUnderlying(kvId)->optimizeWrites(shardList); // This will rearrange the elements in shardList in an order that is optimized for writes. Because it is a list::sort internally, it should not involve any copy/ctor/dtors.
+        out.splice(out.end(), shardList); // This should move all elements from shardList to the end of out list, leaving shardList empty for next run.
+    }
+
+}
+
+
 EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine &theEngine,
                                                      KVStore **t,
                                                      bool startVb0,
@@ -370,13 +382,14 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     flusher = new Flusher *[numKVStores];
     tctx = new TransactionContext *[numKVStores];
     storageProperties = new StorageProperties *[numKVStores];
-    toFlush = new AtomicList<FlushEntry> [numKVStores];
 
     KVStoreMapper::createKVMapper(numKVStores, stats.kvstoreMapVbuckets);
 
+    int maxShards = 0;
     int i = 0;
     for (std::map<std::string, KVStoreConfig*>::iterator it = theEngine.kvstoreConfigMap->begin();
             it != theEngine.kvstoreConfigMap->end(); it++, i++) {
+
         rwUnderlying[i] = t[i];
         dispatcher[i] = new Dispatcher(theEngine);
         flusher[i] = new Flusher(this, dispatcher[i], i);
@@ -395,12 +408,17 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
             roDispatcher[i]= dispatcher[i];
         }
 
+        int nshards = rwUnderlying[i]->getNumShards();
+        maxShards = maxShards > nshards ? maxShards : nshards;
+
         getLogger()->log(EXTENSION_LOG_INFO, NULL,
                          "Storage props:  c=%d/r=%d/rw=%d\n",
                          storageProperties[i]->maxConcurrency(),
                          storageProperties[i]->maxReaders(),
                          storageProperties[i]->maxWriters());
     }
+
+    flushLists = new FlushLists(this, numKVStores, maxShards);
 
     nonIODispatcher = new Dispatcher(theEngine);
     invalidItemDbPager = new InvalidItemDbPager(this, stats, engine.getVbDelChunkSize());
@@ -453,7 +471,7 @@ EventuallyPersistentStore::~EventuallyPersistentStore() {
 
     nonIODispatcher->stop(forceShutdown);
 
-    delete []toFlush;
+    delete flushLists;
     delete []flusher;
     delete []dispatcher;
     delete []tctx;
@@ -1555,24 +1573,14 @@ void EventuallyPersistentStore::reset() {
 }
 
 // This works on the premise that the stored value is only freed by flusher
-std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
-    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(id);
+void EventuallyPersistentStore::beginFlush(std::list<FlushEntry> &out, int kvId) {
+    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(kvId);
     std::vector<uint16_t>::iterator vb_it = vblist.begin();
 
-    if (hasItemsForPersistence(id)) {
-        std::vector<FlushEntry> *dbShardQueues;
-        dbShardQueues = new std::vector<FlushEntry>[rwUnderlying[id]->getNumShards()];
-        size_t num_items = 0;
-        size_t shard_id = 0;
+    if (hasItemsForPersistence(kvId)) {
+        flushLists->get(out, kvId);
 
-        std::vector<FlushEntry> *flushing = getFlushQueue(id);
-        std::vector<FlushEntry>::iterator it = flushing->begin();
-        for (; it != flushing->end(); ++it) {
-            const FlushEntry &ent = *it;
-            shard_id = rwUnderlying[id]->getShardId(ent.getKey(), ent.getVBucketId());
-            dbShardQueues[shard_id].push_back(ent);
-            num_items++;
-        }
+        size_t num_items = out.size();
 
         if (num_items > 0 ) {
             for (; vb_it != vblist.end(); vb_it++) {
@@ -1580,28 +1588,20 @@ std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
                 if (!vb) {
                     continue;
                 }
-                rwUnderlying[id]->setPersistenceCheckpointId(*vb_it, vb->checkpointManager.getOpenCheckpointId());
+                rwUnderlying[kvId]->setPersistenceCheckpointId(*vb_it, vb->checkpointManager.getOpenCheckpointId());
             }
 
-            std::queue<FlushEntry> *flushQueue = new std::queue<FlushEntry>();
-            pushToOutgoingQueue(dbShardQueues, flushQueue, id);
-
-            stats.flusher_todos[id].incr(num_items);
+            stats.flusher_todos[kvId].incr(num_items);
             assert(stats.queue_size >= num_items);
             stats.queue_size.decr(num_items);
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                              "Flusher Id %d flushing %d items with %lu still in queue\n",
-                             id, num_items, stats.queue_size.get());
-            flushing->clear();
-            delete []dbShardQueues;
-            delete flushing;
-            return flushQueue;
+                             kvId, num_items, stats.queue_size.get());
+            return;
         } else {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
-                             "Flusher Id %d did not find any items to flush\n", id);
-            delete []dbShardQueues;
-            delete flushing;
-            return NULL;
+                             "Flusher Id %d did not find any items to flush\n", kvId);
+            return;
         }
     } else {
         stats.dirtyAge = 0;
@@ -1616,35 +1616,14 @@ std::queue<FlushEntry> *EventuallyPersistentStore::beginFlush(int id) {
             }
         }
     }
-    return NULL;
+    return;
 }
 
-void EventuallyPersistentStore::pushToOutgoingQueue(
-                                std::vector<FlushEntry> *dbShardQueues,
-                                std::queue<FlushEntry>* flushQ, int id) {
-    size_t num_shards = rwUnderlying[id]->getNumShards();
-    for (size_t i = 0; i < num_shards; ++i) {
-        if (dbShardQueues[i].empty()) {
-            continue;
-        }
-        rwUnderlying[id]->optimizeWrites(dbShardQueues[i]);
-        std::vector<FlushEntry>::iterator it = dbShardQueues[i].begin();
-        for(; it != dbShardQueues[i].end(); ++it) {
-            flushQ->push(*it);
-        }
-        dbShardQueues[i].clear();
-    }
-}
-
-void EventuallyPersistentStore::requeueRejectedItems(std::queue<FlushEntry> *rej,
-                                                     std::queue<FlushEntry> *flushQ,
-                                                     int id) {
-    // Requeue the rejects.
-    while (!rej->empty()) {
-        flushQ->push(rej->front());
-        rej->pop();
-    }
-    stats.flusher_todos[id].incr(flushQ->size());
+void EventuallyPersistentStore::requeueRejectedItems(std::list<FlushEntry> *rejectList,
+                                                     std::list<FlushEntry> *flushList,
+                                                     int kvId) {
+    flushList->splice(flushList->end(), *rejectList);
+    stats.flusher_todos[kvId].incr(flushList->size()); // FIXME is this really needed here?, why not do flusher_todo stats directly from flushlist size everytime?
 }
 
 void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
@@ -1683,19 +1662,19 @@ void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
 // Returns time in seconds after which flusher should come back.
 // If there were no rejects, returns 0 to come back immediately
 // else least amount of time remaining for an item to become eligible for flush.
-int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
-                                         std::queue<FlushEntry> *rejectQueue,
+int EventuallyPersistentStore::flushSome(std::list<FlushEntry> *flushList,
+                                         std::list<FlushEntry> *rejectList,
                                          int id) {
     if (!tctx[id]->enter()) {
         ++stats.beginFailed[id];
         getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                          "Failed to start a transaction.\n");
         // Copy the input queue into the reject queue.
-        while (!q->empty()) {
-            rejectQueue->push(q->front());
-            q->pop();
+        while (!flushList->empty()) {
+            rejectList->push_back(flushList->front());
+            flushList->pop_front();
         }
-        stats.flusher_todos[id].decr(rejectQueue->size());
+        stats.flusher_todos[id].decr(rejectList->size());
         return 1; // This will cause us to jump out and delay a second
     }
     int tsz = tctx[id]->remaining();
@@ -1703,10 +1682,11 @@ int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
     int completed(0);
     int rejected(0);
     for (completed = 0;
-         completed < tsz && !q->empty() && !shouldPreemptFlush(completed, id);
+         completed < tsz && !flushList->empty() && !shouldPreemptFlush(completed, id);
          ++completed) {
         bool wasRejected = false;
-        int n = flushOne(q, rejectQueue, id, wasRejected);
+        int n = flushOne(flushList->front(), rejectList, id, wasRejected);
+        flushList->pop_front();
         if (wasRejected) {
             oldest = std::min(oldest, n);
             rejected++;
@@ -1722,15 +1702,11 @@ int EventuallyPersistentStore::flushSome(std::queue<FlushEntry> *q,
 }
 
 size_t EventuallyPersistentStore::getWriteQueueSize(void) {
-    size_t size = 0;
-    for (int i = 0; i < numKVStores; ++i) {
-        size += toFlush[i].size();
-    }
-    return size;
+    return flushLists->size();
 }
 
 bool EventuallyPersistentStore::hasItemsForPersistence(int kvid) {
-    return !toFlush[kvid].empty();
+    return 0 != flushLists->size(kvid);
 }
 
 void EventuallyPersistentStore::setPersistenceCheckpointId(uint16_t vbid, uint64_t checkpointId) {
@@ -1738,7 +1714,7 @@ void EventuallyPersistentStore::setPersistenceCheckpointId(uint16_t vbid, uint64
     vbuckets.setPersistenceCheckpointId(vbid, checkpointId);
 }
 
-// VANDANA: Caution. This is no longer safe to use with the new flusher
+// FIXME: Caution. This is no longer safe to use with the new flusher
 protocol_binary_response_status EventuallyPersistentStore::revertOnlineUpdate(RCPtr<VBucket> vb) {
     protocol_binary_response_status rv(PROTOCOL_BINARY_RESPONSE_SUCCESS);
 
@@ -1831,11 +1807,11 @@ class PersistenceCallback : public Callback<mutation_result>,
                             public Callback<int> {
 public:
 
-    PersistenceCallback(const FlushEntry &fe, std::queue<FlushEntry> *q,
+    PersistenceCallback(const FlushEntry &fe, std::list<FlushEntry> *rejList,
                         EventuallyPersistentStore *st,
                         rel_time_t qd, rel_time_t d, EPStats *s) :
-        flushEntry(fe), rq(q), store(st), queued(qd), dirtied(d), stats(s) {
-        assert(rq);
+        flushEntry(fe), rejectList(rejList), store(st), queued(qd), dirtied(d), stats(s) {
+        assert(rejectList);
         assert(s);
     }
 
@@ -1954,11 +1930,11 @@ private:
                                          flushEntry.getVBucketId(),
                                          &StoredValue::reDirty,
                                          dirtied);
-        rq->push(flushEntry);
+        rejectList->push_back(flushEntry);
     }
 
     const FlushEntry flushEntry;
-    std::queue<FlushEntry> *rq;
+    std::list<FlushEntry> *rejectList;
     EventuallyPersistentStore *store;
     rel_time_t queued;
     rel_time_t dirtied;
@@ -1978,8 +1954,8 @@ int EventuallyPersistentStore::flushOneDeleteAll(int id) {
 // still a bit better off running the older code that figures it out
 // based on what's in memory.
 int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
-                                           std::queue<FlushEntry> *rejectQueue,
-                                           int id) {
+                                           std::list<FlushEntry> *rejectList,
+                                           int kvId) {
 
     RCPtr<VBucket> vb = getVBucket(fe.getVBucketId());
     if (!vb) {
@@ -2059,7 +2035,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
         } else {
             isDirty = deleted = false;
             v->reDirty(dirtied);
-            rejectQueue->push(fe);
+            rejectList->push_back(fe);
             ++vb->opsReject;
             // If queue_age_cap is not a multiple of min_data_age,
             // the sleeptime is longer than is required for it to
@@ -2084,7 +2060,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
             if (vbuckets.isHighPriorityVbSnapshotScheduled()) {
                 v->clearPendingId();
                 lh.unlock();
-                rejectQueue->push(fe);
+                rejectList->push_back(fe);
                 ++vb->opsReject;
             } else {
                 itm = new Item (v->getKey(), v->getFlags(), v->getExptime(), v->getValue(),
@@ -2093,8 +2069,8 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
                 lh.unlock();
                 BlockTimer timer(rowid == -1 ?
                                  &stats.diskInsertHisto : &stats.diskUpdateHisto);
-                PersistenceCallback cb(fe, rejectQueue, this, queued, dirtied, &stats);
-                rwUnderlying[id]->set(*itm, fe.getVBucketVersion(), cb);
+                PersistenceCallback cb(fe, rejectList, this, queued, dirtied, &stats);
+                rwUnderlying[kvId]->set(*itm, fe.getVBucketVersion(), cb);
                 if (rowid == -1)  {
                     ++vb->opsCreate;
                 } else {
@@ -2106,11 +2082,11 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
         v->markClean(NULL);
         lh.unlock();
         BlockTimer timer(&stats.diskDelHisto);
-        PersistenceCallback cb(fe, rejectQueue, this, queued, dirtied, &stats);
+        PersistenceCallback cb(fe, rejectList, this, queued, dirtied, &stats);
         if (rowid > 0) {
             uint16_t vbid(fe.getVBucketId());
             uint16_t vbver(vbuckets.getBucketVersion(vbid));
-            rwUnderlying[id]->del(fe.getKey(), rowid, vbid, vbver, cb);
+            rwUnderlying[kvId]->del(fe.getKey(), rowid, vbid, vbver, cb);
             ++vb->opsDelete;
         } else {
             // bypass deletion if missing items, but still call the
@@ -2126,13 +2102,11 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
     return ret;
 }
 
-int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
-                                        std::queue<FlushEntry> *rejectQueue,
-                                        int id, bool &wasRejected) {
+int EventuallyPersistentStore::flushOne(FlushEntry &fe,
+                                        std::list<FlushEntry> *rejectList,
+                                        int kvId, bool &wasRejected) {
 
-    size_t prevRejectCount = rejectQueue->size();
-    FlushEntry fe = q->front();
-    q->pop();
+    size_t prevRejectCount = rejectList->size();
 
     int rv = 0;
 
@@ -2140,17 +2114,17 @@ int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
         switch (fe.getOperation()) {
         case queue_op_set:
         case queue_op_del:
-            rv = flushOneDelOrSet(fe, rejectQueue, id);
-            if (rejectQueue->size() == prevRejectCount) {
+            rv = flushOneDelOrSet(fe, rejectList, kvId);
+            if (rejectList->size() == prevRejectCount) {
                 // flush operation was not rejected
-                tctx[id]->addUncommittedItem();
+                tctx[kvId]->addUncommittedItem();
             } else {
                 wasRejected = true;
             }
             break;
         case queue_op_commit:
-            tctx[id]->commit();
-            tctx[id]->enter();
+            tctx[kvId]->commit();
+            tctx[kvId]->enter();
             break;
         case queue_op_empty:
             assert(false);
@@ -2160,8 +2134,8 @@ int EventuallyPersistentStore::flushOne(std::queue<FlushEntry> *q,
         }
     }
 
-    stats.flusher_todos[id]--;
-    if (rejectQueue->size() == prevRejectCount) {
+    stats.flusher_todos[kvId]--;
+    if (rejectList->size() == prevRejectCount) {
         stats.memOverhead.decr(sizeof(FlushEntry));
     }
 
@@ -2495,7 +2469,11 @@ size_t EventuallyPersistentStore::getBlobSize(const std::string &key,
 void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
                                              enum queue_operation op, time_t queued) {
     uint16_t vbid = vb->getId();
-    int kvid = KVStoreMapper::getKVStoreId(v->getKey(), vbid);
+    std::string key = v->getKey();
+
+    int kvid = KVStoreMapper::getKVStoreId(key, vbid);
+    int shard = rwUnderlying[kvid]->getShardId(key, vbid);
+
     FlushEntry fe(v, vbid, op, getVBucketVersion(vbid), queued);
     assert(v->isDirty());
     ++stats.queue_size;
@@ -2504,11 +2482,6 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
     vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
     --stats.totalEvictable;
 
-    toFlush[kvid].push(fe);
+    flushLists->push(kvid, shard, fe);
 }
 
-std::vector<FlushEntry> *EventuallyPersistentStore::getFlushQueue(int kvid) { // Change vector to list and replace toArray with getAll
-    std::vector<FlushEntry> *flushing = new std::vector<FlushEntry>();
-    toFlush[kvid].toArray(*flushing);
-    return flushing;
-}

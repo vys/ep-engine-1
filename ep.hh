@@ -445,6 +445,67 @@ private:
     DISALLOW_COPY_AND_ASSIGN(VBCBAdaptor);
 };
 
+/**
+ * FlushLists maintains efficient list of items that need to be flushed,
+ *  categorized by kvstore id and shard id.
+ *
+ *  Currently it keeps an array of AtomicList<FlushEntry>, which itself is a separate list per thread.
+ *  So, this is a very interesting datastructure.
+ *
+ *  FIXME maxShards based list allocation is a bit lazy on my part. The cost of a few pointers can be ignored for now.
+ *
+ */
+class FlushLists {
+    public:
+        typedef AtomicList<FlushEntry> FlushList;
+
+        FlushLists(EventuallyPersistentStore *eps, int nKVS, int maxShrds) : epStore(eps), numKVStores(nKVS), maxShards(maxShrds) {
+            assert(numKVStores > 0 && maxShards > 0);
+            flushLists = new FlushList[numKVStores*maxShards];
+        }
+
+        ~FlushLists() {
+            delete[] flushLists;
+        }
+
+        void push(int kvId, int shardId, FlushEntry &flushEntry) {
+            flushLists[kvId*maxShards+shardId].push(flushEntry);
+        }
+
+        void get(std::list<FlushEntry>& out, int kvId);
+
+        size_t size() {
+            size_t s = 0;
+            for (int i = 0; i < numKVStores; i++) {
+                s += size(i);
+            }
+            return s;
+        }
+
+        size_t size(int kvId) {
+            size_t s = 0;
+            for (int i = 0; i < maxShards; i++) {
+                s += size(kvId, i);
+            }
+            return s;
+        }
+
+        size_t size(int kvId, int shardId) {
+            return flushLists[kvId*maxShards+shardId].size();
+        }
+
+        bool empty(int kvId) {
+            return 0 == size(kvId);
+        }
+        
+
+    private:
+        EventuallyPersistentStore *epStore;
+        int numKVStores;
+        int maxShards;
+        FlushList* flushLists;
+};
+
 class EventuallyPersistentEngine;
 
 /**
@@ -827,7 +888,7 @@ public:
         return storageProperties[kvid];
     }
 
-    std::queue<FlushEntry> *beginFlush(int id);
+    void beginFlush(std::list<FlushEntry> &out, int kvId);
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -843,7 +904,6 @@ private:
 
     void queueFlusher(RCPtr<VBucket> vb, StoredValue *v, enum queue_operation op, time_t queued = -1); 
 
-    std::vector<FlushEntry> *getFlushQueue(int kvid);
     /**
      * Retrieve a StoredValue and invoke a method on it.
      *
@@ -878,23 +938,21 @@ private:
         return v != NULL;
     }
 
-    void pushToOutgoingQueue(std::vector<FlushEntry> *dbShardQueues,
-                             std::queue<FlushEntry> *flushQueue, int id);
-    void requeueRejectedItems(std::queue<FlushEntry> *rejects,
-                              std::queue<FlushEntry> *flushQueue,
-                              int id);
+    void requeueRejectedItems(std::list<FlushEntry> *rejectList,
+                              std::list<FlushEntry> *flushList,
+                              int kvId);
     void completeFlush(rel_time_t flush_start, int id);
 
     void enqueueCommit();
-    int flushSome(std::queue<FlushEntry> *q,
-                  std::queue<FlushEntry> *rejectQueue,
-                  int id);
-    int flushOne(std::queue<FlushEntry> *q,
-                 std::queue<FlushEntry> *rejectQueue,
-                 int id,
+    int flushSome(std::list<FlushEntry> *flushItems,
+                  std::list<FlushEntry> *rejectList,
+                  int kvId);
+    int flushOne(FlushEntry &fe,
+                 std::list<FlushEntry> *rejectQueue,
+                 int kvId,
                  bool &wasRejected);
     int flushOneDeleteAll(int id);
-    int flushOneDelOrSet(const FlushEntry &fe, std::queue<FlushEntry> *rejectQueue, int id);
+    int flushOneDelOrSet(const FlushEntry &fe, std::list<FlushEntry> *rejectList, int kvId);
 
     StoredValue *fetchValidValue(RCPtr<VBucket> vb, const std::string &key,
                                  int bucket_num, bool wantsDeleted=false);
@@ -928,7 +986,8 @@ private:
     Dispatcher                 **roDispatcher;
     Dispatcher                 *nonIODispatcher;
     Flusher                    **flusher;
-    AtomicList<FlushEntry >    *toFlush;
+    FlushLists                 *flushLists;
+    //AtomicList<FlushEntry >    *toFlush;
     InvalidItemDbPager         *invalidItemDbPager;
     VBucketMap                 vbuckets;
     SyncObject                 mutex;
@@ -978,5 +1037,7 @@ public:
 private:
     Atomic<size_t> &counter;
 };
+
+
 
 #endif /* EP_HH */

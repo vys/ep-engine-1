@@ -339,7 +339,7 @@ protocol_binary_response_status CheckpointManager::beginHotReload() {
 
     doHotReload = true;
 
-    //VANDANA: FIXME
+    //FIXME
 //    assert(persistenceCursor.currentCheckpoint == onlineUpdateCursor.currentCheckpoint);
 
     // This item represents the end of online update and is also sent to the slave node..

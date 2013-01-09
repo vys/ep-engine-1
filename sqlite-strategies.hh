@@ -92,10 +92,7 @@ public:
         (void)vbucket;
     }
 
-    virtual void optimizeWrites(std::vector<FlushEntry> &items) {
-        (void)items;
-    }
-    virtual void optimizeWrites(std::vector<queued_item> &items) {
+    virtual void optimizeWrites(std::list<FlushEntry> &items) {
         (void)items;
     }
 
@@ -199,27 +196,21 @@ public:
     virtual void destroyTables();
     virtual void destroyInvalidTables(bool destroyOnlyOne = false);
 
-/**
- * Order QueuedItem objects by their row ids.
- */
-class CompareFlushEntryByRowId {
-public:
-    CompareFlushEntryByRowId() {}
-    bool operator()(const FlushEntry &i1, const FlushEntry &i2) {
-        return i1.getId() < i2.getId();
-    }
-};
+    /**
+     * Order QueuedItem objects by their row ids.
+     */
+    class CompareFlushEntryByRowId {
+        public:
+            CompareFlushEntryByRowId() {}
+            bool operator()(const FlushEntry &i1, const FlushEntry &i2) {
+                return i1.getId() < i2.getId();
+            }
+    };
 
-    void optimizeWrites(std::vector<FlushEntry> &items) {
+    void optimizeWrites(std::list<FlushEntry> &items) {
         // Sort all the queued items for each db shard by their row ids
         CompareFlushEntryByRowId cq;
-        std::sort(items.begin(), items.end(), cq);
-    }
-
-    void optimizeWrites(std::vector<queued_item> &items) {
-        // Sort all the queued items for each db shard by their row ids
-        CompareQueuedItemsByRowId cq;
-        std::sort(items.begin(), items.end(), cq);
+        items.sort(cq);
     }
 
     virtual std::vector<PreparedStatement*> getVBStatements(uint16_t vb, vb_statement_type vbst) {
@@ -369,31 +360,26 @@ public:
                       std::mem_fun(&PreparedStatement::reset));
     }
 
-/**
- * Order QueuedItem objects by their vbucket then row ids.
- */
-class CompareFlushEntryByVBAndRowId {
-public:
-    CompareFlushEntryByVBAndRowId() {}
-    bool operator()(const FlushEntry &i1, const FlushEntry &i2) {
-        return i1.getVBucketId() == i2.getVBucketId()
-            ? i1.getId() < i2.getId()
-            : i1.getVBucketId() < i2.getVBucketId();
-    }
-};
-    void optimizeWrites(std::vector<FlushEntry> &items) {
+    /**
+     * Order QueuedItem objects by their vbucket then row ids.
+     */
+    class CompareFlushEntryByVBAndRowId {
+        public:
+            CompareFlushEntryByVBAndRowId() {}
+            bool operator()(const FlushEntry &i1, const FlushEntry &i2) {
+                return i1.getVBucketId() == i2.getVBucketId()
+                    ? i1.getId() < i2.getId()
+                    : i1.getVBucketId() < i2.getVBucketId();
+            }
+    };
+
+    void optimizeWrites(std::list<FlushEntry> &items) {
         // Sort all the queued items for each db shard by its vbucket
         // ID and then its row ids
         CompareFlushEntryByVBAndRowId cq;
-        std::sort(items.begin(), items.end(), cq);
+        items.sort(cq);
     }
-    void optimizeWrites(std::vector<queued_item> &items) {
-        // Sort all the queued items for each db shard by its vbucket
-        // ID and then its row ids
-        CompareQueuedItemsByVBAndRowId cq;
-        std::sort(items.begin(), items.end(), cq);
-    }
-
+    
 protected:
     size_t nvbuckets;
     std::vector<Statements *> statements;

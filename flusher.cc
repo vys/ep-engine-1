@@ -182,7 +182,7 @@ bool Flusher::step(Dispatcher &d, TaskId tid) {
                     if (flushRv > 0) {
                         gettimeofday(&waketime, NULL);
                         advance_tv(waketime, flushRv);
-                    } else if (!flushQueue) {
+                    } else if (!flushList) {
                         d.snooze(tid, DEFAULT_MIN_SLEEP_TIME);
                     }
                     return true;
@@ -198,8 +198,8 @@ bool Flusher::step(Dispatcher &d, TaskId tid) {
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "%s",
                                  ss.str().c_str());
             }
-            store->stats.min_data_age = 0;
-            completeFlush();
+            store->stats.min_data_age = 0; // FIXME why is this needed?
+            flushAllPending();
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Flusher stopped\n");
             transition_state(stopped);
             return false;
@@ -224,7 +224,7 @@ bool Flusher::step(Dispatcher &d, TaskId tid) {
     abort();
 }
 
-void Flusher::completeFlush() {
+void Flusher::flushAllPending() {
     doFlush();
     do {
         doFlush();
@@ -232,20 +232,21 @@ void Flusher::completeFlush() {
 }
 
 void Flusher::setupFlushQueues() {
-    if (!flushQueue) {
-        flushQueue = helper->getFlushQueue();
-        if (flushQueue && !flushQueue->empty()) {
+    if (!flushList) {
+        flushList = helper->getFlushQueue();
+        if (flushList && !flushList->empty()) {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                              "Beginning a write queue flush.\n");
-            rejectQueue = new std::queue<FlushEntry>();
+            rejectList = new std::list<FlushEntry>();
             flushStart = ep_current_time();
             prevFlushRv = store->stats.min_data_age;
         }
     }
 }
+
 int Flusher::doFlush() {
 
-    // On a fresh entry, flushQueue is null and we need to build one.
+    // On a fresh entry, flushList is null and we need to build one.
     setupFlushQueues();
     flushRv = 0;
 
@@ -255,19 +256,19 @@ int Flusher::doFlush() {
     }
 
     // Now do the every pass thing.
-    if (flushQueue) {
-        if (!flushQueue->empty()) {
-            int n = store->flushSome(flushQueue, rejectQueue, flusherId);
+    if (flushList) {
+        if (!flushList->empty()) {
+            int n = store->flushSome(flushList, rejectList, flusherId);
             prevFlushRv = std::min(n, prevFlushRv);
             if (_state == pausing) {
                 transition_state(paused);
             }
         }
 
-        if (flushQueue->empty()) {
-            if (rejectQueue && !rejectQueue->empty()) {
+        if (flushList->empty()) {
+            if (rejectList && !rejectList->empty()) {
                 // Requeue the rejects.
-                store->requeueRejectedItems(rejectQueue, flushQueue, flusherId);
+                store->requeueRejectedItems(rejectList, flushList, flusherId);
                 store->stats.flusherRequeuedRejected[flusherId]++;
                 flushRv = prevFlushRv;
             } else {
@@ -275,10 +276,10 @@ int Flusher::doFlush() {
                 getLogger()->log(EXTENSION_LOG_INFO, NULL,
                                  "Completed flush by id = %d, age of oldest item was %ds\n", flusherId, flushRv);
 
-                delete flushQueue;
-                delete rejectQueue;
-                rejectQueue = NULL;
-                flushQueue = NULL;
+                delete flushList;
+                delete rejectList;
+                rejectList = NULL;
+                flushList = NULL;
             }
         }
     }
@@ -304,8 +305,9 @@ void FlusherHelper::run() {
             break;
         }
         LockHolder lh(sync);
-        if (!queue) {
-            queue = store->beginFlush(kvid);
+        if (!flushList) {
+            flushList = new std::list<FlushEntry>();
+            store->beginFlush(*flushList, kvid);
         }
         sync.wait();
     }

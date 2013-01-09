@@ -310,9 +310,7 @@ public:
      * Before persisting a batch of data, do stuf to them that might
      * improve performance at the IO layer.
      */
-    virtual void optimizeWrites(std::vector<queued_item> &items) = 0;
-
-    virtual void optimizeWrites(std::vector<FlushEntry> &items) = 0;
+    virtual void optimizeWrites(std::list<FlushEntry> &items) = 0;
 
     /**
      * Remove invalid vbuckets from the underlying storage engine.
