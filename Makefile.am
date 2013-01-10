@@ -251,7 +251,7 @@ dispatcher_test_DEPENDENCIES = common.hh dispatcher.hh dispatcher.cc priority.cc
 dispatcher_test_LDADD = libobjectregistry.la
 
 hash_table_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
-hash_table_test_SOURCES = t/hash_table_test.cc item.cc stored-value.cc stored-value.hh \
+hash_table_test_SOURCES = t/hash_table_test.cc item.cc stored-value.cc stored-value.hh rss.hh rss.cc \
                           testlogger.cc meta.cc $(malloc_SOURCES) 
 hash_table_test_DEPENDENCIES = stored-value.cc stored-value.hh ep.hh item.hh \
                                libobjectregistry.la 
@@ -283,7 +283,7 @@ management_sqlite3_DEPENDENCIES = libsqlite3.la
 management_sqlite3_LDADD = libsqlite3.la
 
 vbucket_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
-vbucket_test_SOURCES = t/vbucket_test.cc t/threadtests.hh vbucket.hh vbucket.cc \
+vbucket_test_SOURCES = t/vbucket_test.cc t/threadtests.hh vbucket.hh vbucket.cc rss.hh rss.cc \
                stored-value.cc stored-value.hh testlogger.cc \
 		       checkpoint.hh checkpoint.cc byteorder.c $(malloc_SOURCES)
 vbucket_test_DEPENDENCIES = vbucket.hh stored-value.cc stored-value.hh \
@@ -292,7 +292,7 @@ vbucket_test_LDADD = libobjectregistry.la
 
 checkpoint_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
 checkpoint_test_SOURCES = t/checkpoint_test.cc checkpoint.hh checkpoint.cc vbucket.hh vbucket.cc \
-			  testlogger.cc stored-value.cc stored-value.hh queueditem.hh byteorder.c $(malloc_SOURCES)
+			  testlogger.cc stored-value.cc stored-value.hh queueditem.hh byteorder.c rss.hh rss.cc $(malloc_SOURCES)
 checkpoint_test_DEPENDENCIES = checkpoint.hh vbucket.hh stored-value.cc stored-value.hh \
               queueditem.hh libobjectregistry.la
 checkpoint_test_LDADD = libobjectregistry.la
