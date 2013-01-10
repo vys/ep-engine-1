@@ -177,8 +177,15 @@ public:
         activeList->build();
         it = activeList->begin();
         stats.evictionStats.memSize.incr(activeList->memSize() + inactiveList->memSize() + tempList->memSize());
+
+        size_t numBucketsPerLock = (HashTable::getNumBuckets() / HashTable::getNumLocks(0)) + 1;
+        while (numBucketsPerLock--) {
+            item = new LRUItem(0);
+            stage.push_back(item);
+            item->increaseCurrentSize(stats);
+        }
         // this assumes that three pointers are used per node of activeList
-        stats.evictionStats.memSize.incr(3 * sizeof(int*));
+        stats.evictionStats.memSize.incr((stage.size() + 1) * 3 * sizeof(int*));
     }
 
     ~LRUPolicy() {
