@@ -82,7 +82,7 @@ public:
         maxSize = sz;
         currentSize = 0;
         data = new T*[maxSize + 1]; // the last one is potentially a tail (when array is full)
-        memset(data, NULL, sizeof(T*) * (maxSize + 1));
+        memset(data, 0, sizeof(T*) * (maxSize + 1));
         built = false;
         fresh = false;
     }
