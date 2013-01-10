@@ -12,7 +12,7 @@
 #include "item.hh"
 #include "queueditem.hh"
 #include "pathexpand.hh"
-#include "flush_entry.hh"
+#include "flushlist.hh"
 
 #define DEFAULT_KVSTORE_CONFIG "{\"kvstores\":{}}"
 #define DEFAULT_DBNAME "/tmp/test.db"
@@ -310,7 +310,7 @@ public:
      * Before persisting a batch of data, do stuf to them that might
      * improve performance at the IO layer.
      */
-    virtual void optimizeWrites(std::list<FlushEntry> &items) = 0;
+    virtual void optimizeWrites(FlushList &items) = 0;
 
     /**
      * Remove invalid vbuckets from the underlying storage engine.

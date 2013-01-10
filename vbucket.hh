@@ -16,7 +16,7 @@
 #include "atomic.hh"
 #include "stored-value.hh"
 #include "checkpoint.hh"
-#include "flush_entry.hh"
+#include "flushlist.hh"
 
 const size_t BASE_VBUCKET_SIZE=1024;
 

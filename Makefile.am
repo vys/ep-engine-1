@@ -70,6 +70,7 @@ ep_la_SOURCES = \
                  ep.cc ep.hh \
                  ep_engine.cc ep_engine.h \
                  ep_extension.cc ep_extension.h \
+				 flushlist.cc \
                  flusher.cc flusher.hh \
                  histo.hh \
                  htresizer.cc htresizer.hh \

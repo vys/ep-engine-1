@@ -9,7 +9,7 @@
 #include "common.hh"
 #include "queueditem.hh"
 #include "sqlite-pst.hh"
-#include "flush_entry.hh"
+#include "flushlist.hh"
 
 class EventuallyPersistentEngine;
 
@@ -92,7 +92,7 @@ public:
         (void)vbucket;
     }
 
-    virtual void optimizeWrites(std::list<FlushEntry> &items) {
+    virtual void optimizeWrites(FlushList &items) {
         (void)items;
     }
 
@@ -207,7 +207,7 @@ public:
             }
     };
 
-    void optimizeWrites(std::list<FlushEntry> &items) {
+    void optimizeWrites(FlushList &items) {
         // Sort all the queued items for each db shard by their row ids
         CompareFlushEntryByRowId cq;
         items.sort(cq);
@@ -373,7 +373,7 @@ public:
             }
     };
 
-    void optimizeWrites(std::list<FlushEntry> &items) {
+    void optimizeWrites(FlushList &items) {
         // Sort all the queued items for each db shard by its vbucket
         // ID and then its row ids
         CompareFlushEntryByVBAndRowId cq;

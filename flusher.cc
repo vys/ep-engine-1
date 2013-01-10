@@ -238,7 +238,7 @@ void Flusher::setupFlushQueues() {
         if (flushList && !flushList->empty()) {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                              "Beginning a write queue flush.\n");
-            rejectList = new std::list<FlushEntry>();
+            rejectList = new FlushList();
             flushStart = ep_current_time();
             prevFlushRv = store->stats.min_data_age;
         }
@@ -305,7 +305,7 @@ void FlusherHelper::run() {
         }
         LockHolder lh(sync);
         if (!flushList) {
-            flushList = new std::list<FlushEntry>();
+            flushList = new FlushList();
             store->beginFlush(*flushList, kvid);
         }
         sync.wait();

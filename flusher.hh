@@ -6,7 +6,7 @@
 #include "ep.hh"
 #include "dispatcher.hh"
 #include "kvstore-mapper.hh"
-#include "flush_entry.hh"
+#include "flushlist.hh"
 
 enum flusher_state {
     initializing,
@@ -67,13 +67,13 @@ public:
         pthread_join(myId, NULL);
     }
 
-    std::list<FlushEntry>* getFlushQueue() {
+    FlushList* getFlushQueue() {
         LockHolder lh(sync);
         if (!flushList) {
             sync.notify();
             return NULL;
         }
-        std::list<FlushEntry> *ret = flushList;
+        FlushList *ret = flushList;
         flushList = NULL;
         sync.notify();
         return ret;
@@ -97,7 +97,7 @@ private:
     int kvid;
     pthread_t myId;
     EventuallyPersistentStore *store;
-    std::list<FlushEntry> *flushList;
+    FlushList *flushList;
     SyncObject sync;
 };
 
@@ -178,8 +178,8 @@ private:
     int                      flushRv;
     int                      prevFlushRv;
     double                   minSleepTime;
-    std::list<FlushEntry>   *flushList;
-    std::list<FlushEntry>   *rejectList;
+    FlushList   *flushList;
+    FlushList   *rejectList;
     rel_time_t               flushStart;
     Atomic<bool>             vbStateLoaded;
     Atomic<bool>             forceShutdownReceived;

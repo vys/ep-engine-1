@@ -353,16 +353,6 @@ private:
 
 KVStoreMapper *KVStoreMapper::instance = NULL;
 
-void FlushLists::get(std::list<FlushEntry>& out, int kvId) {
-    std::list<FlushEntry> shardList;
-    int nShards = epStore->getRWUnderlying(kvId)->getNumShards();
-    for (int i = 0; i < nShards; i++) {
-        flushLists[kvId*maxShards+i].getAll(shardList); // This will get all per-thread caches into a single list from the AtomicList specific to this shard.
-        epStore->getRWUnderlying(kvId)->optimizeWrites(shardList); // This will rearrange the elements in shardList in an order that is optimized for writes. Because it is a list::sort internally, it should not involve any copy/ctor/dtors.
-        out.splice(out.end(), shardList); // This should move all elements from shardList to the end of out list, leaving shardList empty for next run.
-    }
-
-}
 
 
 EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine &theEngine,
@@ -1573,7 +1563,7 @@ void EventuallyPersistentStore::reset() {
 }
 
 // This works on the premise that the stored value is only freed by flusher
-void EventuallyPersistentStore::beginFlush(std::list<FlushEntry> &out, int kvId) {
+void EventuallyPersistentStore::beginFlush(FlushList &out, int kvId) {
     std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(kvId);
     std::vector<uint16_t>::iterator vb_it = vblist.begin();
 
@@ -1619,8 +1609,8 @@ void EventuallyPersistentStore::beginFlush(std::list<FlushEntry> &out, int kvId)
     return;
 }
 
-void EventuallyPersistentStore::requeueRejectedItems(std::list<FlushEntry> *rejectList,
-                                                     std::list<FlushEntry> *flushList,
+void EventuallyPersistentStore::requeueRejectedItems(FlushList *rejectList,
+                                                     FlushList *flushList,
                                                      int kvId) {
     flushList->splice(flushList->end(), *rejectList);
     stats.flusher_todos[kvId].incr(flushList->size()); // FIXME is this really needed here?, why not do flusher_todo stats directly from flushlist size everytime?
@@ -1662,8 +1652,8 @@ void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
 // Returns time in seconds after which flusher should come back.
 // If there were no rejects, returns 0 to come back immediately
 // else least amount of time remaining for an item to become eligible for flush.
-int EventuallyPersistentStore::flushSome(std::list<FlushEntry> *flushList,
-                                         std::list<FlushEntry> *rejectList,
+int EventuallyPersistentStore::flushSome(FlushList *flushList,
+                                         FlushList *rejectList,
                                          int id) {
     if (!tctx[id]->enter()) {
         ++stats.beginFailed[id];
@@ -1807,7 +1797,7 @@ class PersistenceCallback : public Callback<mutation_result>,
                             public Callback<int> {
 public:
 
-    PersistenceCallback(const FlushEntry &fe, std::list<FlushEntry> *rejList,
+    PersistenceCallback(const FlushEntry &fe, FlushList *rejList,
                         EventuallyPersistentStore *st,
                         rel_time_t qd, rel_time_t d, EPStats *s) :
         flushEntry(fe), rejectList(rejList), store(st), queued(qd), dirtied(d), stats(s) {
@@ -1934,7 +1924,7 @@ private:
     }
 
     const FlushEntry flushEntry;
-    std::list<FlushEntry> *rejectList;
+    FlushList *rejectList;
     EventuallyPersistentStore *store;
     rel_time_t queued;
     rel_time_t dirtied;
@@ -1954,7 +1944,7 @@ int EventuallyPersistentStore::flushOneDeleteAll(int id) {
 // still a bit better off running the older code that figures it out
 // based on what's in memory.
 int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
-                                           std::list<FlushEntry> *rejectList,
+                                           FlushList *rejectList,
                                            int kvId) {
 
     RCPtr<VBucket> vb = getVBucket(fe.getVBucketId());
@@ -2103,7 +2093,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
 }
 
 int EventuallyPersistentStore::flushOne(FlushEntry &fe,
-                                        std::list<FlushEntry> *rejectList,
+                                        FlushList *rejectList,
                                         int kvId, bool &wasRejected) {
 
     size_t prevRejectCount = rejectList->size();

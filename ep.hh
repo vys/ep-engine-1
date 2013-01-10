@@ -49,7 +49,7 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 #include "vbucket.hh"
 #include "item_pager.hh"
 #include "eviction.hh"
-#include "flush_entry.hh"
+#include "flushlist.hh"
 #include "crc32.hh"
 
 #define DEFAULT_TXN_SIZE 10000
@@ -445,68 +445,6 @@ private:
     DISALLOW_COPY_AND_ASSIGN(VBCBAdaptor);
 };
 
-/**
- * FlushLists maintains efficient list of items that need to be flushed,
- *  categorized by kvstore id and shard id.
- *
- *  Currently it keeps an array of AtomicList<FlushEntry>, which itself is a separate list per thread.
- *  So, this is a very interesting datastructure.
- *
- *  FIXME maxShards based list allocation is a bit lazy on my part. The cost of a few pointers can be ignored for now.
- *
- */
-class FlushLists {
-    public:
-        typedef AtomicList<FlushEntry> FlushList;
-
-        FlushLists(EventuallyPersistentStore *eps, int nKVS, int maxShrds) : epStore(eps), numKVStores(nKVS), maxShards(maxShrds) {
-            assert(numKVStores > 0 && maxShards > 0);
-            flushLists = new FlushList[numKVStores*maxShards];
-        }
-
-        ~FlushLists() {
-            delete[] flushLists;
-        }
-
-        void push(int kvId, int shardId, FlushEntry &flushEntry) {
-            assert(flushLists != NULL);
-            flushLists[kvId*maxShards+shardId].push(flushEntry);
-        }
-
-        void get(std::list<FlushEntry>& out, int kvId);
-
-        size_t size() {
-            size_t s = 0;
-            for (int i = 0; i < numKVStores; i++) {
-                s += size(i);
-            }
-            return s;
-        }
-
-        size_t size(int kvId) {
-            size_t s = 0;
-            for (int i = 0; i < maxShards; i++) {
-                s += size(kvId, i);
-            }
-            return s;
-        }
-
-        size_t size(int kvId, int shardId) {
-            assert(flushLists != NULL);
-            return flushLists[kvId*maxShards+shardId].size();
-        }
-
-        bool empty(int kvId) {
-            return 0 == size(kvId);
-        }
-        
-
-    private:
-        EventuallyPersistentStore *epStore;
-        int numKVStores;
-        int maxShards;
-        FlushList* flushLists;
-};
 
 class EventuallyPersistentEngine;
 
@@ -890,7 +828,7 @@ public:
         return storageProperties[kvid];
     }
 
-    void beginFlush(std::list<FlushEntry> &out, int kvId);
+    void beginFlush(FlushList &out, int kvId);
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -940,21 +878,21 @@ private:
         return v != NULL;
     }
 
-    void requeueRejectedItems(std::list<FlushEntry> *rejectList,
-                              std::list<FlushEntry> *flushList,
+    void requeueRejectedItems(FlushList *rejectList,
+                              FlushList *flushList,
                               int kvId);
     void completeFlush(rel_time_t flush_start, int id);
 
     void enqueueCommit();
-    int flushSome(std::list<FlushEntry> *flushItems,
-                  std::list<FlushEntry> *rejectList,
+    int flushSome(FlushList *flushItems,
+                  FlushList *rejectList,
                   int kvId);
     int flushOne(FlushEntry &fe,
-                 std::list<FlushEntry> *rejectQueue,
+                 FlushList *rejectQueue,
                  int kvId,
                  bool &wasRejected);
     int flushOneDeleteAll(int id);
-    int flushOneDelOrSet(const FlushEntry &fe, std::list<FlushEntry> *rejectList, int kvId);
+    int flushOneDelOrSet(const FlushEntry &fe, FlushList *rejectList, int kvId);
 
     StoredValue *fetchValidValue(RCPtr<VBucket> vb, const std::string &key,
                                  int bucket_num, bool wantsDeleted=false);

@@ -139,7 +139,7 @@ public:
         return strategy->getDbShardId(key, vbid);
     }
 
-    void optimizeWrites(std::list<FlushEntry> &items) {
+    void optimizeWrites(FlushList &items) {
         strategy->optimizeWrites(items);
     }
 
