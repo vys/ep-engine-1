@@ -183,7 +183,7 @@ bool Flusher::step(Dispatcher &d, TaskId tid) {
                     if (flushRv > 0) {
                         gettimeofday(&waketime, NULL);
                         advance_tv(waketime, flushRv);
-                    } else if (!flushList) {
+                    } else if (!flushList || flushList->empty()) {
                         d.snooze(tid, DEFAULT_MIN_SLEEP_TIME);
                     }
                     return true;
@@ -233,7 +233,7 @@ void Flusher::flushAllPending() {
 }
 
 void Flusher::setupFlushQueues() {
-    if (!flushList) {
+    if (!flushList || !flushList->empty()) {
         flushList = helper->getFlushQueue();
         if (flushList && !flushList->empty()) {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
@@ -257,13 +257,11 @@ int Flusher::doFlush() {
     }
 
     // Now do the every pass thing.
-    if (flushList) {
-        if (!flushList->empty()) {
-            int n = store->flushSome(flushList, rejectList, flusherId);
-            prevFlushRv = std::min(n, prevFlushRv);
-            if (_state == pausing) {
-                transition_state(paused);
-            }
+    if (flushList && !flushList->empty()) {
+        int n = store->flushSome(flushList, rejectList, flusherId);
+        prevFlushRv = std::min(n, prevFlushRv);
+        if (_state == pausing) {
+            transition_state(paused);
         }
 
         if (flushList->empty()) {
