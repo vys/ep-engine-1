@@ -4,7 +4,7 @@
 
 #include <stored-value.hh>
 #include <queueditem.hh>
-
+#include <boost/intrusive/list.hpp>
 
 class EventuallyPersistentStore;
 
@@ -14,7 +14,7 @@ class EventuallyPersistentStore;
    As we are keeping pointer to StoredValue structure, it cannot disappear from
    underneath flusher.
 */
-class FlushEntry {
+class FlushEntry : public boost::intrusive::list_base_hook<> {
 public:
     FlushEntry(StoredValue *s, uint16_t vb, 
               enum queue_operation o, uint16_t vv, time_t qtime = -1) : 
@@ -38,7 +38,10 @@ private:
     enum queue_operation op;
 };
 
-typedef std::list<FlushEntry> FlushList;
+//typedef std::list<FlushEntry> FlushList;
+
+typedef boost::intrusive::list<FlushEntry> FlushList;
+
 
 /**
  * FlushLists maintains efficient list of items that need to be flushed,
@@ -53,7 +56,7 @@ typedef std::list<FlushEntry> FlushList;
 class FlushLists {
     public:
 
-        typedef AtomicList<FlushEntry> AtomicFlushList;
+        typedef AtomicIntrusiveList<FlushList, FlushEntry> AtomicFlushList;
 
         FlushLists(EventuallyPersistentStore *eps, int nKVS, int maxShrds) : epStore(eps), numKVStores(nKVS), maxShards(maxShrds) {
             assert(numKVStores > 0 && maxShards > 0);

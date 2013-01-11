@@ -1797,7 +1797,7 @@ class PersistenceCallback : public Callback<mutation_result>,
                             public Callback<int> {
 public:
 
-    PersistenceCallback(const FlushEntry &fe, FlushList *rejList,
+    PersistenceCallback(FlushEntry *fe, FlushList *rejList,
                         EventuallyPersistentStore *st,
                         rel_time_t qd, rel_time_t d, EPStats *s) :
         flushEntry(fe), rejectList(rejList), store(st), queued(qd), dirtied(d), stats(s) {
@@ -1813,14 +1813,14 @@ public:
                 setId(value.second);
             }
             ++stats->totalEvictable;
-            RCPtr<VBucket> vb = store->getVBucket(flushEntry.getVBucketId());
+            RCPtr<VBucket> vb = store->getVBucket(flushEntry->getVBucketId());
             if (vb && vb->getState() != vbucket_state_active &&
                 vb->getState() != vbucket_state_pending) {
                 int bucket_num(0);
-                LockHolder lh = vb->ht.getLockedBucket(flushEntry.getKey(), &bucket_num);
-                StoredValue *v = store->fetchValidValue(vb, flushEntry.getKey(),
+                LockHolder lh = vb->ht.getLockedBucket(flushEntry->getKey(), &bucket_num);
+                StoredValue *v = store->fetchValidValue(vb, flushEntry->getKey(),
                                                         bucket_num, true);
-                assert(v == flushEntry.getStoredValue());
+                assert(v == flushEntry->getStoredValue());
                 double current = static_cast<double>(StoredValue::getCurrentSize(*stats));
                 double lower = static_cast<double>(stats->mem_low_wat);
                 if (v && current > lower) {
@@ -1829,27 +1829,29 @@ public:
                     }
                 }
             }
+            delete flushEntry;
         } else {
             // If the return was 0 here, we're in a bad state because
             // we do not know the rowid of this object.
             if (value.first == 0) {
-                RCPtr<VBucket> vb = store->getVBucket(flushEntry.getVBucketId());
+                RCPtr<VBucket> vb = store->getVBucket(flushEntry->getVBucketId());
                 int bucket_num(0);
-                LockHolder lh = vb->ht.getLockedBucket(flushEntry.getKey(), &bucket_num);
-                StoredValue *v = store->fetchValidValue(vb, flushEntry.getKey(),
+                LockHolder lh = vb->ht.getLockedBucket(flushEntry->getKey(), &bucket_num);
+                StoredValue *v = store->fetchValidValue(vb, flushEntry->getKey(),
                                                         bucket_num, true);
-                assert(v == flushEntry.getStoredValue());
+                assert(v == flushEntry->getStoredValue());
                 if (v) {
                     std::stringstream ss;
-                    ss << "Persisting ``" << flushEntry.getKey() << "'' on vb"
-                       << flushEntry.getVBucketId() << " (rowid=" << v->getId()
+                    ss << "Persisting ``" << flushEntry->getKey() << "'' on vb"
+                       << flushEntry->getVBucketId() << " (rowid=" << v->getId()
                        << ") returned 0 updates\n";
                     getLogger()->log(EXTENSION_LOG_WARNING, NULL, "%s", ss.str().c_str());
                 } else {
                     getLogger()->log(EXTENSION_LOG_INFO, NULL,
                                      "Error persisting now missing ``%s'' from vb%d\n",
-                                     flushEntry.getKey().c_str(), flushEntry.getVBucketId());
+                                     flushEntry->getKey().c_str(), flushEntry->getVBucketId());
                 }
+                delete flushEntry;
                 ++stats->totalEvictable;
             } else {
                 redirty();
@@ -1868,26 +1870,27 @@ public:
         // 1 means we deleted one row
         // 0 means we did not delete a row, but did not fail (did not exist)
         if (value >= 0) {
+            delete flushEntry; // This may work but, if this is not a hack, what is?!? FIXME
             if (value > 0) {
                 ++stats->delItems;
             }
             // We have succesfully removed an item from the disk, we
             // may now remove it from the hash table.
-            RCPtr<VBucket> vb = store->getVBucket(flushEntry.getVBucketId());
+            RCPtr<VBucket> vb = store->getVBucket(flushEntry->getVBucketId());
             if (vb) {
                 int bucket_num(0);
-                LockHolder lh = vb->ht.getLockedBucket(flushEntry.getKey(), &bucket_num);
-                StoredValue *v = store->fetchValidValue(vb, flushEntry.getKey(),
+                LockHolder lh = vb->ht.getLockedBucket(flushEntry->getKey(), &bucket_num);
+                StoredValue *v = store->fetchValidValue(vb, flushEntry->getKey(),
                                                         bucket_num, true);
-                assert(v == flushEntry.getStoredValue());
+                assert(v == flushEntry->getStoredValue());
                 // Only proceed with deletion if the item is still deleted and
                 // no other mutation for it came during this window.
                 if (v && !v->isDirty() && v->isDeleted()) {
                     if (store->isRestoreEnabled()) {
                         LockHolder rlh(store->restore.mutex);
-                        store->restore.itemsDeleted.insert(flushEntry.getKey());
+                        store->restore.itemsDeleted.insert(flushEntry->getKey());
                     }
-                    bool deleted = vb->ht.unlocked_del(flushEntry.getKey(),
+                    bool deleted = vb->ht.unlocked_del(flushEntry->getKey(),
                                                        bucket_num);
                     assert(deleted);
                 } else if (v) {
@@ -1903,27 +1906,27 @@ public:
 private:
 
     void setId(int64_t id) {
-        bool did = store->invokeOnLockedStoredValue(flushEntry.getKey(),
-                                                    flushEntry.getVBucketId(),
+        bool did = store->invokeOnLockedStoredValue(flushEntry->getKey(),
+                                                    flushEntry->getVBucketId(),
                                                     &StoredValue::setId,
                                                     id);
         if (!did) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                              "Failed to set id on vb%d ``%s''\n",
-                             flushEntry.getVBucketId(), flushEntry.getKey().c_str());
+                             flushEntry->getVBucketId(), flushEntry->getKey().c_str());
         }
     }
 
     void redirty() {
         ++stats->flushFailed;
-        store->invokeOnLockedStoredValue(flushEntry.getKey(),
-                                         flushEntry.getVBucketId(),
+        store->invokeOnLockedStoredValue(flushEntry->getKey(),
+                                         flushEntry->getVBucketId(),
                                          &StoredValue::reDirty,
                                          dirtied);
-        rejectList->push_back(flushEntry);
+        rejectList->push_back(*flushEntry);
     }
 
-    const FlushEntry flushEntry;
+    FlushEntry *flushEntry;
     FlushList *rejectList;
     EventuallyPersistentStore *store;
     rel_time_t queued;
@@ -1943,7 +1946,7 @@ int EventuallyPersistentStore::flushOneDeleteAll(int id) {
 // While I actually know whether a delete or set was intended, I'm
 // still a bit better off running the older code that figures it out
 // based on what's in memory.
-int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
+int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry &fe,
                                            FlushList *rejectList,
                                            int kvId) {
 
@@ -2059,7 +2062,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
                 lh.unlock();
                 BlockTimer timer(rowid == -1 ?
                                  &stats.diskInsertHisto : &stats.diskUpdateHisto);
-                PersistenceCallback cb(fe, rejectList, this, queued, dirtied, &stats);
+                PersistenceCallback cb(&fe, rejectList, this, queued, dirtied, &stats);
                 rwUnderlying[kvId]->set(*itm, fe.getVBucketVersion(), cb);
                 if (rowid == -1)  {
                     ++vb->opsCreate;
@@ -2072,7 +2075,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(const FlushEntry &fe,
         v->markClean(NULL);
         lh.unlock();
         BlockTimer timer(&stats.diskDelHisto);
-        PersistenceCallback cb(fe, rejectList, this, queued, dirtied, &stats);
+        PersistenceCallback cb(&fe, rejectList, this, queued, dirtied, &stats);
         if (rowid > 0) {
             uint16_t vbid(fe.getVBucketId());
             uint16_t vbver(vbuckets.getBucketVersion(vbid));
@@ -2464,14 +2467,14 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
     int kvid = KVStoreMapper::getKVStoreId(key, vbid);
     int shard = rwUnderlying[kvid]->getShardId(key, vbid);
 
-    FlushEntry fe(v, vbid, op, getVBucketVersion(vbid), queued);
+    FlushEntry *fe = new FlushEntry(v, vbid, op, getVBucketVersion(vbid), queued);
     assert(v->isDirty());
     ++stats.queue_size;
     ++stats.totalEnqueued;
     stats.memOverhead.incr(sizeof(FlushEntry));
-    vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
+    vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe->getQueuedTime());
     --stats.totalEvictable;
 
-    flushLists->push(kvid, shard, fe);
+    flushLists->push(kvid, shard, *fe);
 }
 

@@ -549,4 +549,125 @@ private:
     DISALLOW_COPY_AND_ASSIGN(AtomicList);
 };
 
+
+/**
+ * Efficient approximate-FIFO list optimize for concurrent writers.
+ *
+ * Multiple-producer threads, single consumer-thread.
+ * 
+ * Maintains a per-producer-thread thread-local list, push() in each thread adds to local thread list.
+ * There is no pop(). Consumer thread can reap the whole list atomically.
+ * 
+ */
+template <class IntrusiveList, class IntrusiveNode>
+class AtomicIntrusiveList {
+public:
+    AtomicIntrusiveList() : counter(0), numItems(0) {}
+
+    ~AtomicIntrusiveList() {
+        size_t i;
+        for (i = 0; i < counter; ++i) {
+            delete lists[i];
+        }
+    }
+
+    /**
+     * Place an item in the list.
+     */
+    void push(IntrusiveNode &value) {
+        IntrusiveList *l = swapList(); // steal our list
+        l->push_back(value);
+        ++numItems;
+        l = swapList(l);
+    }
+
+    void pushList(IntrusiveList &inList) {
+        IntrusiveList *l = swapList(); // steal our list
+        numItems.incr(inList.size());
+        while (!inList.empty()) {
+            l->push_back(inList.front());
+            inList.pop_front();
+        }
+        l = swapList(l);
+    }
+
+    /**
+     * Grab all items from this list an place them into the provided
+     * output list.
+     *
+     * @param outList a destination list to fill
+     */
+    void getAll(IntrusiveList &outList) {
+        IntrusiveList *l(swapList()); // Grab my own list
+        IntrusiveList *newList(NULL);
+        int count(0);
+
+        // Will start empty unless this thread is adding stuff
+        if (!l->empty()) {
+            count += l->size();
+            outList.splice(outList.end(), *l);
+        }
+
+        size_t c(counter);
+        for (size_t i = 0; i < c; ++i) {
+            // Swap with another thread
+            newList = lists[i].swapIfNot(NULL, l);
+            // Empty the list
+            if (newList != NULL) {
+                l = newList;
+                if (!l->empty()) {
+                    count += l->size();
+                    outList.splice(outList.end(), *l);
+                }
+            }
+        }
+
+        l = swapList(l);
+        numItems -= count;
+    }
+
+    /**
+     * Get the number of lists internally maintained.
+     */
+    size_t getNumLists() const {
+        return counter;
+    }
+
+    /**
+     * True if this list is empty.
+     */
+    bool empty() const {
+        return size() == 0;
+    }
+
+    /**
+     * Return the number of listd items.
+     */
+    size_t size() const {
+        return numItems;
+    }
+private:
+    AtomicPtr<IntrusiveList > *initialize() {
+        IntrusiveList *l = new IntrusiveList;
+        size_t i(counter++);
+        lists[i] = l;
+        threadList = &lists[i];
+        return &lists[i];
+    }
+
+    IntrusiveList *swapList(IntrusiveList *newList = NULL) {
+        AtomicPtr<IntrusiveList> *lPtr(threadList);
+        if (lPtr == NULL) {
+            lPtr = initialize();
+        }
+        return lPtr->swap(newList);
+    }
+
+    ThreadLocalPtr<AtomicPtr<IntrusiveList> > threadList;   // This thread's local list
+    AtomicPtr<IntrusiveList> lists[MAX_THREADS];            // Collection of lists across all the threads.
+    Atomic<size_t> counter;                                 // number of lists
+    Atomic<size_t> numItems;                                // Total items held by this AtomicIntrusiveList
+    DISALLOW_COPY_AND_ASSIGN(AtomicIntrusiveList);
+};
+
 #endif // ATOMIC_HH
