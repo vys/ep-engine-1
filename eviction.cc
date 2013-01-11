@@ -184,6 +184,37 @@ void LRUPolicy::initRebuild() {
     stopBuild = !(EvictionManager::getInstance()->enableJob());
     if (!stopBuild) {
         startTime = ep_real_time();
+        if (maxSize != tempList->getMaxSize()) {
+            LRUFixedList *newTempList = new LRUFixedList(maxSize);
+            stats.evictionStats.memSize.incr(newTempList->memSize());
+
+            // Move as many items as possible to the new templist
+            size_t numInserted = 0, oldSize = tempList->getMaxSize();
+            LRUItem **array = tempList->getArray();
+            LRUItem *item;
+            for (size_t i = 0; i <= oldSize; i++) {
+                item = array[i];
+                if (item != NULL) {
+                    if (numInserted < maxSize) {
+                        newTempList->insert(item);
+                        numInserted++;
+                    } else {
+                        item->reduceCurrentSize(stats);
+                        delete item;
+                    }
+                }
+            }
+            // Allocate the rest
+            for ( ; numInserted < maxSize; numInserted++) {
+                item = new LRUItem(0);
+                item->increaseCurrentSize(stats);
+            }
+            newTempList->reset();
+
+            stats.evictionStats.memSize.decr(tempList->memSize());
+            delete tempList;
+            tempList = newTempList;
+        }
         stageIter = stage.begin();
     }
 }
