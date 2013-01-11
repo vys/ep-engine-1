@@ -1675,8 +1675,9 @@ int EventuallyPersistentStore::flushSome(FlushList *flushList,
          completed < tsz && !flushList->empty() && !shouldPreemptFlush(completed, id);
          ++completed) {
         bool wasRejected = false;
-        int n = flushOne(flushList->front(), rejectList, id, wasRejected);
+        FlushEntry &fe(flushList->front());
         flushList->pop_front();
+        int n = flushOne(fe, rejectList, id, wasRejected);
         if (wasRejected) {
             oldest = std::min(oldest, n);
             rejected++;

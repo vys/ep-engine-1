@@ -233,7 +233,7 @@ void Flusher::flushAllPending() {
 }
 
 void Flusher::setupFlushQueues() {
-    if (!flushList || !flushList->empty()) {
+    if (!flushList || flushList->empty()) {
         flushList = helper->getFlushQueue();
         if (flushList && !flushList->empty()) {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
@@ -247,7 +247,6 @@ void Flusher::setupFlushQueues() {
 
 int Flusher::doFlush() {
 
-    // On a fresh entry, flushList is null and we need to build one.
     setupFlushQueues();
     flushRv = 0;
 
