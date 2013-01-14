@@ -260,7 +260,7 @@ hash_table_test_LDADD = libobjectregistry.la
 
 fixedlist_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
 fixedlist_test_SOURCES = t/fixedlist_test.cc
-fixedlist_test_DEPENDENCIES = fixed_list.hh
+fixedlist_test_DEPENDENCIES = fixedlist.hh
 fixedlist_test_LDADD = libobjectregistry.la
 
 misc_test_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir) ${NO_WERROR}
