@@ -137,6 +137,9 @@ bool EvictionManager::evictHeadroom()
                 if (inCheckpoint) {
                     stats.evictionStats.failedTotal.numInCheckpoints++;
                 } else if (v->ejectValue(stats, vb->ht)) {
+                    if (enableEvictionHistograms) {
+                        stats.evictionStats.evictItemAges.add(ep_current_time() - v->getDataAge());
+                    }
                     cur += v->valLength();
                     /* update stats for eviction that just happened */
                     stats.evictionStats.numTotalKeysEvicted++;

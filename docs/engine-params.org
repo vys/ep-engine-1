@@ -71,6 +71,8 @@ memcached like this:
 |                        |        | a quantum of keys to bring memory to mark  |
 | eviction_quantum_size  | int    | Memory size in bytes of a single quantum   |
 |                        |        | of eviction.                               |
+| enable_eviction_histograms| bool| Whether to produce and print eviction      |
+|                        |        | related histograms                         |
 | max_evict_entries      | int    | Maximum entries used by the LRU queues     |
 | enable_eviction_job    | bool   | Enable/disable the eviction job exection   |
 | disable_inline_eviction| bool   | Enable/disable inline eviction             |

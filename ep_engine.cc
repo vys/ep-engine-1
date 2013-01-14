@@ -419,6 +419,9 @@ extern "C" {
                     inconsistentSlaveCheckpoint = true;
                 }
                 CheckpointManager::allowInconsistentSlaveCheckpoint(inconsistentSlaveCheckpoint);
+            } else if (strcmp(keyz, "enable_eviction_histograms") == 0) {
+                bool enableEvictionHistograms = (strcmp(valz, "true") == 0);
+                EvictionManager::getInstance()->setEnableEvictionHistograms(enableEvictionHistograms);
             } else if (strcmp(keyz, "enable_flushall") == 0) {
                 bool enableFlushAll = (strcmp(valz, "true") == 0);
                 e->getConfiguration().setEnableFlushall(enableFlushAll);
@@ -1413,7 +1416,7 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     // Initialize the eviction manager
     EvictionManager::createInstance(epstore, stats, configuration.getEvictionPolicy(),
                                     eh == std::numeric_limits<size_t>::max() ? (maxSize / 10) : eh,
-                                    configuration.isDisableInlineEviction());
+                                    configuration.isDisableInlineEviction(), configuration.isEnableEvictionHistograms());
 
     if (HashTable::getDefaultStorageValueType() != small) {
         shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
@@ -3046,6 +3049,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     add_stat, cookie);
     add_casted_stat("ep_lru_rebuild_stime", getExpiryPagerSleeptime(true),
                     add_stat, cookie);
+    add_casted_stat("ep_enable_eviction_histograms", (EvictionManager::getInstance()->getEnableEvictionHistograms() ? 1 : 0),
+                    add_stat, cookie);
     add_casted_stat("ep_max_evict_entries", EvictionManager::getInstance()->getMaxSize(),
                     add_stat, cookie);
     add_casted_stat("eviction_headroom", EvictionManager::getInstance()->getEvictionHeadroom(), add_stat, cookie);
@@ -3671,6 +3676,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEvictionStats(const void *cookie
 
     add_casted_stat("eviction_prune_runs", stats.pruneStats.numPruneRuns, add_stat, cookie);
     add_casted_stat("eviction_num_keys_pruned", stats.pruneStats.numKeysPruned, add_stat, cookie);
+
+    if (EvictionManager::getInstance()->getEnableEvictionHistograms()) {
+        add_casted_stat("evict_item_ages", stats.evictionStats.evictItemAges, add_stat, cookie);
+    }
+
     return ENGINE_SUCCESS;
 }
 

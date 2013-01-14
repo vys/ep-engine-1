@@ -691,9 +691,10 @@ public:
         return managerInstance;
     }
 
-    static void createInstance(EventuallyPersistentStore *s, EPStats &st, std::string p, size_t headroom, bool disableInlineEviction) {
+    static void createInstance(EventuallyPersistentStore *s, EPStats &st, std::string p, size_t headroom,
+            bool disableInlineEviction, bool enableEvictionHistograms) {
         if (managerInstance == NULL) {
-            managerInstance = new EvictionManager(s, st, p, headroom, disableInlineEviction);
+            managerInstance = new EvictionManager(s, st, p, headroom, disableInlineEviction, enableEvictionHistograms);
         }
     }
 
@@ -803,6 +804,17 @@ public:
         disableInlineEviction = doit;
     }
 
+    bool getEnableEvictionHistograms() {
+        return enableEvictionHistograms;
+    }
+
+    void setEnableEvictionHistograms(bool to) {
+        if (!enableEvictionHistograms && to) {
+            stats.evictionStats.evictItemAges.reset();
+        }
+        enableEvictionHistograms = to;
+    }
+
     static void setMinBlobSize(size_t ss) {
         minBlobSize = ss;
     }
@@ -829,6 +841,7 @@ private:
     uint32_t evictionQuietWindow;
     size_t headroom;
     bool disableInlineEviction;
+    bool enableEvictionHistograms;
 
     Atomic<bool> pauseEvict;
 
@@ -838,12 +851,12 @@ private:
 
     std::set<std::string> policies;
 
-    EvictionManager(EventuallyPersistentStore *s, EPStats &st, std::string &policy, size_t headRoom, bool die) :
+    EvictionManager(EventuallyPersistentStore *s, EPStats &st, std::string &policy, size_t headRoom, bool die, bool eeh) :
         store(s), stats(st), policyName(policy), maxSize(MAX_EVICTION_ENTRIES),
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
         pauseJob(false),
         pruneAge(0), evictionQuantumSize(10485760), evictionQuantumMaxCount(10), evictionQuietWindow(120),
-        headroom(headRoom), disableInlineEviction(die), pauseEvict(false),
+        headroom(headRoom), disableInlineEviction(die), enableEvictionHistograms(eeh), pauseEvict(false),
         lastEvictTime(0), lastRSSTarget(0) {
         policies.insert("lru");
         policies.insert("random");

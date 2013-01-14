@@ -71,6 +71,7 @@ Available params for "set":
     keep_closed_chks          - Flag to keep closed checkpoints in memory ( True / False )
     inconsistent_slave_chk    - Setting this to true will disable checkpoint creation ( True / False )
     lru_rebuild_stime         - LRU rebuild Sleeptime
+    enable_eviction_histograms- Whether to produce and print eviction related histograms ( True / False )
     max_evict_entries         - Maximum entries used by eviction job
     enable_eviction_job       - Enable or Disable eviction job
     eviction_policy           - Change the eviction policy 

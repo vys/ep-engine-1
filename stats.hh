@@ -64,6 +64,7 @@ public:
     Atomic<size_t>          memSize;
     FailedEvictions         failedTotal;         // All failures so far
     // Add histogram structure here
+    Histogram<rel_time_t>   evictItemAges;
 
     void reset()
     {
@@ -85,6 +86,7 @@ private:
         frontendSwaps = 0;
         backgroundSwaps = 0;
         failedTotal.reset();
+        evictItemAges.reset();
     }
 };
 

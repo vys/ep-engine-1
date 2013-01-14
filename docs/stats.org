@@ -169,6 +169,8 @@ For introductory information on stats within membase, start with the
 | ep_checkpoint_max_items       | Maximum number of items for a checkpoint   |
 | ep_exp_pager_stime            | Sleep time for running the expiry pager    | 
 | ep_lru_rebuild_stime          | Sleep time for rebuilding the LRU list     | 
+| ep_enable_eviction_histograms | Whether to produce and print eviction      |
+|                               | related histograms                         |
 | ep_max_evict_entries          | Maximum number of entries LRU list can hold|
 | eviction_headroom             | Amount of memory kept aside to trigger LRU |
 |                               | based eviction                             |

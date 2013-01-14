@@ -24,6 +24,10 @@
             "default": "false",
             "type": "bool"
         },
+        "enable_eviction_histograms": {
+            "default": "false",
+            "type": "bool"
+        },
         "enable_eviction_job": {
             "default": "true",
             "type": "bool"
