@@ -431,6 +431,8 @@ extern "C" {
                     keepClosedCheckpoints = true;
                 }
                 CheckpointManager::keepClosedCheckpointsUnderHighWat(keepClosedCheckpoints);
+            } else if (strcmp(keyz, "scrub_memory") == 0) {
+                scrub_memory();
             } else {
                 *msg = "Unknown config param";
                 rv = PROTOCOL_BINARY_RESPONSE_KEY_ENOENT;

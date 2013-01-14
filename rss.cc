@@ -7,6 +7,11 @@
 #include <mach/mach_init.h>
 #endif
 
+#ifdef HAVE_JEMALLOC_JEMALLOC_H
+#define JEMALLOC_MANGLE
+#include "jemalloc/jemalloc.h"
+#endif
+
 #include "rss.hh"
 
 size_t GetSelfRSS() {
@@ -37,3 +42,22 @@ size_t GetSelfRSS() {
 #endif
 }
 
+void scrub_memory() {
+#ifdef HAVE_JEMALLOC_JEMALLOC_H
+    /*
+    size_t sz;
+
+    // get number of arenas
+    unsigned int narenas = 0;
+    sz = sizeof(unsigned int);
+    mallctl("arenas.narenas", &narenas, &sz, NULL, 0);
+
+    // purge unused dirty pages in arenas
+    std::stringstream ss;
+    ss << "arena." << narenas << ".purge";
+    */
+
+    mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
+    mallctl("arenas.purge", NULL, NULL, NULL, 0);
+#endif
+}
