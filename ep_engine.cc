@@ -33,6 +33,7 @@
 #include "invalid_vbtable_remover.hh"
 #include "eviction.hh"
 #include "crc32.hh"
+#include "embedded/sqlite3.h" // only for sqlite memory stats.
 
 
 static void assembleSyncResponse(std::stringstream &resp,
@@ -3091,6 +3092,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doMemoryStats(const void *cookie,
     add_casted_stat("ep_mem_high_wat", stats.mem_high_wat, add_stat, cookie);
     add_casted_stat("ep_oom_errors", stats.oom_errors, add_stat, cookie);
     add_casted_stat("ep_tmp_oom_errors", stats.tmp_oom_errors, add_stat, cookie);
+    add_casted_stat("ep_sqlite_mem_used", sqlite3_memory_used(), add_stat, cookie);
+    add_casted_stat("ep_sqlite_mem_used_highwatermark", sqlite3_memory_highwater(false), add_stat, cookie);
 
     std::map<std::string, size_t> allocator_stats;
     MemoryAllocatorStats::getAllocatorStats(allocator_stats);
