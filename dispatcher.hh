@@ -235,9 +235,11 @@ public:
                     enum dispatcher_state st,
                     hrtime_t start, bool running,
                     std::vector<JobLogEntry> jl,
-                    std::vector<JobLogEntry> sj)
+                    std::vector<JobLogEntry> sj,
+                    size_t rqs, size_t fqs)
         : joblog(jl), slowjobs(sj), taskName(name),
-          state(st), taskStart(start), running_task(running) {}
+          state(st), taskStart(start), running_task(running),
+          rQueueSize(rqs), fQueueSize(fqs) {}
 
     /**
      * Get the name of the current dispatcher state.
@@ -277,6 +279,16 @@ public:
      */
     const std::vector<JobLogEntry> getSlowLog() const { return slowjobs; }
 
+    /**
+     * Size of the ready queue.
+     */
+    const size_t getReadyQueueSize() const { return rQueueSize; }
+
+    /**
+     * Size of the future queue.
+     */
+    const size_t getFutureQueueSize() const { return fQueueSize; }
+
 private:
     const std::vector<JobLogEntry> joblog;
     const std::vector<JobLogEntry> slowjobs;
@@ -284,6 +296,8 @@ private:
     const enum dispatcher_state state;
     const hrtime_t taskStart;
     const bool running_task;
+    const size_t rQueueSize;
+    const size_t fQueueSize;
 };
 
 /**
@@ -374,7 +388,8 @@ public:
     DispatcherState getDispatcherState() {
         LockHolder lh(mutex);
         return DispatcherState(taskDesc, state, taskStart, running_task,
-                               joblog.contents(), slowjobs.contents());
+                               joblog.contents(), slowjobs.contents(),
+                               readyQueue.size(), futureQueue.size());
     }
 
 private:

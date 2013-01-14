@@ -3774,6 +3774,12 @@ static void doDispatcherStat(const char *prefix, const DispatcherState &ds,
     add_casted_stat(statname, ds.isRunningTask() ? "running" : "idle",
                     add_stat, cookie);
 
+    snprintf(statname, sizeof(statname), "%s:readyqueuesize", prefix);
+    add_casted_stat(statname, ds.getReadyQueueSize(), add_stat, cookie);
+
+    snprintf(statname, sizeof(statname), "%s:futurequeuesize", prefix);
+    add_casted_stat(statname, ds.getFutureQueueSize(), add_stat, cookie);
+
     if (ds.isRunningTask()) {
         snprintf(statname, sizeof(statname), "%s:task", prefix);
         add_casted_stat(statname, ds.getTaskName().c_str(),
@@ -3790,12 +3796,15 @@ static void doDispatcherStat(const char *prefix, const DispatcherState &ds,
 
 ENGINE_ERROR_CODE EventuallyPersistentEngine::doDispatcherStats(const void *cookie,
                                                                 ADD_STAT add_stat) {
+    char prefix[20];
     for (int i = 0; i < numKVStores; ++i) {
         DispatcherState ds(epstore->getDispatcher(i)->getDispatcherState());
-        doDispatcherStat("dispatcher", ds, cookie, add_stat);
+        snprintf(prefix, sizeof(prefix), "dispatcher%d", i);
+        doDispatcherStat(prefix, ds, cookie, add_stat);
         if (epstore->hasSeparateRODispatcher(i)) {
             DispatcherState rods(epstore->getRODispatcher(i)->getDispatcherState());
-            doDispatcherStat("ro_dispatcher", rods, cookie, add_stat);
+            snprintf(prefix, sizeof(prefix), "ro_dispatcher%d", i);
+            doDispatcherStat(prefix, rods, cookie, add_stat);
         }
     }
     DispatcherState nds(epstore->getNonIODispatcher()->getDispatcherState());
