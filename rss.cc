@@ -59,5 +59,6 @@ void scrub_memory() {
 
     mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
     mallctl("arenas.purge", NULL, NULL, NULL, 0);
+    getLogger()->log(EXTENSION_LOG_INFO, NULL, "scrub_memory completed");
 #endif
 }
