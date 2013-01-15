@@ -322,7 +322,7 @@ extern "C" {
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting exp_pager_stime value to %ulld via flush params.", vsize);
-                e->setExpiryPagerSleeptime((size_t)vsize);
+                e->setAndScheduleExpiryPagerSleeptime((size_t)vsize);
             } else if (strcmp(keyz, "lru_rebuild_stime") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -330,7 +330,7 @@ extern "C" {
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting lru_rebuild_stime value to %ulld via flush params.", vsize);
-                e->setExpiryPagerSleeptime((size_t)vsize, true);
+                e->setAndScheduleExpiryPagerSleeptime((size_t)vsize, true);
             } else if (strcmp(keyz, "enable_eviction_job") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -1421,10 +1421,8 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
                                     configuration.isDisableInlineEviction(), configuration.isEnableEvictionHistograms());
 
     if (HashTable::getDefaultStorageValueType() != small) {
-        shared_ptr<DispatcherCallback> cb(new ItemPager(epstore, stats));
-        epstore->getNonIODispatcher()->schedule(cb, NULL, Priority::ItemPagerPriority, 10);
-        setExpiryPagerSleeptime(configuration.getExpPagerStime());
-        setExpiryPagerSleeptime(configuration.getLruRebuildStime(), true);
+        setAndScheduleExpiryPagerSleeptime(configuration.getExpPagerStime());
+        setAndScheduleExpiryPagerSleeptime(configuration.getLruRebuildStime(), true);
         EvictionManager::getInstance()->setMaxSize(configuration.getMaxEvictEntries());
         EvictionManager::getInstance()->enableJob(configuration.isEnableEvictionJob());
         EvictionManager::getInstance()->setEvictionQuantumSize(configuration.getEvictionQuantumSize());

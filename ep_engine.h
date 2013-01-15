@@ -659,24 +659,30 @@ public:
         return getLruTimer ? expiryPager.lrusleeptime : expiryPager.sleeptime;
     }
 
-    void setExpiryPagerSleeptime(size_t val, bool setLruTimer = false) {
+    void setAndScheduleExpiryPagerSleeptime(size_t val, bool setLruTimer = false) {
         LockHolder lh(expiryPager.mutex);
 
-        size_t *sleeptime = setLruTimer ? &expiryPager.lrusleeptime : &expiryPager.sleeptime;
+        if (setLruTimer) {
+            expiryPager.lrusleeptime = val;
+        } else {
+            expiryPager.sleeptime = val;
+        }
 
-        if (expiryPager.running) {
+        if (expiryPager.running && expiryPager.sleeptime == 0) {
             epstore->getNonIODispatcher()->cancel(expiryPager.task);
             expiryPager.running = false;
         }
 
-        *sleeptime = val;
         if (expiryPager.sleeptime != 0) { // run only if exp_pager_stime is positive
-            ExpiredItemPager *pager = new ExpiredItemPager(epstore, stats, expiryPager.sleeptime, expiryPager.lrusleeptime);
-            shared_ptr<DispatcherCallback> exp_cb(pager);
-            epstore->getNonIODispatcher()->schedule(exp_cb, &expiryPager.task,
-                                                    Priority::ItemPagerPriority,
-                                                    static_cast<double>(pager->callbackFreq()));
-            expiryPager.running = true;
+            if (expiryPager.running) {
+                ((ExpiredItemPager*) expiryPager.pager.get())->updateSleepTimes(expiryPager.sleeptime, expiryPager.lrusleeptime);
+            } else {
+                expiryPager.pager = shared_ptr<DispatcherCallback>(new ExpiredItemPager(epstore, stats, expiryPager.sleeptime, expiryPager.lrusleeptime));
+                epstore->getNonIODispatcher()->schedule(expiryPager.pager, &expiryPager.task,
+                        Priority::ItemPagerPriority,
+                        ((ExpiredItemPager*) expiryPager.pager.get())->callbackFreq());
+                expiryPager.running = true;
+            }
         }
     }
 
@@ -877,6 +883,7 @@ private:
         size_t sleeptime;
         size_t lrusleeptime;
         TaskId task;
+        shared_ptr<DispatcherCallback> pager;
         bool running;
     } expiryPager;
 

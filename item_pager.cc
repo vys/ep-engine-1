@@ -13,107 +13,6 @@
 static const double threshold = 75.0;
 static const size_t MAX_PERSISTENCE_QUEUE_SIZE = 1000000;
 
-class ItemPagingVisitor : public VBucketVisitor {
-public:
-
-    /**
-     * Construct a PagingVisitor that will attempt to evict the given
-     * percentage of objects.
-     *
-     * @param s the store that will handle the bulk removal
-     * @param st the stats where we'll track what we've done
-     * @param pcnt percentage of objects to attempt to evict (0-1)
-     * @param sfin pointer to a bool to be set to true after run completes
-     * @param pause flag indicating if PagingVisitor can pause between vbucket visits
-     */
-    ItemPagingVisitor(EventuallyPersistentStore *s, EPStats &st, double pcnt,
-                  bool *sfin, bool pause = false)
-        : store(s), stats(st), percent(pcnt), ejected(0),
-          startTime(ep_real_time()), stateFinalizer(sfin),
-          canPause(pause) {}
-
-    void visit(StoredValue *v) {
-        // Disable collection of expired items in slave
-        if (!CheckpointManager::isInconsistentSlaveCheckpoint()) {
-            // Remember expired objects -- we're going to delete them.
-            if (v->isExpired(startTime) && !v->isDeleted()) {
-                expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
-                return;
-            }
-        }
-
-        double r = static_cast<double>(std::rand()) / static_cast<double>(RAND_MAX);
-        if (percent >= r) {
-            if (!v->eligibleForEviction()) {
-                ++stats.numFailedEjects;
-                return;
-            }
-            // Check if the key with its CAS value exists in the open or closed referenced
-            // checkpoints.
-            bool foundInCheckpoints =
-                currentBucket->checkpointManager.isKeyResidentInCheckpoints(v->getKey(),
-                                                                            v->getCas());
-            if (!foundInCheckpoints && v->ejectValue(stats, currentBucket->ht)) {
-                if (currentBucket->getState() == vbucket_state_replica) {
-                    ++stats.numReplicaEjects;
-                }
-                ++ejected;
-            }
-        }
-    }
-
-    bool visitBucket(RCPtr<VBucket> vb) {
-         update();
-         return VBucketVisitor::visitBucket(vb);
-    }
-
-    void update() {
-        stats.expired.incr(expired.size());
-
-        store->deleteExpiredItems(expired);
-
-        if (numEjected() > 0) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL,
-                             "Paged out %d values\n", numEjected());
-        }
-
-        if (!expired.empty()) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL,
-                             "Purged %d expired items\n", expired.size());
-        }
-        ejected = 0;
-        expired.clear();
-    }
-
-    bool pauseVisitor() {
-        size_t queueSize = stats.queue_size.get() + stats.flusher_todo_get();
-        return canPause && queueSize >= MAX_PERSISTENCE_QUEUE_SIZE;
-    }
-
-    void complete() {
-        update();
-        if (stateFinalizer) {
-            *stateFinalizer = true;
-        }
-    }
-
-    /**
-     * Get the number of items ejected during the visit.
-     */
-    size_t numEjected() { return ejected; }
-
-private:
-    std::list<std::pair<uint16_t, std::string> > expired;
-
-    EventuallyPersistentStore *store;
-    EPStats                   &stats;
-    double                     percent;
-    size_t                     ejected;
-    time_t                     startTime;
-    bool                      *stateFinalizer;
-    bool                       canPause;
-};
-
 /**
  * Handle expired items and eviction based on the policies.
  */
@@ -140,8 +39,10 @@ public:
     }
 
     void visit(StoredValue *v) {
-        // Remember expired objects -- we're going to delete them.
-        if (!pauseMutations && v->isExpired(startTime) && !v->isDeleted()) {
+        // Remember expired objects -- we're going to delete them. (disable collection
+        // of expired items in slave)
+        if (!CheckpointManager::isInconsistentSlaveCheckpoint() && !pauseMutations
+                && v->isExpired(startTime) && !v->isDeleted()) {
             expired.push_back(std::make_pair(currentBucket->getId(), v->getKey()));
             return;
         } else if (evjob && !v->isDeleted() && v->isResident() && !v->isDirty() &&
@@ -238,34 +139,6 @@ private:
     Histogram<int>             ageHisto;
     Histogram<size_t>          sizeHisto;
 };
-
-bool ItemPager::callback(Dispatcher &d, TaskId t) {
-    double current = static_cast<double>(StoredValue::getCurrentSize(stats));
-    double upper = static_cast<double>(stats.mem_high_wat);
-    double lower = static_cast<double>(stats.mem_low_wat);
-
-    if (available && current > upper && 0) {
-
-        ++stats.pagerRuns;
-
-        double toKill = (current - static_cast<double>(lower)) / current;
-
-        std::stringstream ss;
-        ss << "Using " << StoredValue::getCurrentSize(stats)
-           << " bytes of memory, paging out %0f%% of items." << std::endl;
-        getLogger()->log(EXTENSION_LOG_INFO, NULL, ss.str().c_str(),
-                         (toKill*100.0));
-
-        available = false;
-        shared_ptr<ItemPagingVisitor> pv(new ItemPagingVisitor(store, stats,
-                                                       toKill, &available, false));
-        store->visit(pv, "Item pager", &d, Priority::ItemPagerPriority);
-        getLogger()->log(EXTENSION_LOG_INFO, NULL, "XXX: item_pager: Got called!!!"); 
-    }
-
-    d.snooze(t, 10);
-    return true;
-}
 
 /*
  * This pager takes care of both evictions as well as expired items.
