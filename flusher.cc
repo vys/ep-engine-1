@@ -17,6 +17,7 @@
 #include "config.h"
 #include <stdlib.h>
 
+#include "rss.hh"
 #include "flusher.hh"
 
 bool FlusherStepper::callback(Dispatcher &d, TaskId t) {
@@ -278,6 +279,7 @@ int Flusher::doFlush() {
                 delete rejectList;
                 rejectList = NULL;
                 flushList = NULL;
+                scrub_memory();
             }
         }
     }
@@ -307,6 +309,7 @@ void FlusherHelper::run() {
             flushList = new FlushList();
             store->beginFlush(*flushList, kvid);
         }
+        scrub_memory();
         sync.wait();
     }
     return;
