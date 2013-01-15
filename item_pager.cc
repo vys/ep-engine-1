@@ -115,6 +115,7 @@ public:
             }
 
         }
+        scrub_memory();
         endTime = ep_real_time();
         stats.expiryPagerTimeStats.startTime = startTime;
         stats.expiryPagerTimeStats.endTime = endTime;
