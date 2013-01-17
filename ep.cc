@@ -1927,11 +1927,25 @@ private:
 
     void redirty() {
         ++stats->flushFailed;
-        store->invokeOnLockedStoredValue(flushEntry->getKey(),
-                                         flushEntry->getVBucketId(),
-                                         &StoredValue::reDirty,
-                                         dirtied);
-        rejectList->push_back(*flushEntry);
+
+        RCPtr<VBucket> vb = store->getVBucket(flushEntry->getVBucketId());
+        if (vb) {
+            int bucket_num(0);
+            LockHolder lh = vb->ht.getLockedBucket(flushEntry->getKey(), &bucket_num);
+            StoredValue *v = store->fetchValidValue(vb, flushEntry->getKey(), bucket_num, true);
+            assert(v == flushEntry->getStoredValue());
+            if (v->isClean()) {
+                v->markDirty();
+                rejectList->push_back(*flushEntry);
+            } else {
+                // Some other mutation came for this stored-value while we were executing in
+                // kvstore->set or kvstore->del. Since that mutation has queued a flushentry,
+                // we will delete this one and not requeue it.
+                delete flushEntry;
+            }
+        } else {
+            delete flushEntry;
+        }
     }
 
     FlushEntry *flushEntry;
@@ -1960,12 +1974,14 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry &fe,
 
     RCPtr<VBucket> vb = getVBucket(fe.getVBucketId());
     if (!vb) {
+        // FIXME need to delete flushEntry, otherwise it's a leak!
         return 0;
     }
 
     int bucket_num(0);
     LockHolder lh = vb->ht.getLockedBucket(fe.getKey(), &bucket_num);
     if (fe.getVBucketVersion() != vbuckets.getBucketVersion(fe.getVBucketId())) {
+        // FIXME need to delete flushEntry, otherwise it's a leak!
         return 0;
     }
     StoredValue *v = vb->ht.unlocked_find(fe.getKey(), bucket_num, true);
