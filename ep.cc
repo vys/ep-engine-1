@@ -1661,8 +1661,9 @@ int EventuallyPersistentStore::flushSome(FlushList *flushList,
                          "Failed to start a transaction.\n");
         // Copy the input queue into the reject queue.
         while (!flushList->empty()) {
-            rejectList->push_back(flushList->front());
+            FlushEntry &fe(flushList->front());
             flushList->pop_front();
+            rejectList->push_back(fe);
         }
         stats.flusher_todos[id].decr(rejectList->size());
         return 1; // This will cause us to jump out and delay a second
