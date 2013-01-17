@@ -552,7 +552,7 @@ public:
                 mutation_type_t delrv = vb->ht.unlocked_softDelete(vk.second, 0, bucket_num, mv);
                 if (delrv == WAS_CLEAN || delrv == WAS_DIRTY || delrv == NOT_FOUND ) {
                     if (!mv.wasDirty) {
-                        e->queueFlusher(vb, v, queue_op_del);
+                        e->queueFlusher(vb, v);
                     }
                 }
                 e->queueDirty(vk.second, vb->getId(), queue_op_del, value,
@@ -590,7 +590,7 @@ StoredValue *EventuallyPersistentStore::fetchValidValue(RCPtr<VBucket> vb,
                 // As replication is interleaved with online restore, deletion of items that might
                 // exist in the restore backup files should be queued and replicated.
                 if (!mv.wasDirty) {
-                    queueFlusher(vb, v, queue_op_del);
+                    queueFlusher(vb, v);
                 }
             }
             queueDirty(key, vb->getId(), queue_op_del, value,
@@ -690,7 +690,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
         // FALLTHROUGH
     case WAS_CLEAN:
         if (!mv.wasDirty) {
-            queueFlusher(vb, mv.sv, queue_op_set, item.getQueuedTime());
+            queueFlusher(vb, mv.sv, item.getQueuedTime());
         }
         lh.unlock();
 
@@ -744,7 +744,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::add(const Item &item,
     case ADD_SUCCESS:
     case ADD_UNDEL:
         if (!mv.wasDirty) {
-            queueFlusher(vb, mv.sv, queue_op_set);
+            queueFlusher(vb, mv.sv);
         }
         lh.unlock();
         queueDirty(item.getKey(), item.getVBucketId(), queue_op_set, item.getValue(),
@@ -792,7 +792,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item
         // FALLTHROUGH
     case WAS_CLEAN:
         if (!mv.wasDirty) {
-            queueFlusher(vb, mv.sv, queue_op_set);
+            queueFlusher(vb, mv.sv);
         }
         break;
     case INVALID_VBUCKET:
@@ -1538,7 +1538,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
         // As replication is interleaved with online restore, deletion of items that might
         // exist in the restore backup files should be queued and replicated.
         if (!mv.wasDirty) {
-            queueFlusher(vb, mv.sv, queue_op_del);
+            queueFlusher(vb, mv.sv);
         }
         lh.unlock();
         queueDirty(key, vbucket, queue_op_del, value_t(NULL), 0, 0, cas, rowid);
@@ -1814,7 +1814,13 @@ public:
                 ++stats->newItems;
                 setId(value.second);
             }
+
             ++stats->totalEvictable;
+
+            /*
+            FIXME
+            This code evicts this item if this is a replica and we are above low-water-mark. I'm commenting this out because in our new eviction model, this needs to be handled differently.
+
             RCPtr<VBucket> vb = store->getVBucket(flushEntry->getVBucketId());
             if (vb && vb->getState() != vbucket_state_active &&
                 vb->getState() != vbucket_state_pending) {
@@ -1831,6 +1837,8 @@ public:
                     }
                 }
             }
+            */
+
             delete flushEntry;
         } else {
             // If the return was 0 here, we're in a bad state because
@@ -1854,7 +1862,6 @@ public:
                                      flushEntry->getKey().c_str(), flushEntry->getVBucketId());
                 }
                 delete flushEntry;
-                ++stats->totalEvictable;
             } else {
                 redirty();
             }
@@ -1894,8 +1901,7 @@ public:
                     bool deleted = vb->ht.unlocked_del(flushEntry->getKey(),
                                                        bucket_num);
                     assert(deleted);
-                } else if (v) {
-                    ++stats->totalEvictable;
+                } else if (v) { // undelete
                     v->clearId();
                 }
             }
@@ -2106,33 +2112,16 @@ int EventuallyPersistentStore::flushOne(FlushEntry &fe,
     int rv = 0;
 
     if (fe.getVBucketVersion() == vbuckets.getBucketVersion(fe.getVBucketId())) {
-        switch (fe.getOperation()) {
-        case queue_op_set:
-        case queue_op_del:
-            rv = flushOneDelOrSet(fe, rejectList, kvId);
-            if (rejectList->size() == prevRejectCount) {
-                // flush operation was not rejected
-                tctx[kvId]->addUncommittedItem();
-            } else {
-                wasRejected = true;
-            }
-            break;
-        case queue_op_commit:
-            tctx[kvId]->commit();
-            tctx[kvId]->enter();
-            break;
-        case queue_op_empty:
-            assert(false);
-            break;
-        default:
-            break;
+        rv = flushOneDelOrSet(fe, rejectList, kvId);
+        if (rejectList->size() == prevRejectCount) {
+            // flush operation was not rejected
+            tctx[kvId]->addUncommittedItem();
+        } else {
+            wasRejected = true;
         }
     }
 
     stats.flusher_todos[kvId]--;
-    if (rejectList->size() == prevRejectCount) {
-        stats.memOverhead.decr(sizeof(FlushEntry));
-    }
 
     return rv;
 
@@ -2193,7 +2182,7 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
         StoredValue *v = vb->ht.unlocked_find(itm.getKey(), bucket_num, true);
         assert(v);
         if (!mv.wasDirty) {
-            queueFlusher(vb, v, op);
+            queueFlusher(vb, v);
         }
         return 0;
     }
@@ -2234,7 +2223,7 @@ void EventuallyPersistentStore::warmup(Atomic<bool> &vbStateLoaded, int id) {
     if (id == 0) {
         RCPtr<VBucket> vb = getVBucket(0, vbucket_state_active);
         if (vb) {
-            stats.totalEvictable = vb->ht.getNumItems() - vb->ht.getNumNonResidentItems();
+            stats.totalEvictable = vb->ht.getNumItems() - vb->ht.getNumNonResidentItems(); // FIXME
         }
     }
 }
@@ -2461,15 +2450,14 @@ size_t EventuallyPersistentStore::getBlobSize(const std::string &key,
     return v->valLength();
 }
 
-void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v,
-                                             enum queue_operation op, time_t queued) {
+void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v, time_t queued) {
     uint16_t vbid = vb->getId();
     std::string key = v->getKey();
 
     int kvid = KVStoreMapper::getKVStoreId(key, vbid);
     int shard = rwUnderlying[kvid]->getShardId(key, vbid);
 
-    FlushEntry *fe = new FlushEntry(v, vbid, op, getVBucketVersion(vbid), queued);
+    FlushEntry *fe = new FlushEntry(v, vbid, getVBucketVersion(vbid), queued);
     assert(v->isDirty());
     ++stats.queue_size;
     ++stats.totalEnqueued;

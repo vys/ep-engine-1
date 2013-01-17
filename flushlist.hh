@@ -17,9 +17,9 @@ class EventuallyPersistentStore;
 class FlushEntry : public boost::intrusive::list_base_hook<> {
 public:
     FlushEntry(StoredValue *s, uint16_t vb, 
-              enum queue_operation o, uint16_t vv, time_t qtime = -1) : 
+              uint16_t vv, time_t qtime = -1) : 
               sv(s), vbucketId(vb), vbucket_version(vv),
-              queued(qtime == -1 ? ep_current_time() : qtime), op(o) {}
+              queued(qtime == -1 ? ep_current_time() : qtime) {}
 
     StoredValue * getStoredValue () const { return sv; }
     uint16_t getVBucketId() const {return vbucketId; }
@@ -27,15 +27,12 @@ public:
     uint32_t getQueuedTime(void) const { return queued; }
     uint16_t getVBucketVersion() const { return vbucket_version;}
     uint64_t getId() const {return sv->getId(); }
-    enum queue_operation getOperation() const { return op; }
-    void setOperation (enum queue_operation o) { op = o; }
 
 private:
     StoredValue *sv;
     uint16_t vbucketId;
     uint16_t vbucket_version;
     uint32_t queued;
-    enum queue_operation op;
 };
 
 //typedef std::list<FlushEntry> FlushList;

@@ -842,7 +842,7 @@ private:
                     int64_t rowid = -1, const std::string &cksum = "",
                     time_t queued = -1);
 
-    void queueFlusher(RCPtr<VBucket> vb, StoredValue *v, enum queue_operation op, time_t queued = -1); 
+    void queueFlusher(RCPtr<VBucket> vb, StoredValue *v, time_t queued = -1); 
 
     /**
      * Retrieve a StoredValue and invoke a method on it.
