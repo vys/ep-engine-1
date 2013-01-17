@@ -1872,7 +1872,6 @@ public:
         // 1 means we deleted one row
         // 0 means we did not delete a row, but did not fail (did not exist)
         if (value >= 0) {
-            delete flushEntry; // This may work but, if this is not a hack, what is?!? FIXME
             if (value > 0) {
                 ++stats->delItems;
             }
@@ -1900,6 +1899,7 @@ public:
                     v->clearId();
                 }
             }
+            delete flushEntry;
         } else {
             redirty();
         }
