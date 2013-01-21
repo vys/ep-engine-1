@@ -85,7 +85,7 @@ public:
      */
     void touch() {
         if (!isDirty()) {
-            dirtiness = ep_current_time() >> 2;
+            dirtiness = ep_current_time();
         }
     }
 
@@ -93,7 +93,7 @@ public:
      * Mark this item as needing to be persisted.
      */
     void markDirty() {
-        dirtiness = ep_current_time() >> 2;
+        dirtiness = ep_current_time();
         _isDirty = 1;
     }
 
@@ -106,7 +106,7 @@ public:
      * @param dataAge the previous dataAge of this record
      */
     void reDirty(rel_time_t dataAge) {
-        dirtiness = dataAge >> 2;
+        dirtiness = dataAge;
         _isDirty = 1;
         clearPendingId();
     }
@@ -120,7 +120,7 @@ public:
      */
     void markClean(rel_time_t *dataAge) {
         if (dataAge) {
-            *dataAge = dirtiness << 2;
+            *dataAge = dirtiness;
         }
         _isDirty = 0;
         touch();
@@ -369,7 +369,7 @@ public:
      * timestamp only has four seconds of accuracy.
      */
     rel_time_t getDataAge() const {
-        return dirtiness << 2;
+        return dirtiness;
     }
 
     /**
