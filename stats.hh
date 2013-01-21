@@ -130,7 +130,22 @@ public:
     EPStats() : maxDataSize(DEFAULT_MAX_DATA_SIZE),
                 dirtyAgeHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25),
                 dataAgeHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25),
-                diskCommitHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25 ){}
+                diskCommitHisto(GrowingWidthGenerator<hrtime_t>(0, ONE_SECOND, 1.4), 25 ) {
+                    for (int i = 0; i < 2; i++) {
+                        itemAgeHisto[i] = new Histogram <int>;
+                        diskItemSizeHisto[i] = new Histogram <size_t>;
+                        memItemSizeHisto[i] = new Histogram <size_t>;
+                    }
+     }
+
+    ~EPStats() {
+
+        for (int i = 0; i < 2; i++) {
+            delete itemAgeHisto[i];
+            delete diskItemSizeHisto[i];
+            delete memItemSizeHisto[i];
+        }
+    }
 
     //numBlobs
     Atomic<size_t>numBlobs;
@@ -303,14 +318,17 @@ public:
     //! Histogram of disk ages for items
     Histogram<uint32_t> itemDiskAgeHisto;
 
-    // Reference time at which the hotness is measured
-    time_t itemAgeStartTime;
+    // Following three histograms are built during hashtable walks.
+    // Double buffering is used to avoid the scenario where continuous hashtable
+    // visitor runs leave the histograms incomplete and unusable
 
     // Histogram of age of items
-    Histogram<int>itemAgeHisto;
+    AtomicPtr<Histogram<int> > itemAgeHisto[2];
 
-    //Histogram of size of items
-    Histogram<uint32_t>itemSizeHisto;
+    // Histogram of sizes of items that are in memory
+    AtomicPtr<Histogram<size_t> > memItemSizeHisto[2];
+    // Histogram of sizes of items that are not in memory
+    AtomicPtr<Histogram<size_t> > diskItemSizeHisto[2];
 
     //! The number of samples the bgWaitDelta and bgLoadDelta contains of
     Atomic<size_t> bgNumOperations;

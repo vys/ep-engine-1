@@ -30,11 +30,11 @@ public:
         : store(s), stats(st), ejected(0), startTime(ep_real_time()), stateFinalizer(sfin),
           pauseMutations(false), evjob(ev) {
         if (evjob) {
-            stats.itemAgeStartTime = startTime;
-            ageHisto.reset();
-            sizeHisto.reset();
             evjob->initRebuild();
         }
+        stats.itemAgeHisto[1]->reset();
+        stats.diskItemSizeHisto[1]->reset();
+        stats.memItemSizeHisto[1]->reset();
         stats.expiryPagerTimeStats.reset();
     }
 
@@ -50,12 +50,16 @@ public:
             if (evjob->evictAge() &&
                 evjob->evictItemByAge(evjob->evictAge(), v, currentBucket)) {
             } else {
-                time_t age = startTime - ep_abs_time(v->getDataAge());
-                ageHisto.add(age);
-                sizeHisto.add(v->valLength());
                 evjob->addEvictItem(v, currentBucket);
             }
         }
+        // Record item sizes and age
+        if (v->isResident()) {
+            stats.memItemSizeHisto[1]->add(v->valLength());
+        } else {
+            stats.diskItemSizeHisto[1]->add(v->valLength());
+        }
+        stats.itemAgeHisto[1]->add(ep_current_time() - v->getDataAge());
     }
 
     bool visitBucket(RCPtr<VBucket> vb) {
@@ -102,20 +106,15 @@ public:
         }
         if (evjob) {
             evjob->completeRebuild();
-            // Copy out the histograms
-            stats.itemAgeHisto.reset();
-            Histogram<int>::iterator it = ageHisto.begin();
-            for (; it != ageHisto.end(); ++it) {
-                stats.itemAgeHisto.add((*it)->start(), (*it)->count());
-            }
-            stats.itemSizeHisto.reset();
-            Histogram<size_t>::iterator it1 = sizeHisto.begin();
-            for (; it1 != sizeHisto.end(); ++it1) {
-                stats.itemSizeHisto.add((*it1)->start(), (*it1)->count());
-            }
-
         }
+
         scrub_memory();
+
+        // Swap out the histograms
+        stats.itemAgeHisto[1] = stats.itemAgeHisto[0].swap(stats.itemAgeHisto[1]);
+        stats.memItemSizeHisto[1] = stats.memItemSizeHisto[0].swap(stats.memItemSizeHisto[1]);
+        stats.diskItemSizeHisto[1] = stats.diskItemSizeHisto[0].swap(stats.diskItemSizeHisto[1]);
+
         endTime = ep_real_time();
         stats.expiryPagerTimeStats.startTime = startTime;
         stats.expiryPagerTimeStats.endTime = endTime;
@@ -137,8 +136,6 @@ private:
     bool                      *stateFinalizer;
     bool                       pauseMutations;
     EvictionPolicy            *evjob;
-    Histogram<int>             ageHisto;
-    Histogram<size_t>          sizeHisto;
 };
 
 /*
@@ -158,7 +155,8 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
             available = false;
             shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
                                                    &available, 
-                                                   evictionNeeded ? policy : NULL));
+                                                   evictionNeeded ? policy : NULL
+                                                   ));
             store->visit(pv, "Expired item remover", &d, Priority::ItemPagerPriority,
                          true, 10);
         }

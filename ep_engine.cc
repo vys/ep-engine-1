@@ -3697,9 +3697,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doTimingStats(const void *cookie,
 
     add_casted_stat("item_memory_age", stats.itemMemoryAgeHisto, add_stat, cookie);
     add_casted_stat("item_disk_age", stats.itemDiskAgeHisto, add_stat, cookie);
-    add_casted_stat("item_hotness_timestamp", stats.itemAgeStartTime, add_stat, cookie);
-    add_casted_stat("item_hotness_age", stats.itemAgeHisto, add_stat, cookie);
-    add_casted_stat("item_sizes", stats.itemSizeHisto, add_stat, cookie);
+    add_casted_stat("item_age", *stats.itemAgeHisto[0].get(), add_stat, cookie);
+    add_casted_stat("resident_item_sizes", *stats.memItemSizeHisto[0].get(), add_stat, cookie);
+    add_casted_stat("non_resident_item_sizes", *stats.diskItemSizeHisto[0].get(), add_stat, cookie);
 
     stats.expiryPagerTimeStats.getStats(cookie, add_stat);
 
