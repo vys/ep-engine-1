@@ -282,12 +282,12 @@ public:
     /**
      * Size of the ready queue.
      */
-    const size_t getReadyQueueSize() const { return rQueueSize; }
+    size_t getReadyQueueSize() const { return rQueueSize; }
 
     /**
      * Size of the future queue.
      */
-    const size_t getFutureQueueSize() const { return fQueueSize; }
+    size_t getFutureQueueSize() const { return fQueueSize; }
 
 private:
     const std::vector<JobLogEntry> joblog;
