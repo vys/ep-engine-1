@@ -102,7 +102,11 @@ bool Flusher::transition_state(enum flusher_state to) {
     LockHolder lh(taskMutex);
     assert(task.get());
     dispatcher->cancel(task);
-    schedule_UNLOCKED();
+
+    if (_state != stopped) {
+        schedule_UNLOCKED();
+    }
+
     return true;
 }
 
@@ -137,6 +141,7 @@ void Flusher::schedule_UNLOCKED() {
 }
 
 void Flusher::start(void) {
+    _state = initializing;
     LockHolder lh(taskMutex);
     schedule_UNLOCKED();
     helper->start();

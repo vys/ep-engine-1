@@ -33,7 +33,9 @@ bool StatSnap::getStats(const char *s) {
 
 bool StatSnap::callback(Dispatcher &d, TaskId t) {
     if (getStats()) {
-        engine->getEpStore()->getRWUnderlying(kvid)->snapshotStats(map);
+        if (engine->getEpStore()->isKVStoreAvailable(kvid)) {
+            engine->getEpStore()->getRWUnderlying(kvid)->snapshotStats(map);
+        }
     }
     d.snooze(t, STATSNAP_FREQ);
     return true;

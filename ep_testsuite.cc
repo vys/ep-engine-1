@@ -2869,9 +2869,9 @@ static enum test_result test_vbucket_destroy_restart(ENGINE_HANDLE *h, ENGINE_HA
                               testHarness.default_engine_cfg,
                               true, false);
 
-    check(verify_vbucket_state(h, h1, 1, vbucket_state_dead),
-          "Bucket state was not dead after restart.");
-    check(set_vbucket_state(h, h1, 1, vbucket_state_active), "Failed to set vbucket state.");
+    check(verify_vbucket_state(h, h1, 1, vbucket_state_active),
+          "Bucket state was not active after restart.");
+
     check_key_value(h, h1, "key", "somevalue", 9, 1);
 
     check(set_vbucket_state(h, h1, 1, vbucket_state_dead), "Failed set set vbucket 1 state.");
@@ -6339,6 +6339,7 @@ static enum test_result test_restore_vb0_persistence(ENGINE_HANDLE *h, ENGINE_HA
 
     r = h1->unknown_command(h, NULL, req, add_response, NULL);
     check(r == ENGINE_SUCCESS, "The server should know the command");
+    check(set_flush_param(h, h1, "start_restore_vb", "0") == true, "Unable to start restore mode");
     check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
           "The server should start the backup");
     free(req);
@@ -6630,7 +6631,8 @@ static enum test_result test_kvstore_mapping(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 
         ss<<"vb_"<<ii;
         check(vals.find(ss.str()) != vals.end(), "VB info not found");
         std::string vbstate = vals[ss.str()];
-        sscanf(vbstate.c_str(), "active  kvstore %d", &kvid);
+        int curr_items;
+        sscanf(vbstate.c_str(), "active curr_items %d kvstore %d", &curr_items, &kvid);
         size[kvid]++;
     }
 
@@ -6686,11 +6688,11 @@ static enum test_result test_kvstore_online_offline(ENGINE_HANDLE *h, ENGINE_HAN
           "Failed to get the state of vbuckets");
     check(vals.find("vb_5") != vals.end(), "VB 5 info not found");
     std::string vbstate = vals["vb_5"];
-    int kvid;
-    sscanf(vbstate.c_str(), "active  kvstore %d", &kvid);
+    int kvid, curr_items;
+    sscanf(vbstate.c_str(), "active curr_items %d kvstore %d", &curr_items, &kvid);
     check(kvid == 0, "vbucket 5 should be mapping to kvstore 0");
     check(vals.size() == 3, "Membase should be holding 3 vbuckets after kvstore online");
-    check(verify_vb_key(h, h1, "key1", 1) == ENGINE_NOT_MY_VBUCKET, "key1 should not exist");
+    check(verify_vb_key(h, h1, "key1", 1) == ENGINE_KEY_ENOENT, "key1 should not exist");
 
     check(store(h, h1, NULL, OPERATION_SET, "key3", "somevalue", &i,
                 0, 5) == ENGINE_SUCCESS,
@@ -6710,6 +6712,8 @@ static enum test_result test_tap_rcv_backfill_multivb(ENGINE_HANDLE *h, ENGINE_H
     uint32_t tap_flag;
     memset(eng_specific, 0, sizeof(eng_specific));
     const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
 
     for (int vb = 1 ; vb < 4; vb++) {
         tap_flag = htonl(TAP_OPAQUE_ENABLE_CHECKPOINT_SYNC);

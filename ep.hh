@@ -58,6 +58,7 @@ extern EXTENSION_LOGGER_DESCRIPTOR *getLogger(void);
 
 #define MAX_DATA_AGE_PARAM 86400
 #define MAX_BG_FETCH_DELAY 900
+#define MAX_COMMIT_RETRIES 30
 
 /**
  * vbucket-aware hashtable visitor.
@@ -365,7 +366,7 @@ public:
      * This will reset the remaining counter and begin a new
      * transaction for the next batch.
      */
-    void commit();
+    bool commit();
 
     /**
      * Get the number of updates permitted by this transaction.
@@ -671,13 +672,13 @@ public:
     /**
      * Perform a ranged vbucket deletion.
      */
-    vbucket_del_result completeVBucketDeletion(uint16_t vbid, uint16_t vb_version,
+    vbucket_del_result completeVBucketDeletion(uint16_t vbid, uint16_t vb_version, int kvid,
                                                std::pair<int64_t, int64_t> row_range,
                                                bool isLastChunk);
     /**
      * Perform a fast vbucket deletion.
      */
-    vbucket_del_result completeVBucketDeletion(uint16_t vbid, uint16_t vbver);
+    vbucket_del_result completeVBucketDeletion(uint16_t vbid, uint16_t vbver, int kvid);
     bool deleteVBucket(uint16_t vbid);
 
     /**
@@ -691,7 +692,7 @@ public:
         uint16_t vbid;
         std::vector<uint16_t> vblist;
         if (stats.kvstoreMapVbuckets && kvstore_id != -1) {
-            vblist = KVStoreMapper::getVBucketsForKVStore(kvstore_id);
+            vblist = getVBucketsForKVStore(kvstore_id);
             maxSize = vblist.size();
         } else {
             maxSize = vbuckets.getSize() + 1;
@@ -833,6 +834,14 @@ public:
 
     bool setKVStoreAvailablity(int kvid, bool val);
 
+    std::vector<uint16_t> getVBucketsForKVStore_UNLOCKED(int kvid);
+    std::vector<uint16_t> getVBucketsForKVStore(int kvid);
+
+    bool assignKVStore(RCPtr<VBucket> &vb, int kvid = -1);
+
+    void resetKVStore_UNLOCKED(int kvid);
+    void resetKVStore(int kvid);
+
     /**
      * Complete the online restore phase by clearing the list of deleted items that
      * are received from the upstream master via TAP or from the normal clients
@@ -844,6 +853,7 @@ public:
     }
 
     void beginFlush(FlushList &out, int kvId);
+
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -959,6 +969,11 @@ private:
     size_t                     maxGetItemsChecks;
     Atomic<size_t>             getItemsThresholdChecks;
     int                        numKVStores;
+
+    // Keep the list of vbuckets belonging to a kvstore
+    std::map<int, std::vector<uint16_t> > kvstoresMap;
+    Mutex kvstoreMutex; // Protect kvstore map
+
     // During restore we're bypassing the checkpoint lists with the
     // objects we're restoring, but we need them to be persisted.
     // This is solved by using a separate list for those objects.

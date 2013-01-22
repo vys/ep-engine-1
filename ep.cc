@@ -203,12 +203,13 @@ public:
                                 uint16_t vbv, EPStats &st) : ep(e),
                                                              vbucket(vb->getId()),
                                                              vbver(vbv),
+                                                             kvid(KVStoreMapper::getVBucketToKVId(vb)),
                                                stats(st) {}
 
     bool callback(Dispatcher &, TaskId) {
         bool rv(true); // try again by default
         hrtime_t start_time(gethrtime());
-        vbucket_del_result result = ep->completeVBucketDeletion(vbucket, vbver);
+        vbucket_del_result result = ep->completeVBucketDeletion(vbucket, vbver, kvid);
         if (result == vbucket_del_success || result == vbucket_del_invalid) {
             hrtime_t wall_time = (gethrtime() - start_time) / 1000;
             stats.diskVBDelHisto.add(wall_time);
@@ -229,6 +230,7 @@ private:
     EventuallyPersistentStore *ep;
     uint16_t vbucket;
     uint16_t vbver;
+    int      kvid;
     EPStats &stats;
 };
 
@@ -249,6 +251,7 @@ public:
         execution_time = 0;
         start_wall_time = gethrtime();
         vbucket = vb->getId();
+        kvid = KVStoreMapper::getVBucketToKVId(vb);
         vb->ht.visit(vbdv);
         vbdv.createRangeList(range_list);
         current_range = range_list.begin();
@@ -278,6 +281,7 @@ public:
         hrtime_t start_time = gethrtime();
         vbucket_del_result result = ep->completeVBucketDeletion(vbucket,
                                                                 vb_version,
+                                                                kvid,
                                                                 range,
                                                                 isLastChunk);
         hrtime_t chunk_time = (gethrtime() - start_time) / 1000;
@@ -344,6 +348,7 @@ private:
     EPStats                      &stats;
     uint16_t                      vbucket;
     uint16_t                      vb_version;
+    int                           kvid;
     size_t                        chunk_size;
     size_t                        chunk_num;
     int64_t                       chunk_del_range_size;
@@ -377,13 +382,20 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
     tctx = new TransactionContext *[numKVStores];
     storageProperties = new StorageProperties *[numKVStores];
 
-    KVStoreMapper::createKVMapper(numKVStores, rwUnderlying, stats.kvstoreMapVbuckets);
+    KVStoreMapper::createKVMapper(numKVStores, stats.kvstoreMapVbuckets);
 
     int maxShards = 0;
     int i = 0;
     for (std::map<std::string, KVStoreConfig*>::iterator it = theEngine.kvstoreConfigMap->begin();
             it != theEngine.kvstoreConfigMap->end(); it++, i++) {
 
+        // Initalize kvstoresMap
+        std::vector<uint16_t> vblist;
+        if (!stats.kvstoreMapVbuckets) {
+            vblist.push_back(0);
+        }
+
+        kvstoresMap[i] = vblist;
         rwUnderlying[i] = t[i];
         dispatcher[i] = new Dispatcher(theEngine);
         flusher[i] = new Flusher(this, dispatcher[i], i);
@@ -810,6 +822,10 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(Item &item) {
 
 void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority, int kvid) {
 
+    if (!isKVStoreAvailable(kvid)) {
+        return;
+    }
+
     class VBucketStateVisitor : public VBucketVisitor {
     public:
         VBucketStateVisitor(VBucketMap &vb_map) : vbuckets(vb_map) { }
@@ -872,8 +888,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::setVBucketState(uint16_t vbid,
         uint16_t vb_new_version = vb_version == (std::numeric_limits<uint16_t>::max() - 1) ?
                                   0 : vb_version + 1;
 
-        if (!stats.kvstoreMapVbuckets ||
-                KVStoreMapper::assignKVStore(newvb) == KVSTORE_ALLOCATION_SUCCESS) {
+        if (!stats.kvstoreMapVbuckets || assignKVStore(newvb)) {
             vbuckets.addBucket(newvb);
             vbuckets.setBucketVersion(vbid, vb_new_version);
             lh.unlock();
@@ -914,16 +929,17 @@ void EventuallyPersistentStore::scheduleVBSnapshot(const Priority &p, int kvid) 
 }
 
 vbucket_del_result
-EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vb_version,
+EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vb_version, int kvid,
                                                    std::pair<int64_t, int64_t> row_range,
                                                    bool isLastChunk) {
     LockHolder lh(vbsetMutex);
 
     RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
+
     if (!vb || vb->getState() == vbucket_state_dead || vbuckets.isBucketDeletion(vbid)) {
         lh.unlock();
         if (row_range.first < 0 || row_range.second < 0 ||
-            rwUnderlying[0]->delVBucket(vbid, vb_version, row_range)) {
+            (isKVStoreAvailable(kvid) == false || rwUnderlying[kvid]->delVBucket(vbid, vb_version, row_range))) {
             if (isLastChunk) {
                 vbuckets.setBucketDeletion(vbid, false);
                 ++stats.vbucketDeletions;
@@ -938,13 +954,14 @@ EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vb_ve
 }
 
 vbucket_del_result
-EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vbver) {
+EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vbver, int kvid) {
     LockHolder lh(vbsetMutex);
 
     RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
+
     if (!vb || vb->getState() == vbucket_state_dead || vbuckets.isBucketDeletion(vbid)) {
         lh.unlock();
-        if (rwUnderlying[0]->delVBucket(vbid, vbver)) {
+        if (!isKVStoreAvailable(kvid) || rwUnderlying[kvid]->delVBucket(vbid, vbver)) {
             vbuckets.setBucketDeletion(vbid, false);
             ++stats.vbucketDeletions;
             return vbucket_del_success;
@@ -967,7 +984,7 @@ void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t v
         }
 
         if (vbuckets.setBucketDeletion(vb->getId(), true)) {
-            if (rwUnderlying[id]->getStorageProperties().hasEfficientVBDeletion()) {
+            if (storageProperties[id]->hasEfficientVBDeletion()) {
                 shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
                                                                                   vb_version,
                                                                                   stats));
@@ -1615,7 +1632,7 @@ void EventuallyPersistentStore::reset() {
 
 // This works on the premise that the stored value is only freed by flusher
 void EventuallyPersistentStore::beginFlush(FlushList &out, int kvId) {
-    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(kvId);
+    std::vector<uint16_t> vblist = getVBucketsForKVStore(kvId);
     std::vector<uint16_t>::iterator vb_it = vblist.begin();
 
     if (hasItemsForPersistence(kvId)) {
@@ -1671,7 +1688,7 @@ void EventuallyPersistentStore::requeueRejectedItems(FlushList *rejectList,
 void EventuallyPersistentStore::completeFlush(rel_time_t flush_start, int id) {
     LockHolder lh(vbsetMutex);
 
-    std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(id);
+    std::vector<uint16_t> vblist = getVBucketsForKVStore(id);
     std::vector<uint16_t>::iterator vb_it = vblist.begin();
     for (; vb_it != vblist.end(); vb_it++) {
         RCPtr<VBucket> vb = getVBucket(*vb_it);
@@ -1739,7 +1756,11 @@ int EventuallyPersistentStore::flushSome(FlushList *flushList,
     if (shouldPreemptFlush(completed, id)) {
         ++stats.flusherPreempts[id];
     } else {
-        tctx[id]->commit();
+        if(!tctx[id]->commit()) {
+            getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
+                             "Flusher-%d failed to commit transaction. Marking KVStore offline\n", id);
+            setKVStoreAvailablity(id, false);
+        }
     }
     tctx[id]->leave(completed);
     return (rejected == 0 ? 0 : oldest);
@@ -2328,6 +2349,8 @@ bool EventuallyPersistentStore::isKVStoreAvailable(int kvid) {
 }
 
 bool EventuallyPersistentStore::setKVStoreAvailablity(int kvid, bool val) {
+    LockHolder lh(kvstoreMutex);
+
     if (kvid < 0 || kvid >= numKVStores) {
         return false;
     }
@@ -2337,7 +2360,7 @@ bool EventuallyPersistentStore::setKVStoreAvailablity(int kvid, bool val) {
             return true;
         }
 
-        std::vector<uint16_t> vblist = KVStoreMapper::getVBucketsForKVStore(kvid);
+        std::vector<uint16_t> vblist = getVBucketsForKVStore_UNLOCKED(kvid);
         std::vector<uint16_t>::iterator it = vblist.begin();
         // Remove the vbuckets mapped by the kvstore
         for (; it != vblist.end(); it++) {
@@ -2351,25 +2374,77 @@ bool EventuallyPersistentStore::setKVStoreAvailablity(int kvid, bool val) {
             }
         }
 
-        KVStoreMapper::resetKVStore(kvid);
+        resetKVStore_UNLOCKED(kvid);
         rwUnderlying[kvid]->reset();
         if (roUnderlying[kvid] != rwUnderlying[kvid]) {
             roUnderlying[kvid]->reset();
         }
-        flusher[kvid]->resume();
+
+        flusher[kvid]->start();
         getLogger()->log(EXTENSION_LOG_INFO, NULL, "Switching kvstore %d state to online", kvid);
     } else {
         if (!isKVStoreAvailable(kvid)) {
             return true;
         }
-        tctx[kvid]->commitSoon();
-        flusher[kvid]->pause();
+
+        flusher[kvid]->stop(true);
         getLogger()->log(EXTENSION_LOG_INFO, NULL, "Switching kvstore %d state to offline", kvid);
     }
 
     rwUnderlying[kvid]->setAvailability(val);
 
    return true;
+}
+
+// Get the list of vbuckets mapped to a kvstore
+std::vector<uint16_t> EventuallyPersistentStore::getVBucketsForKVStore_UNLOCKED(int kvid) {
+    std::map<int, std::vector<uint16_t> >::iterator it;
+    it = kvstoresMap.find(kvid);
+    return (*it).second;
+}
+
+std::vector<uint16_t> EventuallyPersistentStore::getVBucketsForKVStore(int kvid) {
+    LockHolder lh(kvstoreMutex);
+    return getVBucketsForKVStore_UNLOCKED(kvid);
+}
+
+// Clear assigned vbucket entries for kvid
+void EventuallyPersistentStore::resetKVStore_UNLOCKED(int kvid) {
+    std::vector<uint16_t> vblist;
+    if (kvid >= 0 && kvid < numKVStores) {
+        kvstoresMap[kvid] = vblist;
+    }
+}
+
+void EventuallyPersistentStore::resetKVStore(int kvid) {
+    LockHolder lh(kvstoreMutex);
+    resetKVStore_UNLOCKED(kvid);
+}
+
+/**
+ * Assign a vbucket to an available KVStore which holds less number of vbuckets
+ * If kvid != -1, assign vbucket explicitly to the specified kvstore (used for warmup)
+*/
+bool EventuallyPersistentStore::assignKVStore(RCPtr<VBucket> &vb, int kvid) {
+    LockHolder lh(kvstoreMutex);
+
+    if (kvid == -1) {
+        kvid = KVStoreMapper::findKVStore(kvstoresMap, rwUnderlying);
+    }
+
+    if (kvid == -1) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL,"Unable to assign vbucket %d to a kvstore\n", vb->getId());
+        return false;
+    } else {
+        std::map<int, std::vector<uint16_t> >::iterator it;
+        it = kvstoresMap.find(kvid);
+        vb->setKVStoreId(kvid);
+        assert(it != kvstoresMap.end());
+        (*it).second.push_back(vb->getId());
+        getLogger()->log(EXTENSION_LOG_INFO, NULL,
+            "Assigned vbucket %d to kvstore %d\n", vb->getId(), kvid);
+        return true;
+    }
 }
 
 void EventuallyPersistentStore::completeOnlineRestore() {
@@ -2386,14 +2461,15 @@ void EventuallyPersistentStore::warmup(Atomic<bool> &vbStateLoaded, int id) {
         for (it = state.begin(); it != state.end(); ++it) {
             std::pair<uint16_t, uint16_t> vbp = it->first;
             vbucket_state vbs = it->second;
-            getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
+            getLogger()->log(EXTENSION_LOG_INFO, NULL,
                              "Reloading vbucket %d - was in %s state\n",
                              vbp.first, vbs.state.c_str());
             cb.initVBucket(vbp.first, vbp.second, vbs.checkpointId + 1,
+                           VBucket::fromString(vbs.state.c_str()),
                            VBucket::fromString(vbs.state.c_str()));
             if (stats.kvstoreMapVbuckets) {
                 RCPtr<VBucket> vb = getVBucket(vbp.first);
-                assert(KVStoreMapper::assignKVStore(vb, id) == KVSTORE_ALLOCATION_SUCCESS);
+                assert(assignKVStore(vb, id) == true);
             }
         }
         vbStateLoaded.set(true);
@@ -2554,13 +2630,21 @@ void TransactionContext::leave(int completed) {
     }
 }
 
-void TransactionContext::commit() {
+bool TransactionContext::commit() {
     BlockTimer timer(&stats.diskCommitHisto);
     rel_time_t cstart = ep_current_time();
-    while (!underlying->commit()) {
-        sleep(1);
-        ++stats.commitFailed[id];
+    bool rv;
+    int i;
+    for (i = 0; i < MAX_COMMIT_RETRIES; i++) {
+        rv = underlying->commit();
+        if (rv) {
+            break;
+        } else {
+            sleep(1);
+            ++stats.commitFailed[id];
+        }
     }
+
     ++stats.flusherCommits[id];
     rel_time_t time_diff = ep_current_time() - cstart;
 
@@ -2572,6 +2656,7 @@ void TransactionContext::commit() {
     //syncRegistry.itemsPersisted(uncommittedItems);
     uncommittedItems.clear();
     numUncommittedItems = 0;
+    return rv;
 }
 
 void TransactionContext::addUncommittedItem() {

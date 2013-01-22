@@ -179,6 +179,10 @@ public:
         backfill.isBackfillPhase = backfillPhase;
     }
 
+    int getKVStoreId(void) const { return kvstore_id; }
+
+    void setKVStoreId(int kvid) { kvstore_id = kvid; }
+
     HashTable         ht;
     CheckpointManager checkpointManager;
     struct {
@@ -228,8 +232,6 @@ public:
 private:
 
     void fireAllOps(EventuallyPersistentEngine &engine, ENGINE_ERROR_CODE code);
-    int getKVStoreId(void) const { return kvstore_id; }
-    void setKVStoreId(int kvid) { kvstore_id = kvid; }
 
     int                      id;
     Atomic<vbucket_state_t>  state;
@@ -240,7 +242,6 @@ private:
     EPStats                 &stats;
     int                      kvstore_id;
 
-    friend class KVStoreMapper;
     DISALLOW_COPY_AND_ASSIGN(VBucket);
 };
 
