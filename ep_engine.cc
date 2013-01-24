@@ -433,6 +433,9 @@ extern "C" {
                 CheckpointManager::keepClosedCheckpointsUnderHighWat(keepClosedCheckpoints);
             } else if (strcmp(keyz, "scrub_memory") == 0) {
                 scrub_memory();
+            } else if (strcmp(keyz, "allocator_stats") == 0) {
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Printing allocator stats to stderr");
+                print_allocator_stats();
             } else {
                 *msg = "Unknown config param";
                 rv = PROTOCOL_BINARY_RESPONSE_KEY_ENOENT;

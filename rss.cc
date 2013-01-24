@@ -7,6 +7,9 @@
 #include <mach/mach_init.h>
 #endif
 
+#include "config.h"
+#include "ep.hh"
+
 #ifdef HAVE_JEMALLOC_JEMALLOC_H
 #define JEMALLOC_MANGLE
 #include "jemalloc/jemalloc.h"
@@ -56,9 +59,14 @@ void scrub_memory() {
     std::stringstream ss;
     ss << "arena." << narenas << ".purge";
     */
-
     mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
     mallctl("arenas.purge", NULL, NULL, NULL, 0);
     getLogger()->log(EXTENSION_LOG_INFO, NULL, "scrub_memory completed");
+#endif
+}
+
+void print_allocator_stats() {
+#ifdef HAVE_JEMALLOC_JEMALLOC_H
+        malloc_stats_print(NULL, NULL, NULL);
 #endif
 }
