@@ -884,6 +884,7 @@ private:
     void completeFlush(rel_time_t flush_start, int id);
 
     void enqueueCommit();
+    int eligibleForPersistence(StoredValue*, rel_time_t);
     int flushSome(FlushList *flushItems,
                   FlushList *rejectList,
                   int kvId);
@@ -892,7 +893,7 @@ private:
                  int kvId,
                  bool &wasRejected);
     int flushOneDeleteAll(int id);
-    int flushOneDelOrSet(FlushEntry &fe, FlushList *rejectList, int kvId);
+    int flushOneDelOrSet(FlushEntry *fe, FlushList *rejectList, int kvId);
 
     StoredValue *fetchValidValue(RCPtr<VBucket> vb, const std::string &key,
                                  int bucket_num, bool wantsDeleted=false);

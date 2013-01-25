@@ -934,6 +934,7 @@ private:
 
 };
 
+
 class MutationValue {
 public:
     MutationValue() : wasDirty(0), sv(NULL) {}

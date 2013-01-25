@@ -203,7 +203,7 @@ public:
         public:
             CompareFlushEntryByRowId() {}
             bool operator()(const FlushEntry &i1, const FlushEntry &i2) {
-                return i1.getId() < i2.getId();
+                return i1.v->getId() < i2.v->getId();
             }
     };
 
@@ -367,9 +367,9 @@ public:
         public:
             CompareFlushEntryByVBAndRowId() {}
             bool operator()(const FlushEntry &i1, const FlushEntry &i2) {
-                return i1.getVBucketId() == i2.getVBucketId()
-                    ? i1.getId() < i2.getId()
-                    : i1.getVBucketId() < i2.getVBucketId();
+                return i1.vbId == i2.vbId
+                    ? i1.v->getId() < i2.v->getId()
+                    : i1.vbId < i2.vbId;
             }
     };
 

@@ -93,7 +93,7 @@ public:
     /**
      * Overrides set().
      */
-    void set(const Item &item, uint16_t vb_version, Callback<mutation_result> &cb);
+    void set(const Item &item, uint16_t vb_version, mutation_result &p);
 
     /**
      * Overrides get().
@@ -104,9 +104,8 @@ public:
     /**
      * Overrides del().
      */
-    void del(const std::string &key, uint64_t rowid,
-             uint16_t vb, uint16_t vbver,
-             Callback<int> &cb);
+    int del(const std::string &key, uint64_t rowid,
+             uint16_t vb, uint16_t vbver);
 
     bool delVBucket(uint16_t vbucket, uint16_t vb_version);
 
@@ -163,8 +162,8 @@ private:
                   PreparedStatement *insSt,
                   const std::map<T1, T2> &m);
 
-    void insert(const Item &itm, uint16_t vb_version, Callback<mutation_result> &cb);
-    void update(const Item &itm, uint16_t vb_version, Callback<mutation_result> &cb);
+    void insert(const Item &itm, uint16_t vb_version, mutation_result &p);
+    void update(const Item &itm, uint16_t vb_version, mutation_result &p);
     int64_t lastRowId();
 
     EPStats &stats;

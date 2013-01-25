@@ -26,9 +26,10 @@ int64_t StrategicSqlite3::lastRowId() {
 }
 
 void StrategicSqlite3::insert(const Item &itm, uint16_t vb_version,
-                              Callback<mutation_result> &cb) {
+                              mutation_result &p) {
     assert(itm.getId() <= 0);
-
+    BlockTimer timer(&stats.diskInsertHisto);
+ 
     PreparedStatement *ins_stmt = strategy->getStatements(itm.getVBucketId(),
                                                           vb_version,
                                                           itm.getKey())->ins();
@@ -51,15 +52,15 @@ void StrategicSqlite3::insert(const Item &itm, uint16_t vb_version,
 
     int64_t newId = lastRowId();
 
-    std::pair<int, int64_t> p(rv, newId);
-    cb.callback(p);
+    p = std::make_pair(rv, newId);
     ins_stmt->reset();
 }
 
 void StrategicSqlite3::update(const Item &itm, uint16_t vb_version,
-                              Callback<mutation_result> &cb) {
+                              mutation_result &p) {
     assert(itm.getId() > 0);
 
+    BlockTimer timer(&stats.diskUpdateHisto);
     PreparedStatement *upd_stmt = strategy->getStatements(itm.getVBucketId(),
                                                           vb_version,
                                                           itm.getKey())->upd();
@@ -80,8 +81,7 @@ void StrategicSqlite3::update(const Item &itm, uint16_t vb_version,
     ++stats.io_num_write;
     stats.io_write_bytes += itm.getKey().length() + itm.getNBytes();
 
-    std::pair<int, int64_t> p(rv, 0);
-    cb.callback(p);
+    p = std::make_pair(rv, 0);
     upd_stmt->reset();
 }
 
@@ -105,11 +105,11 @@ vbucket_map_t StrategicSqlite3::listPersistedVbuckets() {
 }
 
 void StrategicSqlite3::set(const Item &itm, uint16_t vb_version,
-                           Callback<mutation_result> &cb) {
+                           mutation_result &p) {
     if (itm.getId() <= 0) {
-        insert(itm, vb_version, cb);
+        insert(itm, vb_version, p);
     } else {
-        update(itm, vb_version, cb);
+        update(itm, vb_version, p);
     }
 }
 
@@ -153,17 +153,16 @@ void StrategicSqlite3::reset() {
     }
 }
 
-void StrategicSqlite3::del(const std::string &key, uint64_t rowid,
-                           uint16_t vb, uint16_t vbver,
-                           Callback<int> &cb) {
+int StrategicSqlite3::del(const std::string &key, uint64_t rowid, uint16_t vb, uint16_t vbver) {
+    BlockTimer timer(&stats.diskDelHisto);
     PreparedStatement *del_stmt = strategy->getStatements(vb, vbver, key)->del();
     del_stmt->bind64(1, rowid);
     int rv = del_stmt->execute();
     if (rv > 0) {
         stats.totalPersisted++;
     }
-    cb.callback(rv);
     del_stmt->reset();
+    return rv;
 }
 
 bool StrategicSqlite3::delVBucket(uint16_t vbucket, uint16_t vb_version,

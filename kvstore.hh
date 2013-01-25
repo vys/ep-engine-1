@@ -242,7 +242,7 @@ public:
      * Set an item into the kv store.
      */
     virtual void set(const Item &item, uint16_t vb_version,
-                     Callback<mutation_result> &cb) = 0;
+                     mutation_result &p) = 0;
 
     /**
      * Get an item from the kv store.
@@ -254,9 +254,8 @@ public:
     /**
      * Delete an item from the kv store.
      */
-    virtual void del(const std::string &key, uint64_t rowid,
-                     uint16_t vb, uint16_t vbver,
-                     Callback<int> &cb) = 0;
+    virtual int del(const std::string &key, uint64_t rowid,
+                     uint16_t vb, uint16_t vbver) = 0;
 
     /**
      * Bulk delete some versioned records from a vbucket.

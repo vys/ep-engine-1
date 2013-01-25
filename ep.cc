@@ -383,7 +383,7 @@ EventuallyPersistentStore::EventuallyPersistentStore(EventuallyPersistentEngine 
         rwUnderlying[i] = t[i];
         dispatcher[i] = new Dispatcher(theEngine);
         flusher[i] = new Flusher(this, dispatcher[i], i);
-        tctx[i] = new TransactionContext(stats, t[i], 
+        tctx[i] = new TransactionContext(stats, t[i],
                                          theEngine.syncRegistry, i);
 
         storageProperties[i] = new StorageProperties(t[i]->getStorageProperties());
@@ -1101,7 +1101,7 @@ void EventuallyPersistentStore::bgFetch(const std::string &key,
 GetValue EventuallyPersistentStore::get(const std::string &key,
                                         uint16_t vbucket,
                                         const void *cookie,
-                                        bool queueBG, bool honorStates, 
+                                        bool queueBG, bool honorStates,
                                         bool verifyCksum) {
     RCPtr<VBucket> vb = getVBucket(vbucket);
     if (!vb) {
@@ -1143,7 +1143,7 @@ GetValue EventuallyPersistentStore::get(const std::string &key,
         uint64_t icas = v->isLocked(ep_current_time())
             ? static_cast<uint64_t>(-1)
             : v->getCas();
-        
+
         Item * it = new Item(v->getKey(), v->getFlags(), v->getExptime(),
                              v->getValue(), v->getCksum(), icas, v->getId(), vbucket);
 
@@ -1223,7 +1223,7 @@ GetValue EventuallyPersistentStore::getAndUpdateTtl(const std::string &key,
         Item *it = new Item(v->getKey(), v->getFlags(), v->getExptime(),
                        v->getValue(), v->getCksum(), icas, v->getId(), vbucket);
         GetValue rv(it, ENGINE_SUCCESS, v->getId());
-        
+
         DataIntegrity *d = DataIntegrity::getDi(it->getCksumMeta());
         if (!d->verifyCksum(it)) {
             ++stats.cksumFailed;
@@ -1795,14 +1795,14 @@ protocol_binary_response_status EventuallyPersistentStore::revertOnlineUpdate(RC
  * EventuallyPersistentStore::flushOne so that an object can be
  * requeued in case of failure to store in the underlying layer.
  */
+#if 0
 class PersistenceCallback : public Callback<mutation_result>,
                             public Callback<int> {
 public:
 
     PersistenceCallback(FlushEntry *fe, FlushList *rejList,
-                        EventuallyPersistentStore *st,
-                        rel_time_t qd, rel_time_t d, EPStats *s) :
-        flushEntry(fe), rejectList(rejList), store(st), queued(qd), dirtied(d), stats(s) {
+                        EventuallyPersistentStore *st, EPStats *s) :
+        flushEntry(fe), rejectList(rejList), store(st), stats(s) {
         assert(rejectList);
         assert(s);
     }
@@ -1844,22 +1844,22 @@ public:
             // If the return was 0 here, we're in a bad state because
             // we do not know the rowid of this object.
             if (value.first == 0) {
-                RCPtr<VBucket> vb = store->getVBucket(flushEntry->getVBucketId());
+                RCPtr<VBucket> vb = store->getVBucket(flushEntry->vbId);
                 int bucket_num(0);
-                LockHolder lh = vb->ht.getLockedBucket(flushEntry->getKey(), &bucket_num);
-                StoredValue *v = store->fetchValidValue(vb, flushEntry->getKey(),
+                LockHolder lh = vb->ht.getLockedBucket(flushEntry->v->getKey(), &bucket_num);
+                StoredValue *v = store->fetchValidValue(vb, flushEntry->v->getKey(),
                                                         bucket_num, true);
-                assert(v == flushEntry->getStoredValue());
+                assert(v == flushEntry->v);
                 if (v) {
                     std::stringstream ss;
-                    ss << "Persisting ``" << flushEntry->getKey() << "'' on vb"
-                       << flushEntry->getVBucketId() << " (rowid=" << v->getId()
+                    ss << "Persisting ``" << v->getKey() << "'' on vb"
+                       << flushEntry->vbId << " (rowid=" << v->getId()
                        << ") returned 0 updates\n";
                     getLogger()->log(EXTENSION_LOG_WARNING, NULL, "%s", ss.str().c_str());
                 } else {
                     getLogger()->log(EXTENSION_LOG_INFO, NULL,
                                      "Error persisting now missing ``%s'' from vb%d\n",
-                                     flushEntry->getKey().c_str(), flushEntry->getVBucketId());
+                                     v->getKey().c_str(), flushEntry->vbId);
                 }
                 delete flushEntry;
             } else {
@@ -1872,68 +1872,61 @@ public:
     //
     // The boolean indicates whether the underlying storage
     // successfully deleted the item.
-    void callback(int &value) {
-        // > 1 would be bad.  We were only trying to delete one row.
-        assert(value < 2);
-        // -1 means fail
-        // 1 means we deleted one row
-        // 0 means we did not delete a row, but did not fail (did not exist)
-        if (value >= 0) {
-            if (value > 0) {
-                ++stats->delItems;
+    //  -1 means fail
+    //  1 means we deleted one row
+    //  Failures that should never happen:
+    //      > 1 would be bad.  We were only trying to delete one row.
+    //      0 means we did not delete a row, but did not fail (did not exist)
+    void callback(int &rowsAffected) {
+        if (rowsAffected < 0) {
+            rejectList->push_back(*flushEntry);
+            return;
+        }
+
+        assert(rowsAffected == 1);
+
+        ++stats->delItems;
+
+        RCPtr<VBucket> vb = store->getVBucket(flushEntry->vbId);
+        if (vb) {
+            int bucket_num;
+            LockHolder lh = vb->ht.getLockedBucket(flushEntry->v->getKey(), &bucket_num);
+            StoredValue *v = store->fetchValidValue(vb, flushEntry->v->getKey(), bucket_num, true);
+            assert(v == flushEntry->v);
+            // Only proceed with deletion if the item is still deleted
+            if (v->isDeleted()) {
+                bool deleted = vb->ht.unlocked_del(v->getKey(), bucket_num);
+                assert(deleted);
+                delete flushEntry;
+            } else {
+                redirty();
             }
-            // We have succesfully removed an item from the disk, we
-            // may now remove it from the hash table.
-            RCPtr<VBucket> vb = store->getVBucket(flushEntry->getVBucketId());
-            if (vb) {
-                int bucket_num(0);
-                LockHolder lh = vb->ht.getLockedBucket(flushEntry->getKey(), &bucket_num);
-                StoredValue *v = store->fetchValidValue(vb, flushEntry->getKey(),
-                                                        bucket_num, true);
-                assert(v == flushEntry->getStoredValue());
-                // Only proceed with deletion if the item is still deleted and
-                // no other mutation for it came during this window.
-                if (v && !v->isDirty() && v->isDeleted()) {
-                    if (store->isRestoreEnabled()) {
-                        LockHolder rlh(store->restore.mutex);
-                        store->restore.itemsDeleted.insert(flushEntry->getKey());
-                    }
-                    bool deleted = vb->ht.unlocked_del(flushEntry->getKey(),
-                                                       bucket_num);
-                    assert(deleted);
-                } else if (v) { // undelete
-                    v->clearId();
-                }
-            }
-            delete flushEntry;
-        } else {
-            redirty();
         }
     }
 
 private:
 
     void setId(int64_t id) {
-        bool did = store->invokeOnLockedStoredValue(flushEntry->getKey(),
-                                                    flushEntry->getVBucketId(),
+        bool did = store->invokeOnLockedStoredValue(flushEntry->v->getKey(),
+                                                    flushEntry->vbId,
                                                     &StoredValue::setId,
                                                     id);
         if (!did) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                              "Failed to set id on vb%d ``%s''\n",
-                             flushEntry->getVBucketId(), flushEntry->getKey().c_str());
+                             flushEntry->vbId, flushEntry->v->getKey().c_str());
         }
     }
 
     void redirty() {
         ++stats->flushFailed;
 
-        RCPtr<VBucket> vb = store->getVBucket(flushEntry->getVBucketId());
+        RCPtr<VBucket> vb = store->getVBucket(flushEntry->vbId);
         if (vb) {
             int bucket_num(0);
-            LockHolder lh = vb->ht.getLockedBucket(flushEntry->getKey(), &bucket_num);
-            StoredValue *v = store->fetchValidValue(vb, flushEntry->getKey(), bucket_num, true);
-            assert(v == flushEntry->getStoredValue());
+            LockHolder lh = vb->ht.getLockedBucket(flushEntry->v->getKey(), &bucket_num);
+            StoredValue *v = store->fetchValidValue(vb, flushEntry->v->getKey(), bucket_num, true);
+            assert(v == flushEntry->v);
             if (v->isClean()) {
                 v->markDirty();
                 rejectList->push_back(*flushEntry);
@@ -1951,11 +1944,10 @@ private:
     FlushEntry *flushEntry;
     FlushList *rejectList;
     EventuallyPersistentStore *store;
-    rel_time_t queued;
-    rel_time_t dirtied;
     EPStats *stats;
     DISALLOW_COPY_AND_ASSIGN(PersistenceCallback);
 };
+#endif
 
 int EventuallyPersistentStore::flushOneDeleteAll(int id) {
     rwUnderlying[id]->reset();
@@ -1965,158 +1957,214 @@ int EventuallyPersistentStore::flushOneDeleteAll(int id) {
     return 1;
 }
 
-// While I actually know whether a delete or set was intended, I'm
-// still a bit better off running the older code that figures it out
-// based on what's in memory.
-int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry &fe,
-                                           FlushList *rejectList,
-                                           int kvId) {
 
-    RCPtr<VBucket> vb = getVBucket(fe.getVBucketId());
+int EventuallyPersistentStore::eligibleForPersistence(StoredValue *v, rel_time_t queued) {
+    int eligible = 0;
+
+    rel_time_t now = ep_current_time();
+
+    int dataAge = now - v->getDataAge();
+    int queueAge = now - queued;
+
+    int minDataAge = stats.min_data_age.get();
+    int maxQueueAge = stats.queue_age_cap.get();
+
+    if (queueAge >= maxQueueAge) {
+        ++stats.tooOld;
+    } else if (dataAge < minDataAge) {
+        ++stats.tooYoung;
+        eligible = std::min(minDataAge-dataAge, maxQueueAge-queueAge);
+    }
+
+    return eligible;
+}
+
+/**
+ * flushOneDelOrSet
+ *
+ * This stored-value is dirty. It could be because
+ *  - It's a new item, it has been deleted before it was ever saved to disk, it needs to be deleted from memory.
+ *  - It's a new item, it needs to be saved to disk.
+ *
+ *  - It's an existing item, it was mutated, it needs to be saved to disk.
+ *
+ *  - It's an existing item, it was deleted, it needs to be deleted from disk.
+ *  - It's an existing item, it expired, it needs to be deleted from disk.
+ *  - It was one of the above cases, and in a previous attempt of this function, it failed, it needs to be retried.
+ *
+ *  See if we need to yield to the dispatcher for a higher priority job. If so, return.
+ *
+ *  We acquire lock on hashtable bucket for this key.
+ *  Get the storedValue
+ *      Evaluate if it's eligible for persistence based on min_data_age/queue_age_cap criteria.
+ *      If it's not eligible
+ *          add it to rejectList.
+ *          Return the time in seconds after which this item will become eligible.
+ *
+ *  Construct an Item to pass to kvstore->set or kvstore->del.
+ *  Release the lock.
+ *      Note: While we are executing here after releasing the lock, a frontend
+ *      operation can happen on this item. But it will not queue any new FlushEntry
+ *      as it's still marked dirty. So, we need to handle this case after we come
+ *      back from kvstore operation below.
+ *
+ *  Invoke the kvstore function. It returns success or failure.
+ *      If operation succeeded, we now need to check if a mutation came while we were
+ *      processing current mutation.
+ *          If yes, we simply add our current flushEntry to rejectList.
+ *          If no, we mark storedValue as clean! yay!
+ *
+ *      If operation failed, we need to simply add it to rejectList.
+ *
+ *      Note: If we don't requeue the flushEntry, we are responsible for deallocating (deleting) it.
+ *
+ *  Return 0
+ *
+ */
+/* We have 3 cases to handle.
+     *  Delete from memory because item is new and got deleted before it was ever saved to disk.
+     *  Delete from disk because item existed and it got deleted from disk.
+     *  Save to disk because item needs to be saved.
+     */
+int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejectList, int kvId) {
+    if (vbuckets.isHighPriorityVbSnapshotScheduled()) {
+        rejectList->push_back(*fe);
+        return 0;
+    }
+
+    RCPtr<VBucket> vb = getVBucket(fe->getVBucketId());
     if (!vb) {
-        // FIXME need to delete flushEntry, otherwise it's a leak!
+        delete fe;
         return 0;
     }
 
-    int bucket_num(0);
-    LockHolder lh = vb->ht.getLockedBucket(fe.getKey(), &bucket_num);
-    if (fe.getVBucketVersion() != vbuckets.getBucketVersion(fe.getVBucketId())) {
-        // FIXME need to delete flushEntry, otherwise it's a leak!
+    int bucket_num = 0;
+    LockHolder lh = vb->ht.getLockedBucket(fe->v->getKey(), &bucket_num);
+
+    if (fe->vbVersion != vbuckets.getBucketVersion(fe->getVBucketId())) {
+        delete fe;
         return 0;
     }
-    StoredValue *v = vb->ht.unlocked_find(fe.getKey(), bucket_num, true);
-    Item *itm = NULL;
 
-    assert(fe.getStoredValue() == v);
+    StoredValue *v = vb->ht.unlocked_find(fe->v->getKey(), bucket_num, true);
 
-    vb->doStatsForFlushing(sizeof(FlushEntry), v->size(), fe.getQueuedTime());
+    assert(fe->v == v);         // what we queued is same as what's in ht.
+    assert(v->isDirty());       // we queued it because it became dirty and it still is dirty.
+    assert(!v->isPendingId());  // Only we do IO for this item and we have not yet done it.
 
-    bool found = v != NULL;
-    int64_t rowid = found ? v->getId() : -1;
-    bool deleted = found && v->isDeleted();
-    bool isDirty = found && v->isDirty();
-    rel_time_t queued(fe.getQueuedTime()), dirtied(0);
-
-    int ret = 0;
-
-    if (!deleted && isDirty && v->isExpired(ep_real_time() + engine.getItemExpiryWindow())) {
-        assert (v->isDeleted() == false);
-        ++stats.flushExpired;
-        v->markClean(&dirtied);
-        // If the new item is expired within current_time + expiry_window, clear the row id
-        // from hashtable and remove the old item from database.
-        v->clearId();
-        deleted = true;
-        isDirty = false;
+    // (1) New item, already deleted, just delete from memory.
+    if (!v->hasId() && v->isDeleted()) {
+        bool deleted = vb->ht.unlocked_del(fe->v->getKey(), bucket_num);
+        assert(deleted);
+        delete fe;
+        return 0;
     }
 
-    if (isDirty) {
-        dirtied = v->getDataAge();
-        // Calculate stats if this had a positive time.
-        rel_time_t now = ep_current_time();
-        int dataAge = now - dirtied;
-        int dirtyAge = now - queued;
-        bool eligible = true;
-        int mda = stats.min_data_age.get();
-        int qac = stats.queue_age_cap.get();
+    // Next cases require disk io. Let's check it's eligibility for persistence.
+    int eligibleIn = this->eligibleForPersistence(v, fe->queuedTime);
+    if (eligibleIn != 0) {
+        rejectList->push_back(*fe);
+        ++vb->opsReject;
+        return eligibleIn;
+    }
 
-        if (v->isPendingId()) {
-            eligible = false;
-        } else if (dirtyAge >= qac) {
-            ++stats.tooOld;
-        } else if (dataAge < mda) {
-            eligible = false;
-            // Skip this one.  It's too young.
-            ++stats.tooYoung;
+    // Ok, we need disk-io. Let's create an item and release the lock.
+    Item itm(v->getKey(), v->getFlags(), v->getExptime(), v->getValue(),
+                v->getCksum(), v->getCas(), v->getId(), vb->getId());
+    lh.unlock();
+    time_t now = ep_real_time();
+    // (2) Existing item, deleted. Delete from disk, then delete from memory.
+    if (v->hasId() && (v->isDeleted() || v->isExpired(now))) {
+        int rowsAffected = rwUnderlying[kvId]->del(v->getKey(), v->getId(), fe->vbId, fe->vbVersion);
+        if (rowsAffected == -1) {
+            rejectList->push_back(*fe);
+            stats.flushFailed++;
+            return 0;
         }
 
-        if (eligible) {
-            assert(dirtyAge >= 0);
-            assert(dirtyAge < (86400 * 30));
-            stats.dirtyAgeHisto.add(dirtyAge * 1000000);
-            stats.dataAgeHisto.add(dataAge * 1000000);
-            stats.dirtyAge.set(dirtyAge);
-            stats.dataAge.set(dataAge);
-            stats.dirtyAgeHighWat.set(std::max(stats.dirtyAge.get(),
-                                               stats.dirtyAgeHighWat.get()));
-            stats.dataAgeHighWat.set(std::max(stats.dataAge.get(),
-                                              stats.dataAgeHighWat.get()));
+        assert(rowsAffected == 1);
+        stats.delItems++;
 
-            if (!deleted) {
-                assert(rowid == v->getId());
+        // successfully deleted from disk. Let's delete from memory.
+        vb = getVBucket(fe->vbId);
+        if (vb) {
+            LockHolder lh2 = vb->ht.getLockedBucket(v->getKey(), &bucket_num);
+            if (fe->vbVersion != vbuckets.getBucketVersion(fe->vbId)) {
+                delete fe;
+                return 0;
             }
 
-            if (rowid == -1) {
-                v->setPendingId();
+            StoredValue *v2 = vb->ht.unlocked_find(v->getKey(), bucket_num, true);
+            assert(v2 == v);
+
+            // let's confirm a new set has not come for this key. Only then delete it.
+            if (v->isDeleted() || v->isExpired(now)) {
+                bool deleted = vb->ht.unlocked_del(v->getKey(), bucket_num);
+                assert(deleted);
+                delete fe;
+            } else { // undeleted, let's requeue.
+                rejectList->push_back(*fe);
+                return 0;
             }
         } else {
-            isDirty = deleted = false;
-            v->reDirty(dirtied);
-            rejectList->push_back(fe);
-            ++vb->opsReject;
-            // If queue_age_cap is not a multiple of min_data_age,
-            // the sleeptime is longer than is required for it to
-            // hit. This fix honors queue_age_cap for computing sleep
-            // time.
-            ret = std::min(mda - dataAge, qac - dirtyAge);
-            // This is a sanity check just in case v->isPendingId()
-            // returns true and the current time was eligible for
-            // persistence. A zero value for ret makes flusher to
-            // re-dispatch only after min_data_age seconds. Setting to 1
-            // rechecks after 1 second.
-            ret = (ret <= 0 ? 1 : ret);
+            delete fe;
+            return 0;
         }
     }
 
-    if (isDirty && !deleted) {
-        if (fe.getVBucketVersion() != vbuckets.getBucketVersion(fe.getVBucketId())) {
-            lh.unlock();
-        } else {
-            // If a vbucket snapshot task with the high priority is currently scheduled,
-            // requeue the persistence task and wait until the snapshot task is completed.
-            if (vbuckets.isHighPriorityVbSnapshotScheduled()) {
-                v->clearPendingId();
-                lh.unlock();
-                rejectList->push_back(fe);
-                ++vb->opsReject;
-            } else {
-                itm = new Item (v->getKey(), v->getFlags(), v->getExptime(), v->getValue(),
-                                v->getCksum(), v->getCas(), v->getId(), vb->getId());
+    // (3) New or existing item, not deleted, needs to be saved. saved
+    if (!v->isDeleted()) {
+        mutation_result result;
+        rwUnderlying[kvId]->set(itm, fe->vbVersion, result);
+        int rowsAffected = result.first;
+        int rowId = result.second;
+        if (rowsAffected == -1) {
+            rejectList->push_back(*fe);
+            stats.flushFailed++;
+            return 0;
+        }
+
+        assert(rowsAffected == 1);
+        // successfully saved to disk. Let's check if the item has been mutated again.
+        vb = getVBucket(fe->vbId);
+        if (vb) {
+            LockHolder lh2 = vb->ht.getLockedBucket(v->getKey(), &bucket_num);
+            if (fe->vbVersion != vbuckets.getBucketVersion(fe->vbId)) {
+                delete fe;
+                return 0;
+            }
+
+            StoredValue *v2 = vb->ht.unlocked_find(v->getKey(), bucket_num, true);
+            assert(v2 == v);
+
+            // let's confirm a new set or delete has not come for this key. Only then delete fe.
+            if (v->isDeleted()) {
+                rejectList->push_back(*fe);
+                return 0;
+            }
+
+            if (v->getValue() == itm.getValue()) { // no new mutation has come. Let's mark it clean and be done.
                 v->markClean(NULL);
-                lh.unlock();
-                BlockTimer timer(rowid == -1 ?
-                                 &stats.diskInsertHisto : &stats.diskUpdateHisto);
-                PersistenceCallback cb(&fe, rejectList, this, queued, dirtied, &stats);
-                rwUnderlying[kvId]->set(*itm, fe.getVBucketVersion(), cb);
-                if (rowid == -1)  {
-                    ++vb->opsCreate;
-                } else {
-                    ++vb->opsUpdate;
+                ++stats.totalEvictable;
+                if (rowId > 0) {
+                    v->setId(rowId);
+                    stats.newItems++;
                 }
-            }
-        }
-    } else if (deleted) {
-        v->markClean(NULL);
-        lh.unlock();
-        BlockTimer timer(&stats.diskDelHisto);
-        PersistenceCallback cb(&fe, rejectList, this, queued, dirtied, &stats);
-        if (rowid > 0) {
-            uint16_t vbid(fe.getVBucketId());
-            uint16_t vbver(vbuckets.getBucketVersion(vbid));
-            rwUnderlying[kvId]->del(fe.getKey(), rowid, vbid, vbver, cb);
-            ++vb->opsDelete;
-        } else {
-            // bypass deletion if missing items, but still call the
-            // deletion callback for clean cleanup.
-            int affected(0);
-            cb.callback(affected);
-        }
-    }
+                delete fe;
+                return 0;
 
-    if (itm) {
-        delete itm;
+            } else {
+                rejectList->push_back(*fe);
+                return 0;
+            }
+
+        } else {
+            delete fe;
+            return 0;
+        }
     }
-    return ret;
+    assert(false && "we should never come here!");
+    return 0;
 }
 
 int EventuallyPersistentStore::flushOne(FlushEntry &fe,
@@ -2127,8 +2175,8 @@ int EventuallyPersistentStore::flushOne(FlushEntry &fe,
 
     int rv = 0;
 
-    if (fe.getVBucketVersion() == vbuckets.getBucketVersion(fe.getVBucketId())) {
-        rv = flushOneDelOrSet(fe, rejectList, kvId);
+    if (fe.vbVersion == vbuckets.getBucketVersion(fe.getVBucketId())) {
+        rv = flushOneDelOrSet(&fe, rejectList, kvId);
         if (rejectList->size() == prevRejectCount) {
             // flush operation was not rejected
             tctx[kvId]->addUncommittedItem();
@@ -2185,7 +2233,7 @@ int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation
     if (!di->verifyCksum((Item *)&itm)) {
         ++stats.cksumFailed;
         getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                        "Restore : Checksum verification failed for the key %s\n", 
+                        "Restore : Checksum verification failed for the key %s\n",
                         itm.getKey().c_str());
     }
 
@@ -2478,7 +2526,7 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v, 
     ++stats.queue_size;
     ++stats.totalEnqueued;
     stats.memOverhead.incr(sizeof(FlushEntry));
-    vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe->getQueuedTime());
+    vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe->queuedTime);
     --stats.totalEvictable;
 
     flushLists->push(kvid, shard, *fe);

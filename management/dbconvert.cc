@@ -114,7 +114,9 @@ public:
     void callback(GetValue &gv) {
         Item *i = gv.getValue();
         adjust(&i);
-        dest->set(*i, 0, mv);
+        mutation_result p;
+        dest->set(*i, 0, p);
+        mv.callback(p);
         delete i;
 
         if ((++transferred % txnSize) == 0) {
