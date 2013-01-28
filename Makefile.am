@@ -17,7 +17,7 @@ bin_SCRIPTS = management/analyze_core \
 
 memcachedlibdir = $(libdir)/memcached
 memcachedlib_LTLIBRARIES = ep.la ep_testsuite.la timing_tests.la
-noinst_LTLIBRARIES = libkvstore.la libobjectregistry.la libconfiguration.la
+noinst_LTLIBRARIES = librss.la libkvstore.la libobjectregistry.la libconfiguration.la
 
 bin_PROGRAMS = management/mbdbconvert
 BUILT_SOURCES = generated_configuration.cc \
@@ -48,14 +48,15 @@ mbadm-online-update.1m: docs/mbadm-online-update.pod
 mbbackup-incremental.1m: docs/mbbackup-incremental.pod
 	${POD2MAN} -c "$*" -r "" -s 1m $< $@
 
+librss_la_SOURCES = rss.cc rss.hh
+librss_la_CXXFLAGS = -I$(top_srcdir) $(NO_WERROR)
+
 ep_la_CPPFLAGS = -I$(top_srcdir) $(AM_CPPFLAGS)
 ep_la_LDFLAGS = -module -dynamic
 ep_la_SOURCES = \
                  atomic/gcc_atomics.h \
                  atomic/libatomic.h \
                  atomic.hh \
-                 rss.hh \
-                 rss.cc \
                  backfill.hh \
                  backfill.cc \
                  callbacks.hh \
@@ -87,6 +88,7 @@ ep_la_SOURCES = \
                  restore.hh \
                  restore_impl.cc \
                  ringbuffer.hh \
+                 rss.hh \
                  sizes.cc \
                  stats.hh \
                  statsnap.cc statsnap.hh \
@@ -127,8 +129,8 @@ libconfiguration_la_SOURCES = \
                               configuration.hh \
                               configuration.cc
 
-ep_la_LIBADD = libkvstore.la libobjectregistry.la libconfiguration.la
-ep_la_DEPENDENCIES = libkvstore.la libobjectregistry.la libconfiguration.la
+ep_la_LIBADD = librss.la libkvstore.la libobjectregistry.la libconfiguration.la
+ep_la_DEPENDENCIES = librss.la libkvstore.la libobjectregistry.la libconfiguration.la
 ep_testsuite_la_LIBADD = libkvstore.la libobjectregistry.la libconfiguration.la
 ep_testsuite_la_DEPENDENCIES = libkvstore.la libobjectregistry.la
 
