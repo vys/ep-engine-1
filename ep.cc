@@ -2525,7 +2525,6 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v, 
     assert(v->isDirty());
     ++stats.queue_size;
     ++stats.totalEnqueued;
-    stats.memOverhead.incr(sizeof(FlushEntry));
     vb->doStatsForQueueing(sizeof(FlushEntry), v->size(), fe->queuedTime);
     --stats.totalEvictable;
 

@@ -20,6 +20,7 @@
 class EventuallyPersistentEngine;
 class Blob;
 class QueuedItem;
+class FlushEntry;
 
 class ObjectRegistry {
 public:
@@ -31,6 +32,9 @@ public:
 
     static void onCreateItem(Item *pItem);
     static void onDeleteItem(Item *pItem);
+
+    static void onCreateFlushEntry(FlushEntry *fe);
+    static void onDeleteFlushEntry(FlushEntry *fe);
 
     static void onSwitchThread(EventuallyPersistentEngine *engine);
 };

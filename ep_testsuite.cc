@@ -2373,7 +2373,6 @@ static enum test_result test_bug3522(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
                               true, false);
     assert(0 == get_int_stat(h, h1, "ep_warmed_up"));
     assert(0 == get_int_stat(h, h1, "ep_warmup_dups"));
-
     return SUCCESS;
 }
 
@@ -4637,7 +4636,7 @@ static enum test_result test_multi_dispatcher_conf(ENGINE_HANDLE *h,
     check(h1->get_stats(h, NULL, "dispatcher", strlen("dispatcher"),
                         add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
-    if (vals.find("ro_dispatcher:status") == vals.end()) {
+    if (vals.find("ro_dispatcher0:status") == vals.end()) {
         std::cerr << "Expected ro_dispatcher to be running." << std::endl;
         return FAIL;
     }
@@ -4650,7 +4649,7 @@ static enum test_result test_not_multi_dispatcher_conf(ENGINE_HANDLE *h,
     check(h1->get_stats(h, NULL, "dispatcher", strlen("dispatcher"),
                         add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
-    if (vals.find("ro_dispatcher:status") != vals.end()) {
+    if (vals.find("ro_dispatcher0:status") != vals.end()) {
         std::cerr << "Expected ro_dispatcher to not be running." << std::endl;
         return FAIL;
     }

@@ -19,8 +19,13 @@ public:
     FlushEntry(StoredValue *s, uint16_t vb, 
               uint16_t vv, time_t qtime = -1) : 
               v(s), vbId(vb), vbVersion(vv),
-              queuedTime(qtime == -1 ? ep_current_time() : qtime) {}
+              queuedTime(qtime == -1 ? ep_current_time() : qtime) {
+                  ObjectRegistry::onCreateFlushEntry(this);
+              }
 
+    ~FlushEntry() {
+      ObjectRegistry::onDeleteFlushEntry(this);
+    }
     StoredValue * getStoredValue () const { return v; }
     uint16_t getVBucketId() const {return vbId; }
 

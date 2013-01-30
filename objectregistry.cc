@@ -111,3 +111,21 @@ void ObjectRegistry::onSwitchThread(EventuallyPersistentEngine *engine)
 {
    th->set(engine);
 }
+
+void ObjectRegistry::onCreateFlushEntry(FlushEntry *fe) {
+   (void)fe;
+   EventuallyPersistentEngine *engine = th->get();
+   if (verifyEngine(engine)) {
+       EPStats &stats = engine->getEpStats();
+       stats.memOverhead.incr(sizeof(FlushEntry));
+   }
+}
+
+void ObjectRegistry::onDeleteFlushEntry(FlushEntry *fe) {
+   (void)fe;
+   EventuallyPersistentEngine *engine = th->get();
+   if (verifyEngine(engine)) {
+       EPStats &stats = engine->getEpStats();
+       stats.memOverhead.decr(sizeof(FlushEntry));
+   }
+}
