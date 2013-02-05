@@ -468,18 +468,18 @@ public:
      *              vbucket would deny mutations.
      * @return the result of the store operation
      */
-    ENGINE_ERROR_CODE set(const Item &item,
+    ENGINE_ERROR_CODE set(Item &item,
                           const void *cookie,
                           bool force = false);
 
-    ENGINE_ERROR_CODE add(const Item &item, const void *cookie);
+    ENGINE_ERROR_CODE add(Item &item, const void *cookie);
 
     /**
      * Add an TAP backfill item into its corresponding vbucket
      * @param item the item to be added
      * @return the result of the operation
      */
-    ENGINE_ERROR_CODE addTAPBackfillItem(const Item &item);
+    ENGINE_ERROR_CODE addTAPBackfillItem(Item &item);
 
     /**
      * Retrieve a value.
@@ -804,7 +804,7 @@ public:
      *
      * @return 0 success, 1 skipped, -1 invalid vbucket
      */
-    int restoreItem(const Item &itm, enum queue_operation op);
+    int restoreItem(Item &itm, enum queue_operation op);
 
     bool isFlushAllScheduled() {
         bool val = false;

@@ -209,7 +209,7 @@ public:
         return value->getData();
     }
 
-    const value_t &getValue() const {
+    value_t& getValue() {
         return value;
     }
 
@@ -311,7 +311,7 @@ public:
      * @param item the item to append to this one
      * @return true if success
      */
-    bool append(const Item &item);
+    bool append(Item &item);
 
     /**
      * Prepend another item to this item
@@ -319,7 +319,7 @@ public:
      * @param item the item to prepend to this one
      * @return true if success
      */
-    bool prepend(const Item &item);
+    bool prepend(Item &item);
 
     uint16_t getVBucketId(void) const {
         return vbucketId;
@@ -343,7 +343,12 @@ public:
     }
 
     size_t size() {
-        return sizeof(Item) + key.size() + value->getSize() + cksum.size();
+
+        size_t sz = sizeof(Item) + key.size() + cksum.size();
+        if (value) {
+            sz += value->getSize();
+        }
+        return sz;
     }
 
 private:

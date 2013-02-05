@@ -60,7 +60,7 @@ public:
     uint32_t getFlags() const { return item.getFlags(); }
     time_t getExpiryTime() const { return item.getExptime(); }
     uint64_t getCas() const { return item.getCas(); }
-    const value_t &getValue() const { return item.getValue(); }
+    value_t &getValue() { return item.getValue(); }
     const std::string &getCksum(void) const { return item.getCksum(); }
     Item &getItem() { return item; }
 

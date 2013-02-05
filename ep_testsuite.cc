@@ -6077,8 +6077,8 @@ static enum test_result test_lru_queue(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
-    check(vals.find("lru_policy_ev_queue_size") != vals.end(), "Missing stat");
-    s = vals["lru_policy_ev_queue_size"];
+    check(vals.find("lru_policy_evictable_items") != vals.end(), "Missing stat");
+    s = vals["lru_policy_evictable_items"];
     check(strcmp(s.c_str(), "2") == 0, "Incorrect eviction queue count");
 
     evict_key(h, h1, "key1");
@@ -6087,9 +6087,9 @@ static enum test_result test_lru_queue(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     vals.clear();
     check(h1->get_stats(h, NULL, "eviction", strlen("eviction"), add_stats) == ENGINE_SUCCESS,
           "Failed to get stats.");
-    check(vals.find("lru_policy_ev_queue_size") != vals.end(), "Missing stat");
-    s = vals["lru_policy_ev_queue_size"];
-    check(strcmp(s.c_str(), "1") == 0, "Incorrect eviction queue count");
+    check(vals.find("lru_policy_evictable_items") != vals.end(), "Missing stat");
+    s = vals["lru_policy_evictable_items"];
+    check(strcmp(s.c_str(), "1") == 0, "Incorrect evictable item count");
 
     return SUCCESS;
 }

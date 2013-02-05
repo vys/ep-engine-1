@@ -642,7 +642,7 @@ protocol_binary_response_status EventuallyPersistentStore::evictKey(const std::s
     return rv;
 }
 
-ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
+ENGINE_ERROR_CODE EventuallyPersistentStore::set(Item &item,
                                                  const void *cookie,
                                                  bool force) {
 
@@ -709,7 +709,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::set(const Item &item,
     return ret;
 }
 
-ENGINE_ERROR_CODE EventuallyPersistentStore::add(const Item &item,
+ENGINE_ERROR_CODE EventuallyPersistentStore::add(Item &item,
                                                  const void *cookie)
 {
     RCPtr<VBucket> vb = getVBucket(item.getVBucketId());
@@ -753,7 +753,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::add(const Item &item,
     return ENGINE_SUCCESS;
 }
 
-ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(const Item &item) {
+ENGINE_ERROR_CODE EventuallyPersistentStore::addTAPBackfillItem(Item &item) {
 
     RCPtr<VBucket> vb = getVBucket(item.getVBucketId());
     if (!vb ||
@@ -2102,6 +2102,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejec
                 bool deleted = vb->ht.unlocked_del(v->getKey(), bucket_num);
                 assert(deleted);
                 delete fe;
+                return 0;
             } else { // undeleted, let's requeue.
                 rejectList->push_back(*fe);
                 return 0;
@@ -2219,7 +2220,7 @@ void EventuallyPersistentStore::queueDirty(const std::string &key,
     }
 }
 
-int EventuallyPersistentStore::restoreItem(const Item &itm, enum queue_operation op)
+int EventuallyPersistentStore::restoreItem(Item &itm, enum queue_operation op)
 {
     const std::string &key = itm.getKey();
     uint16_t vbid = itm.getVBucketId();

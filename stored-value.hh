@@ -183,7 +183,11 @@ public:
      * Get the checksum of the key.
      */
     std::string getCksum() const {
-        return std::string(cksum);
+        if (cksum) {
+            return std::string(cksum);
+        } else {
+            return "";
+        }
     }
 
     /**
@@ -640,7 +644,7 @@ public:
     static size_t getCurrentSize(EPStats&);
 private:
 
-    StoredValue(const Item &itm, StoredValue *n, EPStats &stats, HashTable &ht,
+    StoredValue(Item &itm, StoredValue *n, EPStats &stats, HashTable &ht,
                 bool setDirty = true, bool small = false) :
         value(itm.getValue()), next(n), id(itm.getId()),
         dirtiness(0), _isSmall(small), flags(itm.getFlags()), replicas(0),
@@ -894,7 +898,7 @@ public:
      * @param ht the hashtable that will contain the StoredValue instance created
      * @param setDirty if true, mark this item as dirty after creating it
      */
-    StoredValue *operator ()(const Item &itm, StoredValue *n, HashTable &ht,
+    StoredValue *operator ()(Item &itm, StoredValue *n, HashTable &ht,
                              bool setDirty = true) {
         switch(type) {
         case small:
@@ -910,7 +914,7 @@ public:
 
 private:
 
-    StoredValue* newStoredValue(const Item &itm, StoredValue *n, HashTable &ht,
+    StoredValue* newStoredValue(Item &itm, StoredValue *n, HashTable &ht,
                                 bool setDirty, bool small) {
         size_t base = StoredValue::sizeOf(small);
 
@@ -1064,7 +1068,7 @@ public:
      *
      * @return true if added, false if skipped
      */
-    bool unlocked_restoreItem(const Item &itm,
+    bool unlocked_restoreItem(Item &itm,
                               enum queue_operation op,
                               int bucket_num,
                               MutationValue &mv)

@@ -92,7 +92,12 @@ void ObjectRegistry::onCreateItem(Item *pItem)
    EventuallyPersistentEngine *engine = th->get();
    if (verifyEngine(engine)) {
        EPStats &stats = engine->getEpStats();
-       stats.memOverhead.incr(pItem->size() - pItem->getValue()->getSize());
+       size_t overhead = pItem->size();
+       value_t &v = pItem->getValue();
+       if (v) {
+           overhead -= v->getSize();
+       }
+       stats.memOverhead.incr(overhead);
        assert(stats.memOverhead.get() < GIGANTOR);
    }
 }
@@ -102,7 +107,12 @@ void ObjectRegistry::onDeleteItem(Item *pItem)
    EventuallyPersistentEngine *engine = th->get();
    if (verifyEngine(engine)) {
        EPStats &stats = engine->getEpStats();
-       stats.memOverhead.decr(pItem->size() - pItem->getValue()->getSize());
+       size_t overhead = pItem->size();
+       value_t &v = pItem->getValue();
+       if (v) {
+           overhead -= v->getSize();
+       }
+       stats.memOverhead.decr(overhead);
        assert(stats.memOverhead.get() < GIGANTOR);
    }
 }

@@ -18,12 +18,15 @@
 
 Atomic<uint64_t> Item::casCounter(1);
 
-bool Item::append(const Item &item) {
-    size_t newSize = value->length() + item.getValue()->length();
+bool Item::append(Item &item) {
+    value_t &v2 = item.getValue();
+    if (!v2) return false;
+
+    size_t newSize = value->length() + v2->length();
     Blob *newData = Blob::New(newSize, '\0');
     char *newValue = (char *) newData->getData();
     std::memcpy(newValue, value->getData(), value->length());
-    std::memcpy(newValue + value->length(), item.getValue()->getData(), item.getValue()->length());
+    std::memcpy(newValue + value->length(), v2->getData(), v2->length());
     value.reset(newData);
     return true;
 }
@@ -34,12 +37,14 @@ bool Item::append(const Item &item) {
  * @param item the item to prepend to this one
  * @return true if success
  */
-bool Item::prepend(const Item &item) {
-    size_t newSize = value->length() + item.getValue()->length();
+bool Item::prepend(Item &item) {
+    value_t &v2 = item.getValue();
+    if (!v2) return false;
+    size_t newSize = value->length() + v2->length();
     Blob *newData = Blob::New(newSize, '\0');
     char *newValue = (char *) newData->getData();
-    std::memcpy(newValue, item.getValue()->getData(), item.getValue()->length());
-    std::memcpy(newValue + item.getValue()->length(), value->getData(), value->length());
+    std::memcpy(newValue, v2->getData(), v2->length());
+    std::memcpy(newValue + v2->length(), value->getData(), value->length());
     value.reset(newData);
     return true;
 }
