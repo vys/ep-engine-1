@@ -1568,6 +1568,7 @@ void EventuallyPersistentStore::beginFlush(FlushList &out, int kvId) {
     std::vector<uint16_t>::iterator vb_it = vblist.begin();
 
     if (hasItemsForPersistence(kvId)) {
+        scrub_memory();
         flushLists->get(out, kvId);
 
         size_t num_items = out.size();

@@ -309,7 +309,6 @@ void FlusherHelper::run() {
             flushList = new FlushList();
             store->beginFlush(*flushList, kvid);
         }
-        scrub_memory();
         sync.wait();
     }
     return;
