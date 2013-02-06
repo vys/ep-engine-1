@@ -2082,8 +2082,9 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejec
             return 0;
         }
 
-        assert(rowsAffected == 1);
+        assert(rowsAffected == 1 || !(std::cerr<< "Existing item being deleted failed! rowsAffected = " << rowsAffected <<std::endl));
         stats.delItems++;
+        v->clearId();
 
         // successfully deleted from disk. Let's delete from memory.
         vb = getVBucket(fe->vbId);
@@ -2125,7 +2126,12 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejec
             return 0;
         }
 
-        assert(rowsAffected == 1);
+        assert(rowsAffected == 1 || !(std::cerr<< "New/Existing item being saved failed. rowsAffected = " << rowsAffected <<std::endl));
+        if (rowId > 0) {
+            v->setId(rowId);
+            stats.newItems++;
+        }
+
         // successfully saved to disk. Let's check if the item has been mutated again.
         vb = getVBucket(fe->vbId);
         if (vb) {
@@ -2147,10 +2153,6 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejec
             if (v->getValue() == itm.getValue()) { // no new mutation has come. Let's mark it clean and be done.
                 v->markClean(NULL);
                 ++stats.totalEvictable;
-                if (rowId > 0) {
-                    v->setId(rowId);
-                    stats.newItems++;
-                }
                 delete fe;
                 return 0;
 
