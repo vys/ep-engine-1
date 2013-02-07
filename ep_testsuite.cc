@@ -2247,19 +2247,22 @@ static enum test_result test_expiry_flush(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1
 
     ENGINE_ERROR_CODE rv;
     // Expiry time set to 2 seconds from now
-    // ep_engine has 3 seconds of expiry window which means that
-    // an item expired in 3 seconds won't be persisted
     rv = h1->allocate(h, NULL, &it, key, strlen(key), 10, 0, 2, 0,0);
     check(rv == ENGINE_SUCCESS, "Allocation failed.");
 
-    int item_flush_expired = get_int_stat(h, h1, "ep_item_flush_expired");
     uint64_t cas = 0;
     rv = h1->store(h, NULL, it, &cas, OPERATION_SET, 0);
     check(rv == ENGINE_SUCCESS, "Set failed.");
 
+    // wait for item expiry. Next fetch should fail
+    testHarness.time_travel(3);
+    check(h1->get(h, NULL, &it, key, strlen(key), 0) == ENGINE_KEY_ENOENT,
+          "Item didn't expire");
     h1->release(h, NULL, it);
 
-    wait_for_stat_change(h, h1, "ep_item_flush_expired", item_flush_expired);
+    // The above get should have queued a deletion that should be flushed down
+    wait_for_flusher_to_settle(h, h1);
+    verify_curr_items(h, h1, 0, "No items");
 
     return SUCCESS;
 }
@@ -2362,10 +2365,10 @@ static enum test_result test_bug3522(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(rv == ENGINE_SUCCESS, "Set failed.");
     check_key_value(h, h1, key, new_data, strlen(new_data));
     h1->release(h, NULL, it);
-    // As the expiry window is 3 sec by default, the flusher won't persist the new item, but will
-    // delete the old item from database before the shutdown.
 
-    wait_for_flusher_to_settle(h, h1);
+    // time-travel 3 secs to give the item time to expire
+    testHarness.time_travel(3);
+
     // Restart the engine.
     testHarness.reload_engine(&h, &h1,
                               testHarness.engine_path,
