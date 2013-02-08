@@ -267,7 +267,7 @@ public:
     EvictItem* getOneEvictItem() {
         LRUItem *evictItem = it++;
         if (evictItem == NULL) {
-            getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: could not get item from activeList");
+            getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: could not get item from activeList");
             if (switchActiveListIter()) {
                 stats.evictionStats.frontendSwaps++;
                 evictItem = it++;
@@ -276,7 +276,7 @@ public:
                     return NULL;
                 }
             } else {
-                getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Eviction: switchActiveList failed!");
+                getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Eviction: switchActiveList failed!");
                 return NULL;
             }
         }

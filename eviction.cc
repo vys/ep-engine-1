@@ -93,7 +93,7 @@ bool EvictionManager::evictHeadroom()
         return allowOps(currentRSS);
     }
 
-    getLogger()->log(EXTENSION_LOG_INFO, NULL, "Got lock, Resetting pauseEvict");
+    getLogger()->log(EXTENSION_LOG_DETAIL, NULL, "Got lock, Resetting pauseEvict");
     pauseEvict = false;
 
     bool queueEmpty = false;
