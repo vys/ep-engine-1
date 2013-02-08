@@ -14,7 +14,7 @@ void Checkpoint::popBackCheckpointEndItem() {
 }
 
 uint64_t Checkpoint::getCasForKey(const std::string &key) {
-    uint64_t cas = 0;
+    uint64_t cas = -1;
     checkpoint_index::iterator it = keyIndex.find(key);
     if (it != keyIndex.end()) {
         std::list<queued_item>::iterator currPos = it->second.position;
