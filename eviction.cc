@@ -133,7 +133,8 @@ bool EvictionManager::evictHeadroom()
                 getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
                 stats.evictionStats.failedTotal.numPolicyIneligible++;
             } else {
-                bool inCheckpoint = vb->checkpointManager.isKeyResidentInCheckpoints(v->getKey(), v->getCas());
+                // Fail if key is present in any checkpoint
+                bool inCheckpoint = vb->checkpointManager.isKeyResidentInCheckpoints(v->getKey(), -1);
                 if (inCheckpoint) {
                     stats.evictionStats.failedTotal.numInCheckpoints++;
                 } else if (v->ejectValue(stats, vb->ht)) {

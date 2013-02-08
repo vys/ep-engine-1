@@ -1038,15 +1038,18 @@ bool CheckpointManager::isKeyResidentInCheckpoints(const std::string &key, uint6
     // Check if a given key with its CAS value exists in any subsequent checkpoints.
     for (; it != checkpointList.end(); ++it) {
         cas_from_checkpoint = (*it)->getCasForKey(key);
-        if (cas == cas_from_checkpoint) {
-            found = true;
-            break;
-        } else if (cas < cas_from_checkpoint) {
-            break; // if a key's CAS value is less than the one from the checkpoint, we do not
-                   // have to look at any following checkpoints.
+        if (cas == (uint64_t)-1) {
+            if (cas_from_checkpoint != (uint64_t)-1) {
+                found = true;
+                break;
+            }
+        } else {
+            if (cas == cas_from_checkpoint) {
+                found = true;
+                break;
+            }
         }
     }
-
     lh.unlock();
     return found;
 }
