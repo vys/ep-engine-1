@@ -1015,27 +1015,16 @@ uint64_t CheckpointManager::checkOpenCheckpoint_UNLOCKED(bool forceCreation, boo
     return checkpointId;
 }
 
+// Returns true if this key with the cas value is present in any checkpoint. 
+// Ignores cas if -1 is passed.
 bool CheckpointManager::isKeyResidentInCheckpoints(const std::string &key, uint64_t cas) {
     LockHolder lh(queueLock);
 
     std::list<Checkpoint*>::iterator it = checkpointList.begin();
-    // Find the first checkpoint that is referenced by any cursor.
-    for (; it != checkpointList.end(); ++it) {
-        if ((*it)->getNumberOfCursors() > 0) {
-            break;
-        }
-    }
-
-    // If there are no cursors, search in open checkpoint
-    if (it == checkpointList.end()) {
-        if (checkpointList.size() && checkpointList.back()->getState() == opened) {
-            it--;
-        }
-    }
-
     uint64_t cas_from_checkpoint;
     bool found = false;
-    // Check if a given key with its CAS value exists in any subsequent checkpoints.
+
+    // Check if a given key with its CAS value exists in any of the checkpoints.
     for (; it != checkpointList.end(); ++it) {
         cas_from_checkpoint = (*it)->getCasForKey(key);
         if (cas == (uint64_t)-1) {
