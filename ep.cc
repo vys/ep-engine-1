@@ -2072,10 +2072,11 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejec
     // Ok, we need disk-io. Let's create an item and release the lock.
     Item itm(v->getKey(), v->getFlags(), v->getExptime(), v->getValue(),
                 v->getCksum(), v->getCas(), v->getId(), vb->getId());
-    lh.unlock();
+
     time_t now = ep_real_time();
     // (2) Existing item, deleted. Delete from disk, then delete from memory.
-    if (v->hasId() && (v->isDeleted() || v->isExpired(now))) {
+    if (v->hasId() && (v->isDeleted() || v->isExpired(now))) { // These conditions have to be checked inside the lock to avoid race.
+        lh.unlock();
         int rowsAffected = rwUnderlying[kvId]->del(v->getKey(), v->getId(), fe->vbId, fe->vbVersion);
         if (rowsAffected == -1) {
             rejectList->push_back(*fe);
@@ -2117,6 +2118,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejec
 
     // (3) New or existing item, not deleted, needs to be saved. saved
     if (!v->isDeleted()) {
+        lh.unlock();
         mutation_result result;
         rwUnderlying[kvId]->set(itm, fe->vbVersion, result);
         int rowsAffected = result.first;
