@@ -891,15 +891,6 @@ queued_item CheckpointManager::nextItem(const std::string &name, bool &isLastMut
 
 queued_item CheckpointManager::nextItemFromClosedCheckpoint(CheckpointCursor &cursor,
                                                             bool &isLastMutationItem) {
-    // The cursor already reached to the beginning of the checkpoint that had "open" state
-    // when registered. Simply return an empty item so that the corresponding TAP client
-    // can close the connection.
-    if (cursor.closedCheckpointOnly &&
-        cursor.openChkIdAtRegistration <= (*(cursor.currentCheckpoint))->getId()) {
-        queued_item qi(new QueuedItem("", vbucketId, queue_op_empty));
-        return qi;
-    }
-
     ++(cursor.currentPos);
     if (cursor.currentPos != (*(cursor.currentCheckpoint))->end()) {
         ++(cursor.offset);
@@ -911,6 +902,16 @@ queued_item CheckpointManager::nextItemFromClosedCheckpoint(CheckpointCursor &cu
             queued_item qi(new QueuedItem("", 0xffff, queue_op_empty));
             return qi;
         }
+
+        // The cursor already reached to the beginning of the checkpoint that had "open" state
+        // when registered. Simply return an empty item so that the corresponding TAP client
+        // can close the connection.
+        if (cursor.closedCheckpointOnly &&
+            cursor.openChkIdAtRegistration <= (*(cursor.currentCheckpoint))->getId()) {
+            queued_item qi(new QueuedItem("", vbucketId, queue_op_empty));
+            return qi;
+        }
+
         if ((*(cursor.currentCheckpoint))->getState() == closed) { // the close checkpoint.
             ++(cursor.currentPos); // Move the cursor to point to the actual first item.
             ++(cursor.offset);
