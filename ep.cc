@@ -2075,7 +2075,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejec
 
     time_t now = ep_real_time();
     // (2) Existing item, deleted. Delete from disk, then delete from memory.
-    if (v->hasId() && (v->isDeleted() || v->isExpired(now))) { // These conditions have to be checked inside the lock to avoid race.
+    if (v->hasId() && (v->isDeleted() || (!v->isLocked(now) && v->isExpired(now)))) { // These conditions have to be checked inside the lock to avoid race.
         lh.unlock();
         int rowsAffected = rwUnderlying[kvId]->del(v->getKey(), v->getId(), fe->vbId, fe->vbVersion);
         if (rowsAffected == -1) {
@@ -2101,7 +2101,8 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejec
             assert(v2 == v);
 
             // let's confirm a new set has not come for this key. Only then delete it.
-            if (v->isDeleted() || v->isExpired(now)) {
+            now = ep_real_time();
+            if (v->isDeleted() || (!v->isLocked(now) && v->isExpired(now))) {
                 bool deleted = vb->ht.unlocked_del(v->getKey(), bucket_num);
                 assert(deleted);
                 delete fe;
@@ -2123,6 +2124,7 @@ int EventuallyPersistentStore::flushOneDelOrSet(FlushEntry *fe, FlushList *rejec
         rwUnderlying[kvId]->set(itm, fe->vbVersion, result);
         int rowsAffected = result.first;
         int rowId = result.second;
+
         if (rowsAffected == -1) {
             rejectList->push_back(*fe);
             stats.flushFailed++;
