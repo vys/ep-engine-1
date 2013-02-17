@@ -2216,9 +2216,11 @@ void EventuallyPersistentStore::queueDirty(const std::string &key,
         if (op == queue_op_set) {
             qi = new QueuedItem(key, value, vbid, op, vbuckets.getBucketVersion(vbid),
                                 rowid, flags, exptime, cas, cksum, queued);
+            engine.addMutationEvent(&qi->getItem());
         } else {
             qi = new QueuedItem(key, vbid, op, vbuckets.getBucketVersion(vbid), rowid, flags,
                                 exptime, cas, cksum, queued);
+            engine.addDeleteEvent(key, vbid, cas);
         }
 
         queued_item item(qi);

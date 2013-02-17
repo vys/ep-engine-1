@@ -226,10 +226,6 @@ public:
                                  uint16_t vbucket)
     {
         ENGINE_ERROR_CODE ret = epstore->del(key, cas, vbucket, cookie);
-
-        if (ret == ENGINE_SUCCESS) {
-            addDeleteEvent(key, vbucket, cas);
-        }
         return ret;
     }
 

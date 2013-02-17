@@ -1581,7 +1581,6 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
         ret = epstore->set(*it, cookie);
         if (ret == ENGINE_SUCCESS) {
             *cas = it->getCas();
-            addMutationEvent(it);
         }
 
         break;
@@ -1595,7 +1594,6 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
         ret = epstore->add(*it, cookie);
         if (ret == ENGINE_SUCCESS) {
             *cas = it->getCas();
-            addMutationEvent(it);
         }
         break;
 
@@ -1609,7 +1607,6 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
             ret = epstore->set(*it, cookie);
             if (ret == ENGINE_SUCCESS) {
                 *cas = it->getCas();
-                addMutationEvent(it);
             }
             break;
         case ENGINE_KEY_ENOENT:
@@ -1686,9 +1683,6 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
                 }
 
                 ret = store(cookie, old, cas, OPERATION_CAS, vbucket);
-                if (ret == ENGINE_SUCCESS) {
-                    addMutationEvent(static_cast<Item*>(i));
-                }
                 itemRelease(cookie, i);
             }
         } while (ret == ENGINE_KEY_EEXISTS);
