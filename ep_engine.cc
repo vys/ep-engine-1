@@ -1933,14 +1933,9 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
                 ++connection->queueDrain;
             } else if (qi->getOperation() == queue_op_del) {
                 ret = TAP_DELETION;
-                ENGINE_ERROR_CODE r = itemAllocate(cookie, itm, qi->getKey().c_str(),
-                                                   qi->getKey().length(), 0, 0, 0, NULL, 0);
-                if (r != ENGINE_SUCCESS) {
-                    getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                                     "Failed to allocate memory for deletion of: %s\n",
-                                     qi->getKey().c_str());
-                    ret = TAP_PAUSE;
-                }
+                *itm = new Item(qi->getKey(), qi->getFlags(), qi->getExpiryTime(),
+                                NULL, 0, qi->getCksum(), qi->getCas(), qi->getRowId(),
+                                qi->getVBucketId(), qi->getQueuedTime());
                 ++stats.numTapDeletes;
                 ++connection->queueDrain;
             }
