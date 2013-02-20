@@ -1149,7 +1149,7 @@ public:
 
             itm.setCas();
             rv = v->isClean() ? WAS_CLEAN : WAS_DIRTY;
-            if (!v->isResident()) {
+            if (!v->isDeleted() && !v->isResident()) {
                 --numNonResidentItems;
             }
             v->setValue(itm.getValue(),
@@ -1200,6 +1200,9 @@ public:
                 return ADD_NOMEM;
             }
             if (v) {
+                if (!v->isDeleted() && !v->isResident()) { // Expired
+                    --numNonResidentItems;
+                }
                 mv.wasDirty = v->isDirty();
                 rv = (v->isDeleted() || v->isExpired(ep_real_time())) ? ADD_UNDEL : ADD_SUCCESS;
                 v->setValue(itm.getValue(),
@@ -1255,11 +1258,6 @@ public:
         if (v) {
             mv.wasDirty = v->isDirty();
             mv.sv = v;
-            if (v->isExpired(ep_real_time())) {
-                v->del(stats, *this);
-                return rv;
-            }
-
             if (v->isLocked(ep_current_time())) {
                 return IS_LOCKED;
             }
@@ -1272,10 +1270,13 @@ public:
                 --numNonResidentItems;
             }
 
-            /* allow operation*/
             v->unlock();
 
-            rv = v->isClean() ? WAS_CLEAN : WAS_DIRTY;
+            if (v->isExpired(ep_real_time())) {
+                rv = NOT_FOUND;
+            } else {
+                rv = v->isClean() ? WAS_CLEAN : WAS_DIRTY;
+            }
             v->del(stats, *this);
         }
         return rv;
