@@ -287,6 +287,8 @@ private:
             }
         }
 
+        // Trigger eviction if necessary
+        EvictionManager::getInstance()->evictHeadroom();
         Item itm(key, flags, expiration, value, cksum, cas, -1, vbid);
         int r = store.restoreItem(itm, op);
         if (r == 0) {
@@ -325,9 +327,16 @@ public:
         busy(0),
         restore_cpoint(0),
         restore_file_checks(true),
-        state(&State::Uninitialized)
+        state(&State::Uninitialized),
+        restoreSO(),
+        done(false)
     {
-        // None needed
+        int ret = pthread_create(&thread, NULL, restoreThreadMain, this);
+        if (ret != 0) {
+            std::stringstream ss;
+            ss << "Failed to create restore thread: " << strerror(ret);
+            throw ss.str();
+        }
     }
 
     virtual void initialize(const std::string &config) throw(std::string)
@@ -366,17 +375,7 @@ public:
         }
 
         state = &State::Starting;
-        int ret = pthread_create(&thread, NULL, restoreThreadMain, this);
-        if (ret != 0) {
-            state = &State::Uninitialized;
-            collectResults();
-            delete instance;
-            instance = NULL;
-            lh.unlock();
-            std::stringstream ss;
-            ss << "Failed to create restore thread: " << strerror(ret);
-            throw ss.str();
-        }
+        signal();
     }
 
     virtual void abort() throw (std::string)
@@ -390,6 +389,15 @@ public:
         LockHolder lh(mutex);
         if (state != &State::Initialized && state != &State::Uninitialized) {
             reap_UNLOCKED();
+        }
+        done = true;
+        signal();
+        void *rcode;
+        int ret = pthread_join(thread, &rcode);
+        if (ret != 0 && ret != ESRCH) {
+            std::stringstream ss;
+            ss << "Failed to join restore thread: " << strerror(ret);
+            throw ss.str();
         }
     }
 
@@ -457,6 +465,12 @@ public:
         return NULL;
     }
 
+    void signal() {
+        LockHolder rlh(restoreSO);
+        restoreSO.notify();
+    }
+    void *execute();
+
 private:
     void collectResults() {
         skipped += instance->getNumSkipped();
@@ -469,13 +483,6 @@ private:
 
     void reap_UNLOCKED() throw (std::string) {
         if (instance != NULL) {
-            void *rcode;
-            int ret = pthread_join(thread, &rcode);
-            if (ret != 0 && ret != ESRCH) {
-                std::stringstream ss;
-                ss << "Failed to join restore thread: " << strerror(ret);
-                throw ss.str();
-            }
             collectResults();
             delete instance;
             instance = NULL;
@@ -512,6 +519,8 @@ private:
     const State *state;
     // The thread running the backup
     pthread_t thread;
+    SyncObject restoreSO;
+    Atomic<bool> done;
 };
 
 RestoreManager* create_restore_manager(EventuallyPersistentEngine &engine)
@@ -524,10 +533,20 @@ void destroy_restore_manager(RestoreManager *manager)
     delete manager;
 }
 
-static void *restoreThreadMain(void *arg)
-{
-    RestoreManagerImpl *instance;
-    instance = reinterpret_cast<RestoreManagerImpl*>(arg);
-    return instance->run();
+static void *restoreThreadMain(void *arg) {
+    RestoreManagerImpl *instance = reinterpret_cast<RestoreManagerImpl*>(arg);
+    return instance->execute();
 }
 
+void *RestoreManagerImpl::execute() {
+    while (1) {
+        LockHolder lh(restoreSO);
+        restoreSO.wait();
+        lh.unlock();
+        if (done) {
+            return NULL;
+        }
+        run();
+    }
+    return NULL;
+}
