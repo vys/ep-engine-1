@@ -1495,6 +1495,10 @@ static void notifyReplicatedItems(std::list<TapLogElement>::iterator from,
                                   std::list<TapLogElement>::iterator to,
                                   EventuallyPersistentEngine &engine) {
 
+    if (engine.getSyncRegistry().numReplicationListeners() == 0) {
+        return;
+    }
+
     for (std::list<TapLogElement>::iterator it = from; it != to; ++it) {
         if (it->event == TAP_MUTATION) {
             queued_item qi = it->item;

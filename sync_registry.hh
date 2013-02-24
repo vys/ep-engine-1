@@ -126,6 +126,10 @@ public:
     void removeReplicationListener(SyncListener *syncListener);
     void itemReplicated(const key_spec_t &keyspec, uint8_t replicaCount = 1);
 
+    size_t numReplicationListeners() {
+        return replicationListeners.size();
+    }
+
 private:
 
     void notifyListeners(std::set<SyncListener*> &listeners,
