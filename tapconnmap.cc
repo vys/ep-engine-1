@@ -44,7 +44,7 @@ private:
 };
 
 void TapConnMap::disconnect(const void *cookie, int tapKeepAlive) {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     std::map<const void*, TapConnection*>::iterator iter(map.find(cookie));
     if (iter != map.end()) {
         if (iter->second) {
@@ -63,7 +63,10 @@ void TapConnMap::disconnect(const void *cookie, int tapKeepAlive) {
         }
         map.erase(iter);
 
+        clh.unlock();
+
         // Notify the daemon thread so that it may reap them..
+        LockHolder lh(notifySync);
         notifySync.notify();
     }
 }
@@ -74,7 +77,7 @@ bool TapConnMap::setEvents(const std::string &name,
                            size_t &qmemsize) {
     bool shouldNotify(true);
     bool found(false);
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
 
     TapConnection *tc = findByName_UNLOCKED(name);
     if (tc) {
@@ -85,7 +88,9 @@ bool TapConnMap::setEvents(const std::string &name,
         shouldNotify = tp->paused; // notify if paused
     }
 
+    clh.unlock();
     if (shouldNotify) {
+        LockHolder lh(notifySync);
         notifySync.notify();
     }
 
@@ -94,7 +99,7 @@ bool TapConnMap::setEvents(const std::string &name,
 
 ssize_t TapConnMap::backfillQueueDepth(const std::string &name) {
     ssize_t rv(-1);
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
 
     TapConnection *tc = findByName_UNLOCKED(name);
     if (tc) {
@@ -107,7 +112,7 @@ ssize_t TapConnMap::backfillQueueDepth(const std::string &name) {
 }
 
 TapConnection* TapConnMap::findByName(const std::string &name) {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     return findByName_UNLOCKED(name);
 }
 
@@ -184,8 +189,9 @@ void TapConnMap::removeTapCursors_UNLOCKED(TapProducer *tp) {
 }
 
 void TapConnMap::addFlushEvent() {
-    LockHolder lh(notifySync);
     bool shouldNotify(false);
+    LockHolder clh(connMapMutex);
+
     std::list<TapConnection*>::iterator iter;
     for (iter = all.begin(); iter != all.end(); iter++) {
         TapProducer *tc = dynamic_cast<TapProducer*>(*iter);
@@ -194,14 +200,17 @@ void TapConnMap::addFlushEvent() {
             shouldNotify = true;
         }
     }
+
+    clh.unlock();
     if (shouldNotify) {
+        LockHolder lh(notifySync);
         notifySync.notify();
     }
 }
 
 TapConsumer *TapConnMap::newConsumer(const void* cookie)
 {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     TapConsumer *tap = new TapConsumer(engine, cookie, TapConnection::getAnonName());
     all.push_back(tap);
     map[cookie] = tap;
@@ -213,7 +222,7 @@ TapProducer *TapConnMap::newProducer(const void* cookie,
                                      uint32_t flags,
                                      uint64_t backfillAge,
                                      int tapKeepAlive) {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     TapProducer *tap(NULL);
 
     std::list<TapConnection*>::iterator iter;
@@ -313,7 +322,7 @@ void TapConnMap::clearValidity(const std::string &name) {
 // This is always called without a lock.
 bool TapConnMap::checkValidity(const std::string &name,
                                const void* token) {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     std::map<const std::string, const void*>::iterator viter =
         validity.find(name);
     return viter != validity.end() && viter->second == token;
@@ -326,7 +335,7 @@ bool TapConnMap::checkSessionValid(const std::string &name, uint64_t sessionID) 
 }
 
 bool TapConnMap::checkConnectivity(const std::string &name) {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     rel_time_t now = ep_current_time();
     TapConnection *tc = findByName_UNLOCKED(name);
     if (tc) {
@@ -339,7 +348,7 @@ bool TapConnMap::checkConnectivity(const std::string &name) {
 }
 
 bool TapConnMap::checkBackfillCompletion(const std::string &name) {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     bool rv = false;
 
     TapConnection *tc = findByName_UNLOCKED(name);
@@ -373,7 +382,7 @@ bool TapConnMap::shouldDisconnect(TapConnection *tc) {
 void TapConnMap::shutdownAllTapConnections() {
     getLogger()->log(EXTENSION_LOG_INFO, NULL,
                      "Shutting down tap connections!");
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     // We should pause unless we purged some connections or
     // all queues have items.
     if (all.empty()) {
@@ -396,7 +405,7 @@ void TapConnMap::shutdownAllTapConnections() {
 }
 
 void TapConnMap::scheduleBackfill(const std::set<uint16_t> &backfillVBuckets) {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     bool shouldNotify(false);
     rel_time_t now = ep_current_time();
     std::list<TapConnection*>::iterator it = all.begin();
@@ -419,13 +428,15 @@ void TapConnMap::scheduleBackfill(const std::set<uint16_t> &backfillVBuckets) {
             shouldNotify = true;
         }
     }
+    clh.unlock();
     if (shouldNotify) {
+        LockHolder lh(notifySync);
         notifySync.notify();
     }
 }
 
 void TapConnMap::resetReplicaChain() {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     rel_time_t now = ep_current_time();
     std::list<TapConnection*>::iterator it = all.begin();
     for (; it != all.end(); ++it) {
@@ -440,6 +451,9 @@ void TapConnMap::resetReplicaChain() {
         // replica vbuckets, and then backfills items to the destination.
         tp->scheduleBackfill(vblist);
     }
+    clh.unlock();
+
+    LockHolder lh(notifySync);
     notifySync.notify();
 }
 
@@ -460,7 +474,7 @@ void TapConnMap::notifyIOThreadMain() {
     std::list<TapConnection*> deadClients;
     std::list<TapConnection*> registeredClients;
 
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     // We should pause unless we purged some connections or
     // all queues have items.
     getExpiredConnections_UNLOCKED(deadClients, registeredClients);
@@ -493,7 +507,9 @@ void TapConnMap::notifyIOThreadMain() {
     if (shouldPause) {
         double diff = engine.nextTapNoop - now;
         if (diff > 0) {
-            notifySync.wait(diff);
+            clh.unlock();
+            wait(diff);
+            clh.lock();
         }
 
         if (engine.shutdown) {
@@ -523,7 +539,7 @@ void TapConnMap::notifyIOThreadMain() {
         }
     }
 
-    lh.unlock();
+    clh.unlock();
 
     // Delete all of the dead clients
     if (!deadClients.empty()) {
@@ -542,7 +558,7 @@ void TapConnMap::notifyIOThreadMain() {
 
 bool TapConnMap::SetCursorToOpenCheckpoint(const std::string &name, uint16_t vbucket) {
     bool rv(false);
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
 
     TapConnection *tc = findByName_UNLOCKED(name);
     if (tc) {
@@ -557,7 +573,7 @@ bool TapConnMap::SetCursorToOpenCheckpoint(const std::string &name, uint16_t vbu
 
 bool TapConnMap::closeTapConnectionByName(const std::string &name) {
     bool rv = false;
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     TapConnection *tc = findByName_UNLOCKED(name);
     if (tc) {
         TapProducer *tp = dynamic_cast<TapProducer*>(tc);
@@ -571,6 +587,8 @@ bool TapConnMap::closeTapConnectionByName(const std::string &name) {
             tp->setDisconnect(true);
             tp->paused = true;
             rv = true;
+            clh.unlock();
+            LockHolder lh(notifySync);
             notifySync.notify();
         }
     }
@@ -579,19 +597,19 @@ bool TapConnMap::closeTapConnectionByName(const std::string &name) {
 
 /**
  * Increments reference count of validity token (cookie in
- * fact). NOTE: takes notifySync lock.
+ * fact). NOTE: takes connMapMutex lock.
  */
 ENGINE_ERROR_CODE TapConnMap::reserveValidityToken(const void *token) {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     return engine.getServerApi()->cookie->reserve(token);
 }
 
 /**
  * Decrements and posibly frees/invalidate validity token (cookie
- * in fact). NOTE: this acquires notifySync lock.
+ * in fact). NOTE: this acquires connMapMutex lock.
  */
 void TapConnMap::releaseValidityToken(const void *token) {
-    LockHolder lh(notifySync);
+    LockHolder clh(connMapMutex);
     engine.getServerApi()->cookie->release(token);
 }
 

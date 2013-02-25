@@ -112,7 +112,7 @@ public:
         bool shouldNotify(true);
         bool clear(true);
         bool ret(true);
-        LockHolder lh(notifySync);
+        LockHolder clh(connMapMutex);
 
         TapConnection *tc = findByName_UNLOCKED(name);
         if (tc && checkSessionValid(name, sessionID)) {
@@ -129,7 +129,9 @@ public:
             clearValidity(name);
         }
 
+        clh.unlock();
         if (shouldNotify) {
+            LockHolder lh(notifySync);
             notifySync.notify();
         }
 
@@ -173,13 +175,13 @@ public:
 
     /**
      * Increments reference count of validity token (cookie in
-     * fact). NOTE: takes notifySync lock.
+     * fact). NOTE: takes connMapMutex lock.
      */
     ENGINE_ERROR_CODE reserveValidityToken(const void *token);
 
     /**
      * Decrements and posibly frees/invalidate validity token (cookie
-     * in fact). NOTE: this acquires notifySync lock.
+     * in fact). NOTE: this acquires connMapMutex lock.
      */
     void releaseValidityToken(const void *token);
 
@@ -247,7 +249,7 @@ public:
      */
     template <typename Fun>
     void each(Fun f) {
-        LockHolder lh(notifySync);
+        LockHolder clh(connMapMutex);
         each_UNLOCKED(f);
     }
 
@@ -264,7 +266,7 @@ public:
      */
     template <typename Fun>
     size_t count_if(Fun f) {
-        LockHolder lh(notifySync);
+        LockHolder clh(connMapMutex);
         return count_if_UNLOCKED(f);
     }
 
@@ -310,6 +312,7 @@ private:
     bool shouldDisconnect(TapConnection *tc);
 
     SyncObject                               notifySync;
+    Mutex                                    connMapMutex;
     std::map<const void*, TapConnection*>    map;
     std::map<const std::string, const void*> validity;
     std::map<const std::string, uint64_t> sessions;
