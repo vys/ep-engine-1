@@ -243,7 +243,12 @@ bool CheckpointManager::closeOpenCheckpoint_UNLOCKED(uint64_t id) {
         return true;
     }
 
-    checkpointList.back()->setState(closed);
+    Checkpoint *c = checkpointList.back();
+    c->setState(closed);
+    getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Vbucket-id: %d "
+                     "Closing checkpoint-id %d with %d items, age %d seconds",
+                     vbucketId, c->getId(), c->getNumItems(),
+                     ep_real_time() - c->getCreationTime());
     return true;
 }
 
