@@ -55,7 +55,14 @@ private:
 };
 
 bool ClosedUnrefCheckpointRemover::callback(Dispatcher &d, TaskId t) {
+    if (ep_current_time() - lastRun > 100) {
+        getLogger()->log(EXTENSION_LOG_INFO, NULL, 
+                         "Checkpoint remover languished for %d seconds \n",
+                         ep_current_time() - lastRun);
+    }
+
     if (available) {
+        lastRun = ep_current_time();
         ++stats.checkpointRemoverRuns;
 
         available = false;

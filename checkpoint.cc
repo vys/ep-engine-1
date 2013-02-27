@@ -581,11 +581,8 @@ size_t CheckpointManager::removeClosedUnrefCheckpoints(const RCPtr<VBucket> &vbu
         }
     }
 
-    if (keepClosedCheckpoints) {
-        double current = static_cast<double>(stats.currentSize.get() + stats.memOverhead.get());
-        if (current < stats.mem_high_wat && checkpointList.size() <= maxCheckpoints) {
-            return 0;
-        }
+    if (keepClosedCheckpoints && (checkpointList.size() <= maxCheckpoints)) {
+        return 0;
     }
 
     size_t numUnrefItems = 0;

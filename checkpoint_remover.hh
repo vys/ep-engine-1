@@ -24,7 +24,8 @@ public:
      */
     ClosedUnrefCheckpointRemover(EventuallyPersistentStore *s, EPStats &st,
                                  size_t interval) :
-        store(s), stats(st), sleepTime(interval), available(true) {}
+        store(s), stats(st), sleepTime(interval), available(true),
+        lastRun(ep_current_time()) {}
 
     bool callback(Dispatcher &d, TaskId t);
 
@@ -37,6 +38,7 @@ private:
     EPStats                   &stats;
     size_t                     sleepTime;
     bool                       available;
+    time_t                     lastRun;
 };
 
 #endif /* CHECKPOINT_REMOVER_HH */
