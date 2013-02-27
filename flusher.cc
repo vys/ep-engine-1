@@ -234,7 +234,7 @@ void Flusher::flushAllPending() {
 }
 
 void Flusher::setupFlushQueues() {
-    if (!flushList || flushList->empty()) {
+    if (!flushList) {
         flushList = helper->getFlushQueue();
         if (flushList && !flushList->empty()) {
             getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
@@ -257,13 +257,14 @@ int Flusher::doFlush() {
     }
 
     // Now do the every pass thing.
-    if (flushList && !flushList->empty()) {
-        int n = store->flushSome(flushList, rejectList, flusherId);
-        prevFlushRv = std::min(n, prevFlushRv);
-        if (_state == pausing) {
-            transition_state(paused);
+    if (flushList) {
+       if (!flushList->empty()) {
+            int n = store->flushSome(flushList, rejectList, flusherId);
+            prevFlushRv = std::min(n, prevFlushRv);
+            if (_state == pausing) {
+                transition_state(paused);
+            }
         }
-
         if (flushList->empty()) {
             if (rejectList && !rejectList->empty()) {
                 // Requeue the rejects.
@@ -308,6 +309,10 @@ void FlusherHelper::run() {
         if (!flushList) {
             flushList = new FlushList();
             store->beginFlush(*flushList, kvid);
+            if (flushList->empty()) {
+                delete flushList;
+                flushList = NULL;
+            }
         }
         sync.wait();
     }
