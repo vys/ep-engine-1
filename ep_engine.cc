@@ -1619,6 +1619,12 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
         break;
     case OPERATION_APPEND:
     case OPERATION_PREPEND:
+        Atomic<size_t> *failStat;
+        if (operation == OPERATION_APPEND) {
+            failStat = &stats.append_fails;
+        } else {
+            failStat = &stats.prepend_fails;
+        }
         do {
             std::string cksum(DI_CKSUM_DISABLED_STR);
             if ((ret = get(cookie, &i, it->getKey().c_str(),
@@ -1626,6 +1632,7 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
 
                 if (DataIntegrity::isDataCorrupt(it->getCksum())) {
                     itemRelease(cookie, i);
+                    (*failStat)++;
                     return ENGINE_CKSUM_FAILED;
                 }
 
@@ -1634,16 +1641,19 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
                 if (old->getCas() == (uint64_t) -1) {
                     // item is locked against updates
                     itemRelease(cookie, i);
+                    (*failStat)++;
                     return ENGINE_TMPFAIL;
                 }
 
                 if (it->getCas() != 0 && old->getCas() != it->getCas()) {
                     itemRelease(cookie, i);
+                    (*failStat)++;
                     return ENGINE_KEY_EEXISTS;
                 }
 
                 if ((old->getValue()->length() + it->getValue()->length()) > maxItemSize) {
                     itemRelease(cookie, i);
+                    (*failStat)++;
                     return ENGINE_E2BIG;
                 }
 
@@ -1651,6 +1661,7 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
                     
                     if (!old->append(*it)) {
                         itemRelease(cookie, i);
+                        (*failStat)++;
                         return memoryCondition();
                     }
                     /* if old and new both items contains checksum, then only 
@@ -1673,6 +1684,7 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
 
                         if (!old->prepend(*it)) {
                             itemRelease(cookie, i);
+                            (*failStat)++;
                             return memoryCondition();
                         } 
 
@@ -1683,9 +1695,19 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
                 }
 
                 ret = store(cookie, old, cas, OPERATION_CAS, vbucket);
+                if (ret == ENGINE_SUCCESS) {
+                    if (operation == OPERATION_APPEND) {
+                        stats.append_hits++;
+                    } else {
+                        stats.prepend_hits++;
+                    }
+                }
                 itemRelease(cookie, i);
             }
         } while (ret == ENGINE_KEY_EEXISTS);
+        if (ret != ENGINE_SUCCESS) {
+            (*failStat)++;
+        }
 
         // Map the error code back to what memcacpable expects
         if (ret == ENGINE_KEY_ENOENT) {
@@ -2746,6 +2768,18 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.getl_misses_notfound, add_stat, cookie);
     add_casted_stat("num_unlocks",
                     epstats.num_unlocks, add_stat, cookie);
+    add_casted_stat("cmd_append",
+                    epstats.append_hits + epstats.append_fails, add_stat, cookie);
+    add_casted_stat("append_hits",
+                    epstats.append_hits, add_stat, cookie);
+    add_casted_stat("append_fails",
+                    epstats.append_fails, add_stat, cookie);
+    add_casted_stat("cmd_prepend",
+                    epstats.prepend_hits + epstats.prepend_fails, add_stat, cookie);
+    add_casted_stat("prepend_hits",
+                    epstats.prepend_hits, add_stat, cookie);
+    add_casted_stat("prepend_fails",
+                    epstats.prepend_fails, add_stat, cookie);
     add_casted_stat("ep_total_evictable", stats.totalEvictable, add_stat, cookie);
     add_casted_stat("ep_total_blobs", stats.numBlobs, add_stat, cookie);
     add_casted_stat("curr_items", activeCountVisitor.getNumItems(), add_stat, cookie);

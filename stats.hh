@@ -310,6 +310,16 @@ public:
     //!Number of times unlock was issued
     Atomic<size_t> num_unlocks;
 
+    /*stats for append and prepend*/
+    //!Number of times append succeeded
+    Atomic<size_t> append_hits;
+    //!Number of times append failed
+    Atomic<size_t> append_fails;
+    //!Number of times prepend succeeded
+    Atomic<size_t> prepend_hits;
+    //!Number of times prepend failed
+    Atomic<size_t> prepend_fails;
+
     //! Histogram of pending operation wait times.
     Histogram<hrtime_t> pendingOpsHisto;
 
