@@ -40,7 +40,6 @@ public:
 
     bool pagerRunNeeded() {
         if (lastRun + sleepTime <= ep_real_time()) {
-            stats.expiryPagerRuns++;
             return true;
         }
         return false;

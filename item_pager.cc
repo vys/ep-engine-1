@@ -151,6 +151,7 @@ bool ExpiredItemPager::callback(Dispatcher &d, TaskId t) {
         bool expiryNeeded = pagerRunNeeded();
         bool evictionNeeded = policy && policy->evictionJobNeeded(lruSleepTime);
         if (expiryNeeded || evictionNeeded) {
+            stats.expiryPagerRuns++;
             lastRun = ep_real_time();
             available = false;
             shared_ptr<ExpiryPagingVisitor> pv(new ExpiryPagingVisitor(store, stats,
