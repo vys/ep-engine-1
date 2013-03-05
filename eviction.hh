@@ -15,6 +15,11 @@
 #define MIN_EVICTION_QUANTUM_MAX_COUNT 2
 #define MAX_EVICTION_QUANTUM_MAX_COUNT 32
 
+#define EVICTION_QUIET_PERIOD 30
+
+#define MIN_EVICTION_QUIET_PERIOD 10
+#define MAX_EVICTION_QUIET_PERIOD 120
+
 //Generic class for identifying evictable items.
 class EvictItem {
 public:
@@ -792,8 +797,20 @@ public:
         headroom = to;
     }
 
-    uint32_t getEvictionQuietWindow() {
-        return evictionQuietWindow;
+    uint32_t getEvictionQuietPeriod() {
+        return evictionQuietPeriod;
+    }
+
+    void setEvictionQuietPeriod(size_t to) {
+        if (to < MIN_EVICTION_QUIET_PERIOD || to > MAX_EVICTION_QUIET_PERIOD) {
+            std::stringstream ss;
+            ss << "eviction_quiet_period param value " << to
+                << " is not ranged between the min allowed value " << MIN_EVICTION_QUIET_PERIOD
+                << " and max value " << MAX_EVICTION_QUIET_PERIOD;
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL, ss.str().c_str());
+            return;
+        }
+        evictionQuietPeriod = to;
     }
 
     bool getEvictionDisable() {
@@ -838,7 +855,7 @@ private:
     time_t pruneAge;
     Atomic<size_t> evictionQuantumSize;
     Atomic<size_t> evictionQuantumMaxCount;
-    uint32_t evictionQuietWindow;
+    uint32_t evictionQuietPeriod;
     size_t headroom;
     bool disableInlineEviction;
     bool enableEvictionHistograms;
@@ -855,7 +872,7 @@ private:
         store(s), stats(st), policyName(policy), maxSize(MAX_EVICTION_ENTRIES),
         evpolicy(EvictionPolicyFactory::getInstance(policyName, s, st, maxSize)),
         pauseJob(false),
-        pruneAge(0), evictionQuantumSize(10485760), evictionQuantumMaxCount(10), evictionQuietWindow(120),
+        pruneAge(0), evictionQuantumSize(10485760), evictionQuantumMaxCount(10), evictionQuietPeriod(EVICTION_QUIET_PERIOD),
         headroom(headRoom), disableInlineEviction(die), enableEvictionHistograms(eeh), pauseEvict(false),
         lastEvictTime(0), lastRSSTarget(0) {
         policies.insert("lru");

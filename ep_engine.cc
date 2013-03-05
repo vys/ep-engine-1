@@ -377,6 +377,14 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction_quantum_max_count to %d via flush params.", vsize);
                 EvictionManager::getInstance()->setEvictionQuantumMaxCount(vsize);
+            } else if (strcmp(keyz, "eviction_quiet_period") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         std::numeric_limits<uint64_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting eviction_quiet_period to %d via flush params.", vsize);
+                EvictionManager::getInstance()->setEvictionQuietPeriod(vsize);
             } else if (strcmp(keyz, "disable_inline_eviction") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -1430,6 +1438,7 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
         EvictionManager::getInstance()->enableJob(configuration.isEnableEvictionJob());
         EvictionManager::getInstance()->setEvictionQuantumSize(configuration.getEvictionQuantumSize());
         EvictionManager::getInstance()->setEvictionQuantumMaxCount(configuration.getEvictionQuantumMaxCount());
+        EvictionManager::getInstance()->setEvictionQuietPeriod(configuration.getEvictionQuietPeriod());
     }
 
     shared_ptr<DispatcherCallback> htr(new HashtableResizer(epstore));
@@ -3085,6 +3094,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
     add_casted_stat("eviction_quantum_size", EvictionManager::getInstance()->getEvictionQuantumSize(),
                     add_stat, cookie);
     add_casted_stat("eviction_quantum_max_count", EvictionManager::getInstance()->getEvictionQuantumMaxCount(),
+                    add_stat, cookie);
+    add_casted_stat("eviction_quiet_period", EvictionManager::getInstance()->getEvictionQuietPeriod(),
                     add_stat, cookie);
     add_casted_stat("disable_inline_eviction",
                     EvictionManager::getInstance()->getEvictionDisable() ? 1 : 0,

@@ -71,8 +71,8 @@ bool EvictionManager::evictHeadroom()
     // to wait till the allocator releases memory to the system and RSS comes down.
     do {
         if (pauseEvict) {
-            if (ep_current_time() > (lastEvictTime + getEvictionQuietWindow())) {
-                getLogger()->log(EXTENSION_LOG_INFO, NULL, "pauseEvict timed out. lastEvictTime=%zu", lastEvictTime, getEvictionQuietWindow());
+            if (ep_current_time() > (lastEvictTime + getEvictionQuietPeriod())) {
+                getLogger()->log(EXTENSION_LOG_INFO, NULL, "pauseEvict timed out. lastEvictTime=%zu", lastEvictTime);
                 continue;
             }
             if (currentRSS < lastRSSTarget) {
