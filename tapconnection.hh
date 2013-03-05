@@ -190,6 +190,11 @@ protected:
     std::string name;
 
     /**
+     * Textual representation of the vbucket filter..
+     */
+    std::string filterText;
+
+    /**
      * Tap connection creation time
      */
     rel_time_t created;
@@ -231,7 +236,8 @@ protected:
         disconnect(false),
         supportAck(false),
         supportCheckpointSync(false),
-        reserved(false)
+        reserved(false),
+        vbucketFilter()
     { /* EMPTY */ }
 
 
@@ -369,6 +375,11 @@ public:
     void setDisconnect(bool val) {
         disconnect = val;
     }
+
+    /**
+     * Filter for the buckets we want.
+     */
+    VBucketFilter vbucketFilter;
 };
 
 /**
@@ -393,7 +404,8 @@ private:
 public:
     TapConsumer(EventuallyPersistentEngine &theEngine,
                 const void *c,
-                const std::string &n);
+                const std::string &n,
+                const std::vector<uint16_t> &vbs);
     virtual void processedEvent(tap_event_t event, ENGINE_ERROR_CODE ret);
     virtual void addStats(ADD_STAT add_stat, const void *c);
     virtual const char *getType() const { return "consumer"; };
@@ -1081,10 +1093,6 @@ private:
     size_t diskBackfillCounter;
 
     /**
-     * Filter for the buckets we want.
-     */
-    VBucketFilter vbucketFilter;
-    /**
      * Filter for the vbuckets that require backfill by the next backfill task
      */
      VBucketFilter backFillVBucketFilter;
@@ -1156,18 +1164,11 @@ private:
      */
     uint32_t opaqueCommandCode;
 
-
     /**
      * Is this tap connection in a suspended state (the receiver may
      * be too slow
      */
     Atomic<bool> suspended;
-
-
-    /**
-     * Textual representation of the vbucket filter..
-     */
-    std::string filterText;
 
     /**
      * Textual representation of the flags..

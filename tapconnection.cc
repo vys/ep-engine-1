@@ -67,7 +67,6 @@ TapProducer::TapProducer(EventuallyPersistentEngine &theEngine,
     backfillCompleted(true),
     pendingBackfillCounter(0),
     diskBackfillCounter(0),
-    vbucketFilter(),
     vBucketHighPriority(),
     vBucketLowPriority(),
     queueMemSize(0),
@@ -1003,12 +1002,18 @@ void TapProducer::processedEvent(tap_event_t event, ENGINE_ERROR_CODE)
 /**************** TAP Consumer **********************************************/
 TapConsumer::TapConsumer(EventuallyPersistentEngine &theEngine,
                          const void *c,
-                         const std::string &n) :
-    TapConnection(theEngine, c, n)
-{ /* EMPTY */ }
+                         const std::string &n, const std::vector<uint16_t> &vbs) :
+    TapConnection(theEngine, c, n) {
+    vbucketFilter = VBucketFilter(vbs);
+    std::stringstream f;
+    f << vbucketFilter;
+    filterText.assign(f.str());
+}
 
 void TapConsumer::addStats(ADD_STAT add_stat, const void *c) {
     TapConnection::addStats(add_stat, c);
+    addStat("vb_filters", vbucketFilter.size(), add_stat, c);
+    addStat("vb_filter", filterText.c_str(), add_stat, c);
     addStat("num_delete", numDelete, add_stat, c);
     addStat("num_delete_failed", numDeleteFailed, add_stat, c);
     addStat("num_flush", numFlush, add_stat, c);

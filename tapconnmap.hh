@@ -238,11 +238,12 @@ public:
 
     /**
      * Create a new consumer and add it in the list of TapConnections
-     * @param e the engine
-     * @param c the cookie representing the client
+     * @param cookie - the cookie representing the client
+     * @param name - the tapname
+     * @param vbuckets - the vbucket list
      * @return Pointer to the nw tap connection
      */
-    TapConsumer *newConsumer(const void* c);
+    TapConsumer *newConsumer(const void* cookie, std::string &name, std::vector<uint16_t> &vbuckets);
 
     /**
      * Call a function on each tap connection.

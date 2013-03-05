@@ -208,10 +208,25 @@ void TapConnMap::addFlushEvent() {
     }
 }
 
-TapConsumer *TapConnMap::newConsumer(const void* cookie)
+TapConsumer *TapConnMap::newConsumer(const void* cookie, std::string &name, std::vector<uint16_t> &vbuckets)
 {
     LockHolder clh(connMapMutex);
-    TapConsumer *tap = new TapConsumer(engine, cookie, TapConnection::getAnonName());
+
+    // Check if any vbucket belongs to another tap consumer
+    std::vector<uint16_t>::iterator vbit = vbuckets.begin();
+    for (; vbit != vbuckets.end(); vbit++) {
+        std::map<const void*, TapConnection*>::iterator it = map.begin();
+        for (; it != map.end(); it++) {
+            if ((*it).second->vbucketFilter(*vbit)) {
+                getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                                 "Failed to create tap consumer %s. VBucket %d already belongs to tap consumer %s\n",
+                                 name.c_str(), *vbit, (*it).second->getName().c_str());
+                return NULL;
+            }
+        }
+    }
+
+    TapConsumer *tap = new TapConsumer(engine, cookie, name, vbuckets);
     all.push_back(tap);
     map[cookie] = tap;
     return tap;

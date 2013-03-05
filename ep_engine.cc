@@ -2221,15 +2221,52 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
         if (tap_event == TAP_ACK) {
             // tap producer is no longer connected..
             return ENGINE_DISCONNECT;
-        } else {
+        } else if (tap_event == TAP_CONSUMER){
+            std::vector<uint16_t> vbuckets;
+            std::string name((char *) key, nkey);
+            // Decoding the userdata section of the packet and update the filters
+            const char *ptr = static_cast<const char*>(data);
+
+            if (tap_flags & TAP_CONNECT_FLAG_LIST_VBUCKETS) {
+                uint16_t nvbuckets;
+                if (ndata < sizeof(nvbuckets)) {
+                    getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                                     "Number of vbuckets is missing. Reject connection request from %s\n",
+                                     name.c_str());
+                    return ENGINE_DISCONNECT;
+                }
+                memcpy(&nvbuckets, ptr, sizeof(nvbuckets));
+                ndata -= sizeof(nvbuckets);
+                ptr += sizeof(nvbuckets);
+                nvbuckets = ntohs(nvbuckets);
+                if (nvbuckets > 0) {
+                    if (ndata < (sizeof(uint16_t) * nvbuckets)) {
+                        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                                         "# of vbuckets not matched. Reject connection request from %s\n",
+                                         name.c_str());
+                        return ENGINE_DISCONNECT;
+                    }
+                    for (uint16_t ii = 0; ii < nvbuckets; ++ii) {
+                        uint16_t val;
+                        memcpy(&val, ptr, sizeof(nvbuckets));
+                        ptr += sizeof(uint16_t);
+                        vbuckets.push_back(ntohs(val));
+                    }
+                    ndata -= (sizeof(uint16_t) * nvbuckets);
+                }
+            }
             // Create a new tap consumer...
-            connection = tapConnMap.newConsumer(cookie);
+            connection = tapConnMap.newConsumer(cookie, name, vbuckets);
             if (connection == NULL) {
                 getLogger()->log(EXTENSION_LOG_WARNING, NULL,
                                  "Failed to create new tap consumer.. disconnecting\n");
                 return ENGINE_DISCONNECT;
             }
             serverApi->cookie->store_engine_specific(cookie, connection);
+        } else  {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "Received message without tap consumer registration.. disconnecting\n");
+            return ENGINE_DISCONNECT;
         }
     } else {
         connection = reinterpret_cast<TapConnection *>(specific);
@@ -2237,6 +2274,19 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
 
     std::string k(static_cast<const char*>(key), nkey);
     ENGINE_ERROR_CODE ret = ENGINE_SUCCESS;
+
+    // Check if the tap consumer receives mutation that does not meet filter criteria
+    switch (tap_event) {
+    case TAP_NOOP:
+    case TAP_OPAQUE:
+        break;
+    default:
+        if (!connection->vbucketFilter(vbucket)) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "Received invalid tap_event (%x) for vbucket %d in tap consumer:%s\n",
+                             tap_event, vbucket, connection->getName().c_str());
+        }
+    }
 
     switch (tap_event) {
     case TAP_ACK:
