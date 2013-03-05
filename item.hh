@@ -351,6 +351,10 @@ public:
         return sz;
     }
 
+    size_t overhead() {
+        return sizeof(Item) + key.size() + cksum.size();
+    }
+
 private:
     /**
      * Set the item's data. This is only used by constructors, so we

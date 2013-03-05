@@ -81,6 +81,11 @@ public:
         return sizeof(QueuedItem) + getKey().size() + getValue()->getSize();
     }
 
+    // Exclude item overhead as it is accounted for separately
+    size_t overhead() {
+        return sizeof(QueuedItem) - sizeof(Item);
+    }
+
 private:
     enum queue_operation op;
     uint16_t vbucket_version;
