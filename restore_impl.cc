@@ -288,7 +288,11 @@ private:
         }
 
         // Trigger eviction if necessary
-        EvictionManager::getInstance()->evictHeadroom();
+        while (EvictionManager::getInstance()->evictHeadroom() == false) {
+            getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
+                             "Restore : evictHeadroom returned false. Sleeping..");
+            usleep(100);
+        }
         Item itm(key, flags, expiration, value, cksum, cas, -1, vbid);
         int r = store.restoreItem(itm, op);
         if (r == 0) {
