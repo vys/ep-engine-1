@@ -352,7 +352,7 @@ public:
     }
 
     size_t overhead() {
-        return sizeof(Item) + key.size() + cksum.size();
+        return sizeof(Item) + key.size();
     }
 
 private:

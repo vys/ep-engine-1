@@ -70,7 +70,6 @@ void ObjectRegistry::onCreateQueuedItem(QueuedItem *qi)
    EventuallyPersistentEngine *engine = th->get();
    if (verifyEngine(engine)) {
        EPStats &stats = engine->getEpStats();
-       // Exclude the memory overhead of Item instance that is considered separately.
        stats.memOverhead.incr(qi->overhead());
        assert(stats.memOverhead.get() < GIGANTOR);
    }
@@ -81,7 +80,6 @@ void ObjectRegistry::onDeleteQueuedItem(QueuedItem *qi)
    EventuallyPersistentEngine *engine = th->get();
    if (verifyEngine(engine)) {
        EPStats &stats = engine->getEpStats();
-       // Exclude the memory overhead of Item instance that is considered separately.
        stats.memOverhead.decr(qi->overhead());
        assert(stats.memOverhead.get() < GIGANTOR);
    }
