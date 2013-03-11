@@ -80,7 +80,7 @@ bool EvictionManager::evictHeadroom()
                 continue;
             }
             stats.evictionStats.failedTotal.evictionStopped++;
-            getLogger()->log(EXTENSION_LOG_INFO, NULL, "pauseEvict=true. currentRSS=%zu > lastRSSTarget=%zu. lastEvictTime=%zu. Denying request", currentRSS, lastRSSTarget, lastEvictTime);
+            getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "pauseEvict=true. currentRSS=%zu > lastRSSTarget=%zu. lastEvictTime=%zu. Denying request", currentRSS, lastRSSTarget, lastEvictTime);
             return false;
         }
     } while (0); // Using do-while trickery to be able to use continue inside if-condition above.
@@ -89,7 +89,7 @@ bool EvictionManager::evictHeadroom()
     bool lock;
     LockHolder lhe(evictionLock, &lock);
     if (!lock) {
-        getLogger()->log(EXTENSION_LOG_INFO, NULL, "Unable to get eviction lock, returning");
+        getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Unable to get eviction lock, returning");
         return allowOps(currentRSS);
     }
 
@@ -130,7 +130,7 @@ bool EvictionManager::evictHeadroom()
                     assert("v is not eligible for eviction but is already deleted!");
                 }
             } else if (!evpolicy->eligibleForEviction(v, evictItem)) {
-                getLogger()->log(EXTENSION_LOG_INFO, NULL, "Eviction: Key not eligible for eviction.");
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Eviction: Key not eligible for eviction.");
                 stats.evictionStats.failedTotal.numPolicyIneligible++;
             } else {
                 // Fail if key is present in any checkpoint

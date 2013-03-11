@@ -27,7 +27,8 @@ public:
      */
     ExpiryPagingVisitor(EventuallyPersistentStore *s, EPStats &st,
                   bool *sfin, EvictionPolicy *ev = NULL)
-        : store(s), stats(st), ejected(0), startTime(ep_real_time()), stateFinalizer(sfin),
+        : store(s), stats(st), ejected(0), expiredCount(0),
+          startTime(ep_real_time()), stateFinalizer(sfin),
           pauseMutations(false), evjob(ev) {
         if (evjob) {
             evjob->initRebuild();
@@ -68,7 +69,9 @@ public:
     }
 
     void update() {
-        stats.expired.incr(expired.size());
+        size_t count = expired.size();
+        expiredCount += count;
+        stats.expired.incr(count);
 
         store->deleteExpiredItems(expired);
 
@@ -77,10 +80,6 @@ public:
                              "Paged out %d values\n", numEjected());
         }
 
-        if (!expired.empty()) {
-            getLogger()->log(EXTENSION_LOG_INFO, NULL,
-                             "Purged %d expired items\n", expired.size());
-        }
         ejected = 0;
         expired.clear();
     }
@@ -118,6 +117,11 @@ public:
         endTime = ep_real_time();
         stats.expiryPagerTimeStats.startTime = startTime;
         stats.expiryPagerTimeStats.endTime = endTime;
+
+        if (expiredCount) {
+            getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                             "Purged %zu expired items\n", expiredCount);
+        }
     }
     
     /**
@@ -131,6 +135,7 @@ private:
     EventuallyPersistentStore *store;
     EPStats                   &stats;
     size_t                     ejected;
+    size_t                     expiredCount;
     time_t                     startTime;
     time_t                     endTime;
     bool                      *stateFinalizer;
