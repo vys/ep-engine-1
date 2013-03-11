@@ -161,6 +161,8 @@ public:
     Atomic<size_t> warmDups;
     //! Number of OOM failures at warmup time.
     Atomic<size_t> warmOOM;
+    //! Number of evictions at warmup time.
+    Atomic<size_t> warmupEvictions;
 
     //! size of the input queue
     Atomic<size_t> queue_size;

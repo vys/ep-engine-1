@@ -305,8 +305,7 @@ class LoadStorageKVPairCallback : public Callback<GetValue> {
 public:
     LoadStorageKVPairCallback(VBucketMap &vb, EPStats &st,
                               EventuallyPersistentStore *ep)
-        : vbuckets(vb), stats(st), epstore(ep), startTime(ep_real_time()),
-          hasPurged(false) {
+        : vbuckets(vb), stats(st), epstore(ep), startTime(ep_real_time()) {
         assert(epstore);
     }
 
@@ -319,17 +318,13 @@ public:
 
 private:
 
-    bool shouldBeResident() {
-        return StoredValue::getCurrentSize(stats) < stats.mem_low_wat;
-    }
-
+    bool shouldBeResident();
     void purge();
 
     VBucketMap &vbuckets;
     EPStats    &stats;
     EventuallyPersistentStore *epstore;
     time_t      startTime;
-    bool        hasPurged;
 };
 
 /**

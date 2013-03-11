@@ -2356,36 +2356,30 @@ void LoadStorageKVPairCallback::callback(GetValue &val) {
             succeeded = true;
             break;
         case ADD_NOMEM:
-            if (hasPurged) {
-                if (++stats.warmOOM == 1) {
-                    getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                                     "Warmup dataload failure: max_size too low.\n");
-                }
-            } else {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "Emergency startup purge to free space for load.\n");
+            purge();
+            // Try that item again.
+            switch(vb->ht.add(*i, false, retain)) {
+            case ADD_SUCCESS:
+            case ADD_UNDEL:
+                succeeded = true;
+                break;
+            case ADD_EXISTS:
                 getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                                 "Emergency startup purge to free space for load.\n");
-                purge();
-                // Try that item again.
-                switch(vb->ht.add(*i, false, retain)) {
-                case ADD_SUCCESS:
-                case ADD_UNDEL:
-                    succeeded = true;
-                    break;
-                case ADD_EXISTS:
-                    getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                                     "Warmup dataload error: Duplicate key: %s.\n",
-                                     i->getKey().c_str());
-                    ++stats.warmDups;
-                    succeeded = true;
-                    break;
-                case ADD_NOMEM:
-                    getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                                     "Cannot store an item after emergency purge.\n");
-                    ++stats.warmOOM;
-                    break;
-                default:
-                    abort();
-                }
+                                 "Warmup dataload error: Duplicate key: %s.\n",
+                                 i->getKey().c_str());
+                ++stats.warmDups;
+                succeeded = true;
+                break;
+            case ADD_NOMEM:
+                // Store failed despite purge. Don't know where to go from here
+                getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                                 "Cannot store an item after emergency purge.\n");
+                ++stats.warmOOM;
+                break;
+            default:
+                abort();
             }
             break;
         default:
@@ -2404,6 +2398,11 @@ void LoadStorageKVPairCallback::callback(GetValue &val) {
     ++stats.warmedUp;
 }
 
+bool LoadStorageKVPairCallback::shouldBeResident() {
+    size_t headroom = stats.maxDataSize * 0.1;
+    return (stats.maxDataSize > (GetSelfRSS() + headroom));
+}
+
 void LoadStorageKVPairCallback::purge() {
 
     class EmergencyPurgeVisitor : public VBucketVisitor {
@@ -2411,7 +2410,9 @@ void LoadStorageKVPairCallback::purge() {
         EmergencyPurgeVisitor(EPStats &s) : stats(s) {}
 
         void visit(StoredValue *v) {
-            v->ejectValue(stats, currentBucket->ht);
+            if (v->ejectValue(stats, currentBucket->ht)) {
+                stats.warmupEvictions++;
+            }
         }
     private:
         EPStats &stats;
@@ -2427,7 +2428,7 @@ void LoadStorageKVPairCallback::purge() {
             vb->ht.visit(epv);
         }
     }
-    hasPurged = true;
+    getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Evicted %zu keys during warmup", stats.warmupEvictions.get());
 }
 
 bool TransactionContext::enter() {
