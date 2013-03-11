@@ -2197,6 +2197,40 @@ bool EventuallyPersistentEngine::createTapQueue(const void *cookie,
     return true;
 }
 
+static bool parseTapConsumerVBs(std::string name, const void *data, size_t ndata, std::vector<uint16_t> &vbuckets) {
+    // Parse vbucket filter list from tap connect data for tap consumer
+    const char *ptr = static_cast<const char*>(data);
+    uint16_t nvbuckets;
+
+    if (ndata < sizeof(nvbuckets)) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                         "Number of vbuckets is missing. Reject connection request from %s\n",
+                         name.c_str());
+        return false;
+    }
+    memcpy(&nvbuckets, ptr, sizeof(nvbuckets));
+    ndata -= sizeof(nvbuckets);
+    ptr += sizeof(nvbuckets);
+    nvbuckets = ntohs(nvbuckets);
+    if (nvbuckets > 0) {
+        if (ndata < (sizeof(uint16_t) * nvbuckets)) {
+            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                             "# of vbuckets not matched. Reject connection request from %s\n",
+                             name.c_str());
+            return false;
+        }
+        for (uint16_t ii = 0; ii < nvbuckets; ++ii) {
+            uint16_t val;
+            memcpy(&val, ptr, sizeof(nvbuckets));
+            ptr += sizeof(uint16_t);
+            vbuckets.push_back(ntohs(val));
+        }
+        ndata -= (sizeof(uint16_t) * nvbuckets);
+    }
+
+    return true;
+}
+
 ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
                                                         void *engine_specific,
                                                         uint16_t nengine,
@@ -2222,39 +2256,14 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
             // tap producer is no longer connected..
             return ENGINE_DISCONNECT;
         } else if (tap_event == TAP_CONSUMER){
-            std::vector<uint16_t> vbuckets;
             std::string name((char *) key, nkey);
-            // Decoding the userdata section of the packet and update the filters
-            const char *ptr = static_cast<const char*>(data);
+            std::vector<uint16_t> vbuckets;
 
-            if (tap_flags & TAP_CONNECT_FLAG_LIST_VBUCKETS) {
-                uint16_t nvbuckets;
-                if (ndata < sizeof(nvbuckets)) {
-                    getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                                     "Number of vbuckets is missing. Reject connection request from %s\n",
-                                     name.c_str());
-                    return ENGINE_DISCONNECT;
-                }
-                memcpy(&nvbuckets, ptr, sizeof(nvbuckets));
-                ndata -= sizeof(nvbuckets);
-                ptr += sizeof(nvbuckets);
-                nvbuckets = ntohs(nvbuckets);
-                if (nvbuckets > 0) {
-                    if (ndata < (sizeof(uint16_t) * nvbuckets)) {
-                        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                                         "# of vbuckets not matched. Reject connection request from %s\n",
-                                         name.c_str());
-                        return ENGINE_DISCONNECT;
-                    }
-                    for (uint16_t ii = 0; ii < nvbuckets; ++ii) {
-                        uint16_t val;
-                        memcpy(&val, ptr, sizeof(nvbuckets));
-                        ptr += sizeof(uint16_t);
-                        vbuckets.push_back(ntohs(val));
-                    }
-                    ndata -= (sizeof(uint16_t) * nvbuckets);
-                }
+            if (tap_flags & TAP_CONNECT_FLAG_LIST_VBUCKETS &&
+                    parseTapConsumerVBs(name, data, ndata, vbuckets) == false) {
+                return ENGINE_DISCONNECT;
             }
+
             // Create a new tap consumer...
             connection = tapConnMap.newConsumer(cookie, name, vbuckets);
             if (connection == NULL) {

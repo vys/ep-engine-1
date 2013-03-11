@@ -217,7 +217,9 @@ TapConsumer *TapConnMap::newConsumer(const void* cookie, std::string &name, std:
     for (; vbit != vbuckets.end(); vbit++) {
         std::map<const void*, TapConnection*>::iterator it = map.begin();
         for (; it != map.end(); it++) {
-            if ((*it).second->vbucketFilter(*vbit)) {
+            std::string type((*it).second->getType());
+
+            if (type == "consumer" && (*it).second->vbucketFilter(*vbit)) {
                 getLogger()->log(EXTENSION_LOG_INFO, NULL,
                                  "Failed to create tap consumer %s. VBucket %d already belongs to tap consumer %s\n",
                                  name.c_str(), *vbit, (*it).second->getName().c_str());
