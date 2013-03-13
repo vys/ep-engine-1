@@ -2952,10 +2952,14 @@ static enum test_result test_vb_prepend_replica(ENGINE_HANDLE *h, ENGINE_HANDLE_
 static enum test_result test_tap_rcvr_mutate(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     char eng_specific[64];
     memset(eng_specific, 0, sizeof(eng_specific));
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
     for (size_t i = 0; i < 8192; ++i) {
         char *data = static_cast<char *>(malloc(i));
         memset(data, 'x', i);
-        check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+        check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
                              1, 0, TAP_MUTATION, 1, "key", 3, 828, std::numeric_limits<uint32_t>::max(), 0, 0,
                              data, i, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
@@ -2972,14 +2976,18 @@ static enum test_result test_tap_rcvr_checkpoint(ENGINE_HANDLE *h, ENGINE_HANDLE
     char eng_specific[64];
     memset(eng_specific, 0, sizeof(eng_specific));
     check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
     for (size_t i = 1; i < 10; ++i) {
         std::stringstream ss;
         ss << i;
-        check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+        check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
                              1, 0, TAP_CHECKPOINT_START, 1, "", 0, 828, 0, 0, 0,
                              ss.str().c_str(), ss.str().length(), 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
-        check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+        check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
                              1, 0, TAP_CHECKPOINT_END, 1, "", 0, 828, 0, 0, 0,
                              ss.str().c_str(), ss.str().length(), 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
@@ -2989,7 +2997,11 @@ static enum test_result test_tap_rcvr_checkpoint(ENGINE_HANDLE *h, ENGINE_HANDLE
 
 static enum test_result test_tap_rcvr_mutate_dead(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     char eng_specific[1];
-    check(h1->tap_notify(h, NULL, eng_specific, 1,
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
+    check(h1->tap_notify(h, cookie, eng_specific, 1,
                          1, 0, TAP_MUTATION, 1, "key", 3, 828, std::numeric_limits<uint32_t>::max(), 0, 0,
                          "data", 4, 1, DI_CKSUM_DISABLED_STR) == ENGINE_NOT_MY_VBUCKET,
           "Expected not my vbucket.");
@@ -2999,7 +3011,11 @@ static enum test_result test_tap_rcvr_mutate_dead(ENGINE_HANDLE *h, ENGINE_HANDL
 static enum test_result test_tap_rcvr_mutate_pending(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(set_vbucket_state(h, h1, 1, vbucket_state_pending), "Failed to set vbucket state.");
     char eng_specific[1];
-    check(h1->tap_notify(h, NULL, eng_specific, 1,
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
+    check(h1->tap_notify(h, cookie, eng_specific, 1,
                          1, 0, TAP_MUTATION, 1, "key", 3, 828, std::numeric_limits<uint32_t>::max(), 0, 0,
                          "data", 4, 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Expected expected success.");
@@ -3009,7 +3025,11 @@ static enum test_result test_tap_rcvr_mutate_pending(ENGINE_HANDLE *h, ENGINE_HA
 static enum test_result test_tap_rcvr_mutate_replica(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
     char eng_specific[1];
-    check(h1->tap_notify(h, NULL, eng_specific, 1,
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
+    check(h1->tap_notify(h, cookie, eng_specific, 1,
                          1, 0, TAP_MUTATION, 1, "key", 3, 828, std::numeric_limits<uint32_t>::max(), 0, 0,
                          "data", 4, 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Expected expected success.");
@@ -3017,7 +3037,11 @@ static enum test_result test_tap_rcvr_mutate_replica(ENGINE_HANDLE *h, ENGINE_HA
 }
 
 static enum test_result test_tap_rcvr_delete(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
-    check(h1->tap_notify(h, NULL, NULL, 0,
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
+    check(h1->tap_notify(h, cookie, NULL, 0,
                          1, 0, TAP_DELETION, 0, "key", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0,
                          0, 0, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Failed tap notify.");
@@ -3025,7 +3049,11 @@ static enum test_result test_tap_rcvr_delete(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 
 }
 
 static enum test_result test_tap_rcvr_delete_dead(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
-    check(h1->tap_notify(h, NULL, NULL, 0,
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
+    check(h1->tap_notify(h, cookie, NULL, 0,
                          1, 0, TAP_DELETION, 1, "key", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0,
                          NULL, 0, 1, DI_CKSUM_DISABLED_STR) == ENGINE_NOT_MY_VBUCKET,
           "Expected not my vbucket.");
@@ -3034,7 +3062,11 @@ static enum test_result test_tap_rcvr_delete_dead(ENGINE_HANDLE *h, ENGINE_HANDL
 
 static enum test_result test_tap_rcvr_delete_pending(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(set_vbucket_state(h, h1, 1, vbucket_state_pending), "Failed to set vbucket state.");
-    check(h1->tap_notify(h, NULL, NULL, 0,
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
+    check(h1->tap_notify(h, cookie, NULL, 0,
                          1, 0, TAP_DELETION, 1, "key", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0,
                          NULL, 0, 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Expected expected success.");
@@ -3043,7 +3075,11 @@ static enum test_result test_tap_rcvr_delete_pending(ENGINE_HANDLE *h, ENGINE_HA
 
 static enum test_result test_tap_rcvr_delete_replica(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
-    check(h1->tap_notify(h, NULL, NULL, 0,
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
+    check(h1->tap_notify(h, cookie, NULL, 0,
                          1, 0, TAP_DELETION, 1, "key", 3, 0, std::numeric_limits<uint32_t>::max(), 0, 0,
                          NULL, 0, 1, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Expected expected success.");
@@ -3811,6 +3847,8 @@ static enum test_result test_tap_notify(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1)
     ENGINE_ERROR_CODE r;
 
     const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
     do {
         std::stringstream ss;
         ss << "Key-"<< ++ii;
@@ -4273,8 +4311,12 @@ static enum test_result test_queuedtime_tap(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
     int currTime = get_int_stat(h, h1, "ep_real_time");
     check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
     memset(eng_specific, 0, sizeof(eng_specific));
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
+
     for (int i = 0; i < 12; i++) {
-        check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific), 1, 0, TAP_MUTATION, 1,
+        check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific), 1, 0, TAP_MUTATION, 1,
                              "key", 3, 828, currTime, 0, 0,
                              "value", 5, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
@@ -6033,6 +6075,9 @@ static enum test_result test_bug_10443(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     memset(eng_specific, 0, sizeof(eng_specific));
     item *it;
     uint64_t cas = 0;
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
 
     check(set_vbucket_state(h, h1, 1, vbucket_state_active), "Failed to set vbucket state.");
 
@@ -6040,14 +6085,14 @@ static enum test_result test_bug_10443(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     check(h1->allocate(h, NULL, &it, "key", 3, 100, 0, 1, 0, 0) == ENGINE_SUCCESS,
             "Allocation failed");
 
-    check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+    check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
                          1, 0, TAP_CHECKPOINT_START, 1, "", 0, 828, 0, 0, 0,
                          &checkpointId, sizeof(checkpointId), 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
           "Failed tap notify.");
 
     //Store when an open checkpoint is present
     check(h1->store(h, NULL, it, &cas, OPERATION_SET, 0) == ENGINE_SUCCESS, "Store failed");
-    check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+    check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
                              1, 0, TAP_CHECKPOINT_END, 1, "", 0, 828, 0, 0, 0,
                              &checkpointId, sizeof(checkpointId), 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
@@ -6235,6 +6280,8 @@ static enum test_result test_tap_rcv_backfill(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
     uint32_t tap_flag;
     memset(eng_specific, 0, sizeof(eng_specific));
     const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
 
     tap_flag = htonl(TAP_OPAQUE_ENABLE_CHECKPOINT_SYNC);
     check(h1->tap_notify(h, cookie, &tap_flag, sizeof(uint32_t),1,
@@ -6334,10 +6381,13 @@ static enum test_result test_checkpoint_vb0_persistence(ENGINE_HANDLE *h, ENGINE
     char eng_specific[64];
     memset(eng_specific, 0, sizeof(eng_specific));
     check(set_vbucket_state(h, h1, 1, vbucket_state_replica), "Failed to set vbucket state.");
+    const void *cookie = testHarness.create_cookie();
+    check(h1->tap_notify(h, cookie, NULL, 0, 0, 0, TAP_CONSUMER, 0, "consumer", 8, 0, 0, 0, 0, NULL, 0, 0, 0) == ENGINE_SUCCESS,
+            "Failed to register tap consumer");
     for (int i = 1; i < 5; ++i) {
         checkpointId = htonll(i);
 
-        check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+        check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
                              1, 0, TAP_CHECKPOINT_START, 1, "", 0, 828, 0, 0, 0,
                              &checkpointId, sizeof(checkpointId), 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
@@ -6345,7 +6395,7 @@ static enum test_result test_checkpoint_vb0_persistence(ENGINE_HANDLE *h, ENGINE
         for (size_t j = 0; j < 100; ++j) {
             std::stringstream ss;
             ss << j;
-            check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+            check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
                                  1, 0, TAP_MUTATION, 1, ss.str().c_str(), ss.str().length(), 828, std::numeric_limits<uint32_t>::max(), 0, 0,
                                  "test_value", 10, 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
                   "Failed tap notify.");
@@ -6353,7 +6403,7 @@ static enum test_result test_checkpoint_vb0_persistence(ENGINE_HANDLE *h, ENGINE
         wait_for_flusher_to_settle(h, h1);
         wait_for_flusher_to_settle(h, h1);
         vals.clear();
-        check(h1->get_stats(h, NULL, "checkpoint", strlen("checkpoint"), add_stats) == ENGINE_SUCCESS,
+        check(h1->get_stats(h, cookie, "checkpoint", strlen("checkpoint"), add_stats) == ENGINE_SUCCESS,
             "Failed to get stats.");
         int x = 0;
         for (; x < 10; ++x) {
@@ -6367,7 +6417,7 @@ static enum test_result test_checkpoint_vb0_persistence(ENGINE_HANDLE *h, ENGINE
 
         check(get_persisted_cpid_vb0_fromdb() == i, "vbucket_states table should be updated with latest persisted checkpoint_id");
 
-        check(h1->tap_notify(h, NULL, eng_specific, sizeof(eng_specific),
+        check(h1->tap_notify(h, cookie, eng_specific, sizeof(eng_specific),
                              1, 0, TAP_CHECKPOINT_END, 1, "", 0, 828, 0, 0, 0,
                              &checkpointId, sizeof(checkpointId), 0, DI_CKSUM_DISABLED_STR) == ENGINE_SUCCESS,
               "Failed tap notify.");
