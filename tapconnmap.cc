@@ -141,6 +141,10 @@ void TapConnMap::getExpiredConnections_UNLOCKED(std::list<TapConnection*> &deadC
 
         TapProducer *tp = dynamic_cast<TapProducer*>(*iter);
 
+        // Tap producer instances may override expiry 
+        if (tp && tp->getExpiryTime() > now) {
+            continue;
+        }
         if (tc->getExpiryTime() <= now && !mapped(tc)) {
             if (tp) {
                 if (!tp->suspended) {

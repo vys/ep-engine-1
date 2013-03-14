@@ -353,7 +353,7 @@ public:
         expiryTime = t;
     }
 
-    rel_time_t getExpiryTime() {
+    virtual rel_time_t getExpiryTime() {
         return expiryTime;
     }
 
@@ -466,6 +466,18 @@ public:
      * Invoked once per batch bg fetch job.
      */
     void completedBGFetchJob();
+
+    /**
+     * TAP producer instances for registered clients live forever.
+     * This is primarily to help backfill which otherwise needs to be started
+     * all over again if the connection breaks for more than tap-keepalive time.
+     */ 
+    rel_time_t getExpiryTime() {
+        if (registeredTAPClient && !closedCheckpointOnly) {
+            return (rel_time_t)-1;
+        }
+        return expiryTime;
+    }
 
 private:
     friend class EventuallyPersistentEngine;
