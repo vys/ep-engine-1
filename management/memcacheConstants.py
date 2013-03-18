@@ -62,9 +62,6 @@ CMD_DEREGISTER_TAP_CLIENT = 0x9e
 # Reset replication chain
 CMD_RESET_REPLICATION_CHAIN = 0x9f
 
-# Prune eviction queue
-CMD_PRUNE_LRU = 0xa0
-
 # Replication
 CMD_TAP_CONNECT = 0x40
 CMD_TAP_MUTATION = 0x41
@@ -81,7 +78,6 @@ CMD_GET_VBUCKET_STATE = 0x3e
 CMD_DELETE_VBUCKET = 0x3f
 
 CMD_GET_LOCKED = 0x94
-CMD_UNLOCK = 0x95
 
 CMD_SYNC = 0x96
 
@@ -130,16 +126,18 @@ TAP_FLAG_NO_VALUE = 0x02 # The value for the key is not included in the packet
 
 # Flags, expiration
 SET_PKT_FMT=">II"
+SET_PKT_FMT_WITH_CKSUM=">III"
 
-# flags
+# cksum flags
 GET_RES_FMT=">I"
+GET_RES_FMT_CKSUM=">II"
 
 # How long until the deletion takes effect.
 DEL_PKT_FMT=""
 
 ## TAP stuff
-# eng-specific length, flags, ttl, [res, res, res]; item flags, exp
-TAP_MUTATION_PKT_FMT = ">HHbxxxII"
+# eng-specific length, flags, ttl, cksum_length, [res]; item flags, exp
+TAP_MUTATION_PKT_FMT = ">HHbbxxIIIxxxx"
 TAP_GENERAL_PKT_FMT = ">HHbxxx"
 
 # amount, initial value, expiration
@@ -197,3 +195,8 @@ ERR_NOT_FOUND = 0x1
 ERR_EXISTS = 0x2
 ERR_AUTH = 0x20
 ERR_AUTH_CONTINUE = 0x21
+MAXLEN_PENDING_ACK_QUEUE = 10
+
+MAX_SOURCE_RETRY = 500
+PROTOCOL_BINARY_RESPONSE_CKSUM_FAILED = 0x87
+MUTATION_EXTRALEN_WITHOUT_QTIME = 16

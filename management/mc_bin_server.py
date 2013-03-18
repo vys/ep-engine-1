@@ -13,6 +13,8 @@ import struct
 import time
 import hmac
 import heapq
+import os
+import sys
 
 import memcacheConstants
 
@@ -318,35 +320,46 @@ class MemcachedBinaryChannel(asyncore.dispatcher):
         return self.backend.processCommand(cmd, keylen, vb, cas, data)
 
     def handle_read(self):
-        self.rbuf += self.recv(self.BUFFER_SIZE)
-        while self.__hasEnoughBytes():
-            magic, cmd, keylen, extralen, datatype, vb, remaining, opaque, cas=\
-                struct.unpack(REQ_PKT_FMT, self.rbuf[:MIN_RECV_PACKET])
-            assert magic == REQ_MAGIC_BYTE
-            assert keylen <= remaining, "Keylen is too big: %d > %d" \
-                % (keylen, remaining)
-            assert extralen == memcacheConstants.EXTRA_HDR_SIZES.get(cmd, 0), \
-                "Extralen is too large for cmd 0x%x: %d" % (cmd, extralen)
-            # Grab the data section of this request
-            data=self.rbuf[MIN_RECV_PACKET:MIN_RECV_PACKET+remaining]
-            assert len(data) == remaining
-            # Remove this request from the read buffer
-            self.rbuf=self.rbuf[MIN_RECV_PACKET+remaining:]
-            # Process the command
-            cmdVal = self.processCommand(cmd, keylen, vb, extralen, cas, data)
-            # Queue the response to the client if applicable.
-            if cmdVal:
-                try:
-                    status, cas, response = cmdVal
-                except ValueError:
-                    print "Got", cmdVal
-                    raise
-                dtype=0
-                extralen=memcacheConstants.EXTRA_HDR_SIZES.get(cmd, 0)
-                self.wbuf += struct.pack(RES_PKT_FMT,
-                    RES_MAGIC_BYTE, cmd, keylen,
-                    extralen, dtype, status,
-                    len(response), opaque, cas) + response
+	try:
+            self.rbuf += self.recv(self.BUFFER_SIZE)
+            while self.__hasEnoughBytes():
+                magic, cmd, keylen, extralen, datatype, vb, remaining, opaque, cas=\
+                    struct.unpack(REQ_PKT_FMT, self.rbuf[:MIN_RECV_PACKET])
+                assert magic == REQ_MAGIC_BYTE
+                assert keylen <= remaining, "Keylen is too big: %d > %d" \
+                    % (keylen, remaining)
+
+                if cmd == memcacheConstants.CMD_TAP_MUTATION:
+                    assert extralen == memcacheConstants.MUTATION_EXTRALEN_WITHOUT_QTIME or \
+                            extralen == memcacheConstants.EXTRA_HDR_SIZES.get(cmd, 0), \
+                        "Extralen is too large for cmd 0x%x: %d" % (cmd, extralen)
+                else:
+                    assert extralen == memcacheConstants.EXTRA_HDR_SIZES.get(cmd, 0), \
+                        "Extralen is too large for cmd 0x%x: %d" % (cmd, extralen)
+
+                # Grab the data section of this request
+                data=self.rbuf[MIN_RECV_PACKET:MIN_RECV_PACKET+remaining]
+                assert len(data) == remaining
+                # Remove this request from the read buffer
+                self.rbuf=self.rbuf[MIN_RECV_PACKET+remaining:]
+                # Process the command
+                cmdVal = self.processCommand(cmd, keylen, vb, extralen, cas, data)
+                # Queue the response to the client if applicable.
+                if cmdVal:
+                    try:
+                        status, cas, response = cmdVal
+                    except ValueError:
+                        print "Got", cmdVal
+                        raise
+                    dtype=0
+                    extralen=memcacheConstants.EXTRA_HDR_SIZES.get(cmd, 0)
+                    self.wbuf += struct.pack(RES_PKT_FMT,
+                        RES_MAGIC_BYTE, cmd, keylen,
+                        extralen, dtype, status,
+                        len(response), opaque, cas) + response
+	except Exception, e:
+	    print >>sys.__stderr__,"Error reading from source server..........Error is %s..........exiting" %(e)
+	    os._exit(1)
 
     def writable(self):
         return self.wbuf

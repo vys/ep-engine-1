@@ -51,10 +51,10 @@ class MemcachedClient(object):
     def __del__(self):
         self.close()
 
-    def _sendCmd(self, cmd, key, val, opaque, extraHeader='', cas=0):
+    def _sendCmd(self, cmd, key, val, opaque, extraHeader='', cas=0, dtype = 0):
         self._sendMsg(cmd, key, val, opaque, extraHeader=extraHeader, cas=cas,
-                      vbucketId=self.vbucketId)
-
+                      dtype=dtype, vbucketId=self.vbucketId)
+ 
     def _sendMsg(self, cmd, key, val, opaque, extraHeader='', cas=0,
                  dtype=0, vbucketId=0,
                  fmt=REQ_PKT_FMT, magic=REQ_MAGIC_BYTE):
@@ -97,24 +97,37 @@ class MemcachedClient(object):
         cmd, opaque, cas, keylen, extralen, data = self._handleKeyedResponse(myopaque)
         return opaque, cas, data
 
-    def _doCmd(self, cmd, key, val, extraHeader='', cas=0):
+    def _doCmd(self, cmd, key, val, extraHeader='', cas=0, dtype = 0):
         """Send a command and await its response."""
         opaque=self.r.randint(0, 2**32)
-        self._sendCmd(cmd, key, val, opaque, extraHeader, cas)
+        self._sendCmd(cmd, key, val, opaque, extraHeader, cas, dtype)
         return self._handleSingleResponse(opaque)
 
-    def _mutate(self, cmd, key, exp, flags, cas, val):
-        return self._doCmd(cmd, key, val, struct.pack(SET_PKT_FMT, flags, exp),
-            cas)
+    def _mutate(self, cmd, key, exp, flags, cas, val, cksum = None):
+        if cksum:
+            extra = struct.pack(memcacheConstants.SET_PKT_FMT_WITH_CKSUM, flags, exp, len(cksum));
+            val = cksum + val
+            dtype = 1
+        else:
+            extra = struct.pack(SET_PKT_FMT,flags, exp);
+            dtype = 0
+        return self._doCmd(cmd, key, val, extra, cas, dtype)
 
-    def _cat(self, cmd, key, cas, val):
-        return self._doCmd(cmd, key, val, '', cas)
+    def _cat(self, cmd, key, cas, val, cksum = ''):
+        if cksum:
+            extra = struct.pack(">I", len(cksum));
+            val = cksum + val
+            dtype = 1
+        else:
+            extra = '';
+            dtype = 0
+        return self._doCmd(cmd, key, val, extra, cas, dtype)
 
-    def append(self, key, value, cas=0):
-        return self._cat(memcacheConstants.CMD_APPEND, key, cas, value)
+    def append(self, key, value, cas=0, cksum = ''):
+        return self._cat(memcacheConstants.CMD_APPEND, key, cas, value, cksum)
 
-    def prepend(self, key, value, cas=0):
-        return self._cat(memcacheConstants.CMD_PREPEND, key, cas, value)
+    def prepend(self, key, value, cas=0, cksum = ''):
+        return self._cat(memcacheConstants.CMD_PREPEND, key, cas, value, cksum)
 
     def __incrdecr(self, cmd, key, amt, init, exp):
         something, cas, val=self._doCmd(cmd, key, '',
@@ -129,39 +142,51 @@ class MemcachedClient(object):
         """Decrement or create the named counter."""
         return self.__incrdecr(memcacheConstants.CMD_DECR, key, amt, init, exp)
 
-    def set(self, key, exp, flags, val):
+    def set(self, key, exp, flags, val, cksum = ''):
         """Set a value in the memcached server."""
-        return self._mutate(memcacheConstants.CMD_SET, key, exp, flags, 0, val)
+        return self._mutate(memcacheConstants.CMD_SET, key, exp, flags, 0, val, cksum)
 
-    def add(self, key, exp, flags, val):
+    def add(self, key, exp, flags, val, cksum = ''):
         """Add a value in the memcached server iff it doesn't already exist."""
         return self._mutate(memcacheConstants.CMD_ADD, key, exp, flags, 0, val)
 
-    def replace(self, key, exp, flags, val):
+    def replace(self, key, exp, flags, val, cksum = ''):
         """Replace a value in the memcached server iff it already exists."""
         return self._mutate(memcacheConstants.CMD_REPLACE, key, exp, flags, 0,
             val)
 
     def __parseGet(self, data, klen=0):
-        flags=struct.unpack(memcacheConstants.GET_RES_FMT, data[-1][:4])[0]
+        flags = struct.unpack(memcacheConstants.GET_RES_FMT, data[-1][:4])[0]
         return flags, data[1], data[-1][4 + klen:]
 
-    def get(self, key):
-        """Get the value for a given key within the memcached server."""
-        parts=self._doCmd(memcacheConstants.CMD_GET, key, '')
-        return self.__parseGet(parts)
+    def __parseGetCksum(self, data, klen=0):
+        flags, cksumlen = struct.unpack(memcacheConstants.GET_RES_FMT_CKSUM, data[-1][:8])
+        return flags, data[1], data[-1][8 + cksumlen + klen:], data[-1][8:]
 
-    def getl(self, key, exp=15):
+    def get(self, key, d = None):
         """Get the value for a given key within the memcached server."""
-        parts=self._doCmd(memcacheConstants.CMD_GET_LOCKED, key, '',
-            struct.pack(memcacheConstants.GETL_PKT_FMT, exp))
-        return self.__parseGet(parts)
+        parts=self._doCmd(memcacheConstants.CMD_GET, key, '', dtype = d != 0)
+        if d:
+            return self.__parseGetCksum(parts)
+        else:    
+            return self.__parseGet(parts)
 
-    def unlock(self, key, cas):
-        """Unlock the key with cas within the memcached server."""
-        parts=self._doCmd(memcacheConstants.CMD_UNLOCK, key, '',
-            '', cas)
-        return parts
+    def options_supported(self):
+        """send option command to check if it is new membase with checksum."""
+        try:
+            parts=self._doCmd(0xa0, '', '')
+            return True
+        except MemcachedError, e: 
+            print "option command failed due to error %d" % e.status
+            return False
+
+    def getl(self, key, d = 0):
+        """Get the value for a given key within the memcached server."""
+        parts=self._doCmd(memcacheConstants.CMD_GET_LOCKED, key, '', dtype = d != 0)
+        if d:
+            return self.__parseGetCksum(parts)
+        else:
+            return self.__parseGet(parts)
 
     def cas(self, key, exp, flags, oldVal, val):
         """CAS in a new value for the given key and comparison value."""
@@ -256,9 +281,6 @@ class MemcachedClient(object):
 
     def evict_key(self, key):
         return self._doCmd(memcacheConstants.CMD_EVICT_KEY, key, '')
-
-    def prune_lru(self, age):
-        return self._doCmd(memcacheConstants.CMD_PRUNE_LRU, age, '')
 
     def getMulti(self, keys):
         """Get values for any available keys in the given iterable.
