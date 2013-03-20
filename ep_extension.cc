@@ -140,42 +140,51 @@ ENGINE_ERROR_CODE GetlExtension::executeGetl(int argc, token_t *argv,
     getCb.waitForValue();
 
     ENGINE_ERROR_CODE rv = getCb.val.getStatus();
-    if (rv == ENGINE_SUCCESS) {
-        item = getCb.val.getValue();
-        std::stringstream strm;
 
-        strm << "VALUE " << item->getKey() << " " << ntohl(item->getFlags())
-             << " " << item->getNBytes() << " " << item->getCksum() << " " <<
-            item->getCas() << "\r\n";
+    switch(rv) {
+        case ENGINE_SUCCESS:
+            {
+                item = getCb.val.getValue();
+                std::stringstream strm;
 
-        std::string strVal = strm.str();
-        size_t len = strVal.length();
+                strm << "VALUE " << item->getKey() << " " << ntohl(item->getFlags())
+                    << " " << item->getNBytes() << " " << item->getCksum() << " " <<
+                    item->getCas() << "\r\n";
 
-        if ((response_handler(response_cookie, static_cast<int>(len),
-                              strVal.c_str()) == ENGINE_SUCCESS) &&
-            (response_handler(response_cookie, item->getNBytes(),
-                              item->getData()) == ENGINE_SUCCESS) &&
-            (response_handler(response_cookie, 7,
-                              "\r\nEND\r\n") == ENGINE_SUCCESS)) {
-            ret = ENGINE_SUCCESS;
-        } else {
-            ret = ENGINE_DISCONNECT;
-        }
-    } else if (rv == ENGINE_EWOULDBLOCK) {
-        ret = rv;
-    } else if (!gotLock) {
-        if (metadata.length() > 0) {
-           std::stringstream strm;
-           strm << "LOCK_ERROR " << metadata << "\r\n";
-           ret = response_handler(response_cookie, 
-                              sizeof("LOCK_ERROR \r\n") - 1 + metadata.length(), strm.str().c_str()); 
-        } else {
-           ret = response_handler(response_cookie,
-                              sizeof("LOCK_ERROR\r\n") - 1, "LOCK_ERROR\r\n");
-        }
-    } else {
-        ret = response_handler(response_cookie,
-                               sizeof("NOT_FOUND\r\n") - 1, "NOT_FOUND\r\n");
+                std::string strVal = strm.str();
+                size_t len = strVal.length();
+
+                if ((response_handler(response_cookie, static_cast<int>(len),
+                                strVal.c_str()) == ENGINE_SUCCESS) &&
+                        (response_handler(response_cookie, item->getNBytes(),
+                                          item->getData()) == ENGINE_SUCCESS) &&
+                        (response_handler(response_cookie, 7,
+                                          "\r\nEND\r\n") == ENGINE_SUCCESS)) {
+                    ret = ENGINE_SUCCESS;
+                } else {
+                    ret = ENGINE_DISCONNECT;
+                }
+                break;
+            }
+        case ENGINE_EWOULDBLOCK:
+        case ENGINE_TMPFAIL:
+            ret = rv;
+            break;
+        default:
+            if (!gotLock) {
+                if (metadata.length() > 0) {
+                    std::stringstream strm;
+                    strm << "LOCK_ERROR " << metadata << "\r\n";
+                    ret = response_handler(response_cookie,
+                            sizeof("LOCK_ERROR \r\n") - 1 + metadata.length(), strm.str().c_str());
+                } else {
+                    ret = response_handler(response_cookie,
+                            sizeof("LOCK_ERROR\r\n") - 1, "LOCK_ERROR\r\n");
+                }
+            } else {
+                ret = response_handler(response_cookie,
+                        sizeof("NOT_FOUND\r\n") - 1, "NOT_FOUND\r\n");
+            }
     }
 
     if (item != NULL) {
