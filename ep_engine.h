@@ -612,6 +612,8 @@ public:
     void notifyTapNotificationThread(void);
     void setTapValidity(const std::string &name, const void* token);
 
+    ENGINE_ERROR_CODE setRestoreMode(int vbid, bool enabled);
+
     ENGINE_ERROR_CODE handleRestoreCmd(const void* cookie,
                                        protocol_binary_request_header *request,
                                        ADD_RESPONSE response);

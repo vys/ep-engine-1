@@ -108,7 +108,7 @@ public:
     VBucket(int i, vbucket_state_t newState, EPStats &st,
             vbucket_state_t initState = vbucket_state_dead, uint64_t checkpointId = 1):
         ht(st), checkpointManager(st, i, checkpointId),
-        id(i), state(newState), initialState(initState), stats(st), kvstore_id(-1) {
+        id(i), state(newState), initialState(initState), stats(st), kvstore_id(-1), restore_mode(false) {
         backfill.isBackfillPhase = false;
         pendingOpsStart = 0;
         stats.memOverhead.incr(sizeof(VBucket)
@@ -183,6 +183,14 @@ public:
 
     void setKVStoreId(int kvid) { kvstore_id = kvid; }
 
+    bool isRestoreMode() {
+        return restore_mode.get();
+    }
+
+    void setRestoreMode(bool mode) {
+        restore_mode.set(mode);
+    }
+
     HashTable         ht;
     CheckpointManager checkpointManager;
     struct {
@@ -241,6 +249,7 @@ private:
     hrtime_t                 pendingOpsStart;
     EPStats                 &stats;
     int                      kvstore_id;
+    Atomic<bool>             restore_mode;
 
     DISALLOW_COPY_AND_ASSIGN(VBucket);
 };

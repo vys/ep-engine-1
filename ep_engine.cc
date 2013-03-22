@@ -454,6 +454,19 @@ extern "C" {
                     *msg = "Unable to change kvstore state";
                     rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
                 }
+            } else if (strcmp(keyz, "allocator_stats") == 0) {
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Printing allocator stats to stderr");
+                print_allocator_stats();
+            } else if (strcmp(keyz, "start_restore_vb") == 0) {
+               if (e->setRestoreMode(v, true) != ENGINE_SUCCESS) {
+                    *msg = "Unable to initiate restore mode";
+                    rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
+               }
+            } else if (strcmp(keyz, "complete_restore_vb") == 0) {
+               if (e->setRestoreMode(v, false) != ENGINE_SUCCESS) {
+                    *msg = "Unable to complete restore mode";
+                    rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
+               }
             } else {
                 *msg = "Unknown config param";
                 rv = PROTOCOL_BINARY_RESPONSE_KEY_ENOENT;
@@ -961,7 +974,6 @@ extern "C" {
 
         case CMD_RESTORE_FILE:
         case CMD_RESTORE_ABORT:
-        case CMD_RESTORE_COMPLETE:
             return h->handleRestoreCmd(cookie, request, response);
 
         case CMD_STOP_PERSISTENCE:
@@ -1278,16 +1290,14 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     CheckpointManager::allowInconsistentSlaveCheckpoint(configuration.isInconsistentSlaveChk());
     CheckpointManager::keepClosedCheckpointsUnderHighWat(configuration.isKeepClosedChks());
 
-    if (configuration.isRestoreMode()) {
-        if ((restore.manager = create_restore_manager(*this)) == NULL) {
-            getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                    "Failed to create restore manager");
-            return ENGINE_FAILED;
-        }
 
-        restore.manager->enableRestoreFileChecks(configuration.isRestoreFileChecks());
-        restore.enabled.set(true);
+    if ((restore.manager = create_restore_manager(*this)) == NULL) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                "Failed to create restore manager");
+        return ENGINE_FAILED;
     }
+
+    restore.manager->enableRestoreFileChecks(configuration.isRestoreFileChecks());
 
     BackFillVisitor::setResidentItemThreshold(configuration.getBfResidentThreshold());
 
@@ -1617,7 +1627,7 @@ ENGINE_ERROR_CODE  EventuallyPersistentEngine::store(const void *cookie,
 
     case OPERATION_ADD:
         // you can't call add while the server is running in restore mode..
-        if (restore.enabled.get()) {
+        if (epstore->isRestoreEnabled(it->getVBucketId())) {
             return ENGINE_TMPFAIL;
         }
 
@@ -4462,19 +4472,44 @@ static void addSyncKeySpecs(std::stringstream &resp,
     }
 }
 
+ENGINE_ERROR_CODE EventuallyPersistentEngine::setRestoreMode(int vbid, bool enabled) {
+    LockHolder lh(restore.mutex);
+    if (enabled) {
+        if (!(restore.enabled.get() == false && getEpStore()->setRestoreMode(vbid, true))) {
+            return ENGINE_FAILED;;
+        } else {
+            restore.enabled.set(true);
+            restore.manager->reset();
+            restore.manager->setRestoreVBucket(vbid);
+
+        }
+    } else {
+        if (!(restore.enabled.get() == true &&
+                    !restore.manager->isRunning() &&
+                    getEpStore()->setRestoreMode(vbid, false))) {
+            return ENGINE_FAILED;;
+        } else {
+            restore.enabled.set(false);
+            restore.manager->setRestoreVBucket(-1);
+        }
+    }
+
+    return ENGINE_SUCCESS;
+}
+
 ENGINE_ERROR_CODE EventuallyPersistentEngine::handleRestoreCmd(const void *cookie,
                                                                protocol_binary_request_header *request,
                                                                ADD_RESPONSE response)
 {
     LockHolder lh(restore.mutex);
-    if (restore.manager == NULL) { // we need another "mode" variable
+
+    if (restore.enabled.get() == false) {
         std::string msg = "Restore mode is not enabled.";
         if (response(NULL, 0, NULL, 0, msg.c_str(), msg.length(),
                      PROTOCOL_BINARY_RAW_BYTES,
                      PROTOCOL_BINARY_RESPONSE_NOT_SUPPORTED, 0, cookie)) {
             return ENGINE_SUCCESS;
         }
-        return ENGINE_FAILED;
     }
 
     if (request->request.opcode == CMD_RESTORE_FILE) {

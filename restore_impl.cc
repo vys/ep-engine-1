@@ -112,10 +112,11 @@ public:
      * @param dbname the name of the incremental database to restore
      */
     DecrementalRestorer(EventuallyPersistentEngine &theEngine,
-                        const std::string &dbname, bool restore_file_checks) :
+                        const std::string &dbname, bool restore_file_checks, int vbid) :
         db(NULL), statement(NULL), engine(theEngine),
         store(*engine.getEpStore()), file(dbname),
-        expired(0), wrongVBucket(0), restored(0), skipped(0), busy(0), restore_cpoint(0)
+        expired(0), wrongVBucket(0), restored(0), skipped(0), busy(0), restore_cpoint(0),
+        restore_vbid(vbid)
     {
         query = restore_file_checks == true ? checks_enabled_query : checks_disabled_query;
     }
@@ -294,7 +295,14 @@ private:
             usleep(100);
         }
         Item itm(key, flags, expiration, value, cksum, cas, -1, vbid);
-        int r = store.restoreItem(itm, op);
+
+
+
+        int r = 2;
+        if (restore_vbid == vbid) {
+            r = store.restoreItem(itm, op);
+        }
+
         if (r == 0) {
             ++restored;
         } else if (r == 1) {
@@ -315,8 +323,10 @@ private:
     uint32_t skipped;
     uint32_t busy;
     uint32_t restore_cpoint;
+    int restore_vbid;
     uint32_t user_version;
     const char **query;
+
 };
 
 class RestoreManagerImpl : public RestoreManager {
@@ -331,6 +341,7 @@ public:
         busy(0),
         restore_cpoint(0),
         restore_file_checks(true),
+        restore_vbid(-1),
         state(&State::Uninitialized),
         restoreSO(),
         done(false)
@@ -361,7 +372,7 @@ public:
         }
 
         assert(instance == NULL);
-        instance = new DecrementalRestorer(engine, config, restore_file_checks);
+        instance = new DecrementalRestorer(engine, config, restore_file_checks, restore_vbid);
         setState_UNLOCKED(State::Initialized);
     }
 
@@ -380,6 +391,15 @@ public:
 
         state = &State::Starting;
         signal();
+    }
+
+    virtual void reset() {
+        restore_cpoint = 0;
+        busy = 0;
+        skipped = 0;
+        restored = 0;
+        expired = 0;
+        wrongVBucket = 0;
     }
 
     virtual void abort() throw (std::string)
@@ -418,6 +438,7 @@ public:
         }
 
         if (instance == NULL) {
+            addStat(cookie, "restore_vbucket_id", restore_vbid, add_stat);
             addStat(cookie, "restore_checkpoint", restore_cpoint, add_stat);
             addStat(cookie, "number_busy", busy, add_stat);
             addStat(cookie, "number_skipped", skipped, add_stat);
@@ -425,6 +446,7 @@ public:
             addStat(cookie, "number_expired", expired, add_stat);
             addStat(cookie, "number_wrong_vbucket", wrongVBucket, add_stat);
         } else {
+            addStat(cookie, "restore_vbucket_id", restore_vbid, add_stat);
             addStat(cookie, "restore_checkpoint", restore_cpoint ? restore_cpoint :
                                         instance->getRestoreCheckpoint(), add_stat);
             addStat(cookie, "file", instance->getDbFile(), add_stat);
@@ -446,6 +468,11 @@ public:
         LockHolder lh(mutex);
         return (state == &State::Starting ||
                 state == &State::Running);
+    }
+
+    virtual void setRestoreVBucket(int vbid) {
+        LockHolder lh(mutex);
+        restore_vbid = vbid;
     }
 
     virtual void enableRestoreFileChecks(bool chk) {
@@ -516,6 +543,7 @@ private:
     uint32_t busy;
     uint32_t restore_cpoint;
     bool restore_file_checks;
+    int restore_vbid;
 
     // should we abort or not?
     Atomic<bool> terminate;

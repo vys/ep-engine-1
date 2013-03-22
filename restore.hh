@@ -65,6 +65,11 @@ public:
     virtual void abort() throw (std::string) = 0;
 
     /**
+     * Reset stats
+     */
+    virtual void reset() = 0;
+
+    /**
      * Wait for the restore process to stop (after a successfull completion or
      * an abort).
      *
@@ -83,6 +88,8 @@ public:
     virtual bool isRunning() = 0;
 
     virtual void enableRestoreFileChecks(bool restore_file_checks) = 0;
+
+    virtual void setRestoreVBucket(int vbid) = 0;
 
     /**
      * Release all allocated resources.

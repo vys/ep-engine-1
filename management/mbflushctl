@@ -87,7 +87,9 @@ Available params for "set":
     scrub_memory              - Scrub allocator's memory to release as much memory as possible back to OS
     allocator_stats           - Print allocator stats
     kvstore_online            - Change kvstore state of the given kstore_id online
-    kvstore_offline           - Change kvstore state of the given kvstore_id offline""")
+    kvstore_offline           - Change kvstore state of the given kvstore_id offline
+    start_restore_vb          - Start restore mode for a vbucket
+    complete_restore_vb       - Stop restore mode for a vbucket""")
 
     c.addCommand('stop', stop, 'stop')
     c.addCommand('start', start, 'start')

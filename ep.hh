@@ -828,7 +828,11 @@ public:
 
     void setPersistenceCheckpointId(uint16_t vbid, uint64_t checkpointId);
 
-    bool isRestoreEnabled();
+    bool isRestoreEnabled(RCPtr<VBucket> &vb);
+
+    bool isRestoreEnabled(uint16_t vbid);
+
+    bool setRestoreMode(uint16_t vbid, bool state);
 
     bool isKVStoreAvailable(int kvid);
 

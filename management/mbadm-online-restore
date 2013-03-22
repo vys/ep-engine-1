@@ -17,7 +17,7 @@ DEFAULT_HOST_PORT = ["127.0.0.1", DEFAULT_PORT]
 def usage(err=0):
     print >> sys.stderr, """
 
-Usage: %s [-h %s[:%s]] [-c] [-v] incremental_backup_file1 incremental_backup_file2 ...
+Usage: %s [-h %s[:%s]] [-v] incremental_backup_file1 incremental_backup_file2 ...
 
 """ % (os.path.basename(sys.argv[0]),
        DEFAULT_HOST_PORT[0], DEFAULT_HOST_PORT[1])
@@ -30,7 +30,7 @@ def parse_args(args):
     verbosity = 0
 
     try:
-        opts, args = getopt.getopt(args, 'h:cv', ['help', 'host=', 'finish'])
+        opts, args = getopt.getopt(args, 'h:v', ['help', 'host='])
     except getopt.GetoptError, e:
         usage(e.msg)
 
@@ -41,17 +41,15 @@ def parse_args(args):
             host_port = a.split(':')
             if len(host_port) < 2:
                 host_port = [a, DEFAULT_PORT]
-        elif o == '-c' or o == '--finish':
-            finish = True
         elif o == '-v':
             verbosity = verbosity + 1
         else:
             usage("unknown option - " + o)
 
-    if not args and finish == False:
+    if not args:
         usage("You need to specify one operation")
 
-    return host_port, finish, args, verbosity
+    return host_port, args, verbosity
 
 def log(level, *args):
     global verbosity
@@ -72,8 +70,7 @@ def wait_for_restore_state_change(mc):
 if __name__ == '__main__':
     global verbosity
 
-    host_port, finish, input_files, verbosity = parse_args(sys.argv[1:])
-    log(1, "complete restore mode = " + str(finish))
+    host_port, input_files, verbosity = parse_args(sys.argv[1:])
     log(1, "incremental backup files = " + ' '.join(input_files))
     log(1, "verbosity = " + str(verbosity) + "\n")
 
@@ -96,10 +93,6 @@ if __name__ == '__main__':
             log(1, "Restoring an incremental backup file: \"%s\"" % filepath)
             mc.restore_file(filepath)
             wait_for_restore_state_change(mc)
-
-        if finish == True:
-            mc.restore_complete()
-            log(1, "Restore mode opeartion completed!!!\n")
 
     except mc_bin_client.MemcachedError as ne:
         sys.exit("ERROR: " + str(ne))

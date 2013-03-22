@@ -1226,7 +1226,7 @@ GetValue EventuallyPersistentStore::get(const std::string &key,
         return rv;
     } else {
         GetValue rv;
-        if (isRestoreEnabled()) {
+        if (isRestoreEnabled(vb)) {
             rv.setStatus(ENGINE_TMPFAIL);
         }
         return rv;
@@ -1299,7 +1299,7 @@ GetValue EventuallyPersistentStore::getAndUpdateTtl(const std::string &key,
         return rv;
     } else {
         GetValue rv;
-        if (isRestoreEnabled()) {
+        if (isRestoreEnabled(vb)) {
             rv.setStatus(ENGINE_TMPFAIL);
         }
         return rv;
@@ -1348,7 +1348,7 @@ EventuallyPersistentStore::getFromUnderlying(const std::string &key,
         }
         roDispatcher[i]->schedule(dcb, NULL, Priority::VKeyStatBgFetcherPriority, bgFetchDelay);
         return ENGINE_EWOULDBLOCK;
-    } else if (isRestoreEnabled()) {
+    } else if (isRestoreEnabled(vb)) {
         return ENGINE_TMPFAIL;
     } else {
         return ENGINE_KEY_ENOENT;
@@ -1427,7 +1427,7 @@ bool EventuallyPersistentStore::getLocked(const std::string &key,
     } else {
         ++stats.getl_misses_notfound;
         GetValue rv;
-        if (isRestoreEnabled()) {
+        if (isRestoreEnabled(vb)) {
             rv.setStatus(ENGINE_TMPFAIL);
         }
         cb.callback(rv);
@@ -1486,7 +1486,7 @@ EventuallyPersistentStore::unlockKey(const std::string &key,
         return ENGINE_TMPFAIL;
     }
 
-    if (isRestoreEnabled()) {
+    if (isRestoreEnabled(vb)) {
         return ENGINE_TMPFAIL;
     }
 
@@ -1567,7 +1567,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::del(const std::string &key,
     LockHolder lh = vb->ht.getLockedBucket(key, &bucket_num);
     StoredValue *v = vb->ht.unlocked_find(key, bucket_num);
     if (!v) {
-        if (isRestoreEnabled()) {
+        if (isRestoreEnabled(vb)) {
             LockHolder rlh(restore.mutex);
             restore.itemsDeleted.insert(key);
         } else {
@@ -2336,8 +2336,24 @@ int EventuallyPersistentStore::restoreItem(Item &itm, enum queue_operation op)
     return 1;
 }
 
-bool EventuallyPersistentStore::isRestoreEnabled() {
-    return engine.restore.enabled.get();
+bool EventuallyPersistentStore::isRestoreEnabled(RCPtr<VBucket> &vb) {
+    return vb->isRestoreMode();
+}
+
+bool EventuallyPersistentStore::isRestoreEnabled(uint16_t vbid) {
+    RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
+    return vb && isRestoreEnabled(vb);
+}
+
+bool EventuallyPersistentStore::setRestoreMode(uint16_t vbid, bool state) {
+    RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
+    if (!vb) {
+        return false;
+    }
+
+    vb->setRestoreMode(state);
+
+    return true;
 }
 
 bool EventuallyPersistentStore::isKVStoreAvailable(int kvid) {
