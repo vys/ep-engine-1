@@ -5611,31 +5611,16 @@ static enum test_result test_restore_not_enabled(ENGINE_HANDLE *h, ENGINE_HANDLE
     return SUCCESS;
 }
 
-static void complete_restore(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1)
-{
-    protocol_binary_request_header header;
-    memset(&header, 0, sizeof(header));
-    header.request.opcode = CMD_RESTORE_COMPLETE;
-
-    ENGINE_ERROR_CODE r = h1->unknown_command(h, NULL, &header, add_response, NULL);
-    check(r == ENGINE_SUCCESS, "The server should know the command");
-    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
-          "The server should disable restore");
-    vals.clear();
-    check(h1->get_stats(h, NULL, "restore", 7, add_stats) == ENGINE_SUCCESS,
-          "Failed to get stats.");
-    check(vals.empty(), "restore should be disabled");
-}
-
 static enum test_result test_restore_no_such_file(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1)
 {
+    check(set_flush_param(h, h1, "start_restore_vb", "0") == true, "Unable to start restore mode");
     protocol_binary_request_header *req = create_restore_file_packet("@@@no-such-file@@@");
     ENGINE_ERROR_CODE r = h1->unknown_command(h, NULL, req, add_response, NULL);
     check(r == ENGINE_SUCCESS, "The server should know the command");
     check(last_status == PROTOCOL_BINARY_RESPONSE_KEY_ENOENT,
           "The server should check if the file exists");
     free(req);
-    complete_restore(h, h1);
+    check(set_flush_param(h, h1, "complete_restore_vb", "0") == true, "Unable to start restore mode");
     return SUCCESS;
 }
 
@@ -5662,6 +5647,7 @@ static enum test_result test_restore_invalid_file(ENGINE_HANDLE *h, ENGINE_HANDL
     }
     strcat(cwd, "/sizes");
     check(access(cwd, F_OK) == 0, "Could not find sizes");
+    check(set_flush_param(h, h1, "start_restore_vb", "0") == true, "Unable to start restore mode");
     protocol_binary_request_header *req = create_restore_file_packet(cwd);
     ENGINE_ERROR_CODE r = h1->unknown_command(h, NULL, req, add_response, NULL);
     check(r == ENGINE_SUCCESS, "The server should know the command");
@@ -5679,7 +5665,7 @@ static enum test_result test_restore_invalid_file(ENGINE_HANDLE *h, ENGINE_HANDL
     check(vals["ep_restore:number_restored"] == "0", "Expected no data change");
     check(vals["ep_restore:number_wrong_vbucket"] == "0", "Expected no data change");
 
-    complete_restore(h, h1);
+    check(set_flush_param(h, h1, "complete_restore_vb", "0") == true, "Unable to start restore mode");
     return SUCCESS;
 }
 
@@ -5688,6 +5674,7 @@ static enum test_result test_restore_data_miss(ENGINE_HANDLE *h, ENGINE_HANDLE_V
     item *it = NULL;
     ENGINE_ERROR_CODE r;
 
+    check(set_flush_param(h, h1, "start_restore_vb", "0") == true, "Unable to start restore mode");
     r = h1->get(h, NULL, &it, "foo", 3, 0);
     check(r == ENGINE_TMPFAIL, "Data miss should be tmpfail");
 
@@ -5717,7 +5704,7 @@ static enum test_result test_restore_data_miss(ENGINE_HANDLE *h, ENGINE_HANDLE_V
                        &cas, &value, 0);
     check(r == ENGINE_TMPFAIL, "incr of nonexistsing key (with create) should tmpfail");
 
-    complete_restore(h, h1);
+    check(set_flush_param(h, h1, "complete_restore_vb", "0") == true, "Unable to complete restore mode");
     // Now we should be in operational mode...
     r = h1->get(h, NULL, &it, "foo", 3, 0);
     check(r == ENGINE_KEY_ENOENT, "Key shouldn't be there");
@@ -5763,6 +5750,7 @@ static enum test_result test_restore_clean(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h
         check(set_vbucket_state(h, h1, ii, vbucket_state_active), "Failed to activate vbucket");
     }
 
+    check(set_flush_param(h, h1, "start_restore_vb", "0") == true, "Unable to start restore mode");
     protocol_binary_request_header *req = create_restore_file_packet(cwd);
     ENGINE_ERROR_CODE r = h1->unknown_command(h, NULL, req, add_response, NULL);
     check(r == ENGINE_SUCCESS, "The server should know the command");
@@ -5775,11 +5763,12 @@ static enum test_result test_restore_clean(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h
           "Failed to get stats.");
     check(vals.find("ep_restore:last_error") == vals.end(),
           "I shouldn't get an error message");
-    check(vals["ep_restore:number_skipped"] == "0", "Expected no data change");
-    check(vals["ep_restore:number_restored"] == "9060", "We have one vbucket");
+
+    check(vals["ep_restore:number_skipped"] == "6", "Expected no data change");
+    check(vals["ep_restore:number_restored"] == "9988", "We have one vbucket");
     check(vals["ep_restore:number_wrong_vbucket"] == "0", "We don't have all vbuckets");
     check(vals["ep_restore:number_expired"] == "1", "We don't have all vbuckets");
-    complete_restore(h, h1);
+    check(set_flush_param(h, h1, "complete_restore_vb", "0") == true, "Unable to complete restore mode");
     return SUCCESS;
 }
 
@@ -5789,8 +5778,9 @@ static enum test_result test_restore_clean_vbucket_subset(ENGINE_HANDLE *h, ENGI
         fprintf(stderr, "Invoking getcwd failed!!!\n");
         return FAIL;
     }
-    strcat(cwd, "/mbbackup-0001.mbb");
+    strcat(cwd, "/mbbackup-0002.mbb");
     ensure_file(cwd);
+    check(set_flush_param(h, h1, "start_restore_vb", "0") == true, "Unable to start restore mode");
     protocol_binary_request_header *req = create_restore_file_packet(cwd);
     ENGINE_ERROR_CODE r = h1->unknown_command(h, NULL, req, add_response, NULL);
     check(r == ENGINE_SUCCESS, "The server should know the command");
@@ -5803,11 +5793,12 @@ static enum test_result test_restore_clean_vbucket_subset(ENGINE_HANDLE *h, ENGI
           "Failed to get stats.");
     check(vals.find("ep_restore:last_error") == vals.end(),
           "I shouldn't get an error message");
+
     check(vals["ep_restore:number_skipped"] == "0", "Expected no data change");
-    check(vals["ep_restore:number_restored"] == "912", "We have one vbucket");
-    check(vals["ep_restore:number_wrong_vbucket"] == "8148", "We don't have all vbuckets");
+    check(vals["ep_restore:number_restored"] == "448", "We have one vbucket");
+    check(vals["ep_restore:number_wrong_vbucket"] == "9054", "We don't have all vbuckets");
     check(vals["ep_restore:number_expired"] == "1", "We don't have all vbuckets");
-    complete_restore(h, h1);
+    check(set_flush_param(h, h1, "complete_restore_vb", "0") == true, "Unable to complete restore mode");
     return SUCCESS;
 }
 
@@ -5844,7 +5835,7 @@ static enum test_result test_restore_multi(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h
     check(vals["ep_restore:number_restored"] == "18118", "We have one vbucket");
     check(vals["ep_restore:number_wrong_vbucket"] == "0", "We don't have all vbuckets");
     check(vals["ep_restore:number_expired"] == "2", "We don't have all vbuckets");
-    complete_restore(h, h1);
+    check(set_flush_param(h, h1, "complete_restore_vb", "0") == true, "Unable to complete restore mode");
     return SUCCESS;
 }
 #endif
@@ -5883,7 +5874,7 @@ static enum test_result test_restore_with_data(ENGINE_HANDLE *h, ENGINE_HANDLE_V
     r = h1->store(h, NULL, it, &cas, OPERATION_SET, 0);
     check(r == ENGINE_SUCCESS, "Set should work.");
     h1->release(h, NULL, it);
-
+    check(set_flush_param(h, h1, "start_restore_vb", "0") == true, "Unable to start restore mode");
     r = h1->unknown_command(h, NULL, req, add_response, NULL);
     check(r == ENGINE_SUCCESS, "The server should know the command");
     check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
@@ -5895,10 +5886,10 @@ static enum test_result test_restore_with_data(ENGINE_HANDLE *h, ENGINE_HANDLE_V
           "Failed to get stats.");
     check(vals.find("ep_restore:last_error") == vals.end(),
           "I shouldn't get an error message");
-    check(vals["ep_restore:number_skipped"] == "3", "Expected no data change");
-    check(vals["ep_restore:number_restored"] == "9057", "We have one vbucket");
+    check(vals["ep_restore:number_skipped"] == "8", "Expected no data change");
+    check(vals["ep_restore:number_restored"] == "9986", "We have one vbucket");
     check(vals["ep_restore:number_wrong_vbucket"] == "0", "We don't have all vbuckets");
-    complete_restore(h, h1);
+    check(set_flush_param(h, h1, "complete_restore_vb", "0") == true, "Unable to complete restore mode");
     return SUCCESS;
 }
 
@@ -6335,13 +6326,14 @@ static enum test_result test_restore_vb0_persistence(ENGINE_HANDLE *h, ENGINE_HA
     ensure_file(cwd);
     protocol_binary_request_header *req = create_restore_file_packet(cwd);
 
-    ENGINE_ERROR_CODE r;
-
-    r = h1->unknown_command(h, NULL, req, add_response, NULL);
-    check(r == ENGINE_SUCCESS, "The server should know the command");
     check(set_flush_param(h, h1, "start_restore_vb", "0") == true, "Unable to start restore mode");
     check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
           "The server should start the backup");
+
+    ENGINE_ERROR_CODE r;
+    r = h1->unknown_command(h, NULL, req, add_response, NULL);
+    check(r == ENGINE_SUCCESS, "The server should know the command");
+
     free(req);
     waitfor_restore_state(h, h1, "zombie", 2000);
 
@@ -6352,7 +6344,7 @@ static enum test_result test_restore_vb0_persistence(ENGINE_HANDLE *h, ENGINE_HA
           "I shouldn't get an error message");
 
     int restored = atoi(vals["ep_restore:number_restored"].c_str());
-    complete_restore(h, h1);
+    check(set_flush_param(h, h1, "complete_restore_vb", "0") == true, "Unable to complete restore mode");
     wait_for_flusher_to_settle(h, h1);
     check(get_int_stat(h, h1, "ep_total_persisted") == restored, "Expected to persist all restored items");
 

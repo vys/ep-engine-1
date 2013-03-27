@@ -18,19 +18,19 @@ def main():
     db.text_factory = str
     createSchema(db)
     print 'Generating mbbackup-0001.mbb'
-    generate(db, 10, 0, 1000, 10000, 32767)
+    generate(db, 1, 0, 1000, 10000, 32767)
     db.close()
     print 'Generating mbbackup-0002.mbb'
     db = sqlite3.connect('mbbackup-0002.mbb')
     db.text_factory = str
     createSchema(db)
-    generate(db, 10, 1000, 2000, 10000, 32767)
+    generate(db, 20, 1000, 2000, 10000, 32767)
     db.close()
     print 'Generating mbbackup-0003.mbb'
     db = sqlite3.connect('mbbackup-0003.mbb')
     db.text_factory = str
     createSchema(db)
-    generate(db, 1, 0, 200, 5000, 32767, False)
+    generate(db, 10, 0, 200, 5000, 32767, False)
     db.close()
 
 def generate(db, maxvbid, cpointoffset,  maxcheckpoints, maxoperations, maxsize, deletes = True):
