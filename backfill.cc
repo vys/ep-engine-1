@@ -109,18 +109,21 @@ void BackFillVisitor::apply(void) {
     if (efficientVBDump) {
         std::vector<uint16_t>::iterator it = vbuckets.begin();
         for (; it != vbuckets.end(); it++) {
-            int kvid = KVStoreMapper::getVBucketToKVId(*it);
-            Dispatcher *d(engine->epstore->getRODispatcher(kvid));
-            KVStore *underlying(engine->epstore->getROUnderlying(kvid));
-            assert(d);
-            shared_ptr<DispatcherCallback> cb(new BackfillDiskLoad(name,
-                                                                   engine,
-                                                                   engine->tapConnMap,
-                                                                   underlying,
-                                                                   *it,
-                                                                   validityToken,
-                                                                   sessionID));
-            d->schedule(cb, NULL, Priority::TapBgFetcherPriority);
+            int beginId, endId;
+            KVStoreMapper::getVBucketToKVId(*it, beginId, endId);
+            for (int kvid = beginId; kvid < endId; kvid++) {
+                Dispatcher *d(engine->epstore->getRODispatcher(kvid));
+                KVStore *underlying(engine->epstore->getROUnderlying(kvid));
+                assert(d);
+                shared_ptr<DispatcherCallback> cb(new BackfillDiskLoad(name,
+                            engine,
+                            engine->tapConnMap,
+                            underlying,
+                            *it,
+                            validityToken,
+                            sessionID));
+                d->schedule(cb, NULL, Priority::TapBgFetcherPriority);
+            }
         }
         vbuckets.clear();
     }

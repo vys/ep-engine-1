@@ -856,8 +856,11 @@ void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
                                              (new NotifyVBStateChangeCallback(vb,
                                                                         engine)),
                                   NULL, Priority::NotifyVBStateChangePriority, 0, false);
-        scheduleVBSnapshot(Priority::VBucketPersistLowPriority,
-                           KVStoreMapper::getVBucketToKVId(vbid));
+        int beginId, endId;
+        KVStoreMapper::getVBucketToKVId(vbid, beginId, endId);
+        for (int kvId = beginId; kvId < endId; kvId++) {
+            scheduleVBSnapshot(Priority::VBucketPersistLowPriority, kvId);
+        }
     } else {
         RCPtr<VBucket> newvb(new VBucket(vbid, to, stats));
         if (to != vbucket_state_active) {
@@ -869,8 +872,11 @@ void EventuallyPersistentStore::setVBucketState(uint16_t vbid,
         vbuckets.addBucket(newvb);
         vbuckets.setBucketVersion(vbid, vb_new_version);
         lh.unlock();
-        scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
-                           KVStoreMapper::getVBucketToKVId(vbid));
+        int beginId, endId;
+        KVStoreMapper::getVBucketToKVId(vbid, beginId, endId);
+        for (int kvId = beginId; kvId < endId; kvId++) {
+            scheduleVBSnapshot(Priority::VBucketPersistHighPriority, kvId);
+        }
     }
 }
 
@@ -933,24 +939,27 @@ EventuallyPersistentStore::completeVBucketDeletion(uint16_t vbid, uint16_t vbver
 
 void EventuallyPersistentStore::scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version,
                                                    double delay=0) {
-    int id = KVStoreMapper::getVBucketToKVId(vb->getId());
+    int beginId, endId;
+    KVStoreMapper::getVBucketToKVId(vb->getId(), beginId, endId);
     if (vbuckets.setBucketDeletion(vb->getId(), true)) {
-        if (storageProperties[id]->hasEfficientVBDeletion()) {
-            shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
-                                                                              vb_version,
-                                                                              stats));
-            dispatcher[id]->schedule(cb,
-                                 NULL, Priority::FastVBucketDeletionPriority,
-                                 delay, false);
-        } else {
-            size_t chunk_size = engine.getVbDelChunkSize();
-            uint32_t vb_chunk_del_time = engine.getVbChunkDelThresholdTime();
-            shared_ptr<DispatcherCallback> cb(new VBucketDeletionCallback(this, vb, vb_version,
-                                                                          stats, chunk_size,
-                                                                          vb_chunk_del_time));
-            dispatcher[id]->schedule(cb,
-                                 NULL, Priority::VBucketDeletionPriority,
-                                 delay, false);
+        for (int id = beginId; id < endId; id++) {
+            if (storageProperties[id]->hasEfficientVBDeletion()) {
+                shared_ptr<DispatcherCallback> cb(new FastVBucketDeletionCallback(this, vb,
+                            vb_version,
+                            stats));
+                dispatcher[id]->schedule(cb,
+                        NULL, Priority::FastVBucketDeletionPriority,
+                        delay, false);
+            } else {
+                size_t chunk_size = engine.getVbDelChunkSize();
+                uint32_t vb_chunk_del_time = engine.getVbChunkDelThresholdTime();
+                shared_ptr<DispatcherCallback> cb(new VBucketDeletionCallback(this, vb, vb_version,
+                            stats, chunk_size,
+                            vb_chunk_del_time));
+                dispatcher[id]->schedule(cb,
+                        NULL, Priority::VBucketDeletionPriority,
+                        delay, false);
+            }
         }
     }
 }
@@ -971,8 +980,11 @@ bool EventuallyPersistentStore::deleteVBucket(uint16_t vbid) {
         assert(stats.currentSize.get() < GIGANTOR);
         vbuckets.removeBucket(vbid);
         hlh.unlock();
-        scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
-                           KVStoreMapper::getVBucketToKVId(vbid));
+        int beginId, endId;
+        KVStoreMapper::getVBucketToKVId(vbid, beginId, endId);
+        for (int kvId = beginId; kvId < endId; kvId++) {
+            scheduleVBSnapshot(Priority::VBucketPersistHighPriority, kvId);
+        }
         scheduleVBDeletion(vb, vb_version);
     }
     return rv;
@@ -1003,8 +1015,11 @@ bool EventuallyPersistentStore::resetVBucket(uint16_t vbid, bool underlying) {
         vb->checkpointManager.clear(vb->getState());
         vb->resetStats();
 
-        scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
-                           KVStoreMapper::getVBucketToKVId(vbid));
+        int beginId, endId;
+        KVStoreMapper::getVBucketToKVId(vbid, beginId, endId);
+        for (int kvId = beginId; kvId < endId; kvId++) {
+            scheduleVBSnapshot(Priority::VBucketPersistHighPriority, kvId);
+        }
         // Clear all the items from the vbucket kv table on disk.
         if (underlying) {
             scheduleVBDeletion(vb, vb_version);

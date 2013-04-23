@@ -22,13 +22,20 @@ public:
         instance = NULL;
     }
 
-    static int getVBucketToKVId(uint16_t vbid) {
+    static void getVBucketToKVId(uint16_t vbid, int &begin, int &end) {
         if (instance == NULL) {
             // Should never happen
-            return -1;
+            begin = end = -1;
+            return;
         }
-        //FIXME:: Fix with a better algorithm to map vbuckets
-        return vbid % instance->numKVStores;
+        if (!instance->mapVBuckets) {
+            begin = 0;
+            end = instance->numKVStores;
+        } else {
+            //FIXME:: Fix with a better algorithm to map vbuckets
+            begin = vbid % instance->numKVStores;
+            end = begin + 1;
+        }
     }
 
     static int getKVStoreId(const std::string &key, uint16_t vbid) {
@@ -37,7 +44,9 @@ public:
             return -1;
         }
         if (instance->mapVBuckets) {
-            return KVStoreMapper::getVBucketToKVId(vbid);
+            int begin, end;
+            KVStoreMapper::getVBucketToKVId(vbid, begin, end);
+            return begin;
         }
 
         int h = 5381;
