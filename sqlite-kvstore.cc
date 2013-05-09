@@ -280,7 +280,9 @@ static void processDumpRow(EPStats &stats,
                 -1,
                 static_cast<uint16_t>(st->column_int(6)));
     stats.io_read_bytes += rv.getValue()->getKey().length() + rv.getValue()->getNBytes();
-    cb.callback(rv);
+    while (!cb.callback(rv)) {
+        usleep(1000);
+    }
 }
 
 void StrategicSqlite3::dump(Callback<GetValue> &cb) {

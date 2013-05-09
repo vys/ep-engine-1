@@ -7,22 +7,32 @@
 #include "kvstore-mapper.hh"
 
 double BackFillVisitor::backfillResidentThreshold = DEFAULT_BACKFILL_RESIDENT_THRESHOLD;
+size_t BackfillDiskLoad::backfillMaxListSize = BACKFILL_MAX_LIST_SIZE;
 
-void BackfillDiskLoad::callback(GetValue &gv) {
+bool BackfillDiskLoad::callback(GetValue &gv) {
     // If a vbucket version of a bg fetched item is different from the current version,
     // skip this item.
     if (vbucket_version != gv.getVBucketVersion()) {
         delete gv.getValue();
-        return;
+        return true;
     }
-    ReceivedItemTapOperation tapop(true);
-    // if the tap connection is closed, then free an Item instance
-    if (!connMap.performTapOp(name, sessionID, tapop, gv.getValue(), true)) {
+
+    int nItems = connMap.numBackfilledItems(name, sessionID, true);
+    if (nItems >= (int)backfillMaxListSize || !EvictionManager::getInstance()->evictHeadroom()) {
+        return false;
+    } else if (nItems == -1) {
         delete gv.getValue();
+    } else {
+        ReceivedItemTapOperation tapop(true);
+        // if the tap connection is closed, then free an Item instance
+        if (!connMap.performTapOp(name, sessionID, tapop, gv.getValue(), true)) {
+            delete gv.getValue();
+        }
     }
 
     NotifyPausedTapOperation notifyOp;
     connMap.performTapOp(name, sessionID, notifyOp, engine);
+    return true;
 }
 
 bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
@@ -156,6 +166,10 @@ void BackFillVisitor::setResidentItemThreshold(double residentThreshold) {
         return;
     }
     backfillResidentThreshold = residentThreshold;
+}
+
+void BackfillDiskLoad::setMaxListSize(size_t maxListSize) {
+    backfillMaxListSize = maxListSize;
 }
 
 void BackFillVisitor::setEvents() {

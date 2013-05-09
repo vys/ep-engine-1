@@ -138,6 +138,8 @@ public:
         return ret;
     }
 
+    int numBackfilledItems(const std::string &name, uint64_t sessionID, bool force = false);
+
     /**
      * Clear the tap validity for the given named connection.
      */

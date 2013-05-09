@@ -703,6 +703,11 @@ private:
         }
     }
 
+    size_t numBackfilledItems() {
+        LockHolder lh(queueLock);
+        return backfilledItems.size();
+    }
+
     bool hasQueuedItem_UNLOCKED() {
         return !queue->empty() || hasNextFromCheckpoints_UNLOCKED();
     }

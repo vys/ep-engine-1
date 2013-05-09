@@ -1,5 +1,9 @@
 {
     "params": {
+        "bf_max_list_size": {
+            "default": "1000",
+            "type": "size_t"
+        },
         "bf_resident_threshold": {
             "default": "0.9",
             "type": "float"
