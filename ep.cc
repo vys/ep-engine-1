@@ -881,10 +881,15 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::setVBucketState(uint16_t vbid,
                            KVStoreMapper::getVBucketToKVId(vb));
     } else {
         RCPtr<VBucket> newvb(new VBucket(vbid, to, stats));
+        uint16_t vb_version(0);
         if (to != vbucket_state_active) {
             newvb->checkpointManager.setOpenCheckpointId(0);
         }
-        uint16_t vb_version = vbuckets.getBucketVersion(vbid);
+
+        if (vbid < vbuckets.getSize()) {
+            vb_version = vbuckets.getBucketVersion(vbid);
+        }
+
         uint16_t vb_new_version = vb_version == (std::numeric_limits<uint16_t>::max() - 1) ?
                                   0 : vb_version + 1;
 

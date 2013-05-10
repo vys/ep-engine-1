@@ -330,7 +330,7 @@ public:
                              "Mapped new vbucket %d in state %s\n",
                              b->getId(), VBucket::toString(b->getState()));
         } else {
-            throw new NeedMoreBuckets;
+            throw NeedMoreBuckets();
         }
     }
 
