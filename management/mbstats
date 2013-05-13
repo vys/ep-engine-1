@@ -88,7 +88,7 @@ def size_label(s):
     return "%d%s" % (neg * s / factor, lbl)
 
 
-def time_label(s):
+def time_label(s, use_seconds = False):
     # -(2**64) -> '-inf'
     # 2**64 -> 'inf'
     # 0 -> '0'
@@ -107,6 +107,8 @@ def time_label(s):
         neg = -1
     product = 1
     sizes = (('us', 1), ('ms', 1000), ('s', 1000), ('m', 60))
+    if use_seconds:
+        sizes = (('s', 1), ('m', 60), ('h', 60), ('d', 24))
     sizeMap = []
     for l,sz in sizes:
         product = sz * product
@@ -134,8 +136,21 @@ def stats_timings(mc):
         except:
             return 79
 
+    def mergeKeys(items, keyList, dest):
+        b = {}
+        for s in items:
+            if s[0][0] in keyList:
+                key = (dest, s[0][1], s[0][2])
+                if b.has_key(key):
+                    b[key] += s[1]
+                else:
+                    b[key] = s[1]
+        items.extend([(s, b[s]) for s in b])
+
     # Acquire, sort, categorize, and label the timings.
-    stats = sorted([seg(*kv) for kv in mc.stats('timings').items() if "," in kv[0]])
+    items = [seg(*kv) for kv in mc.stats('timings').items() if "," in kv[0]]
+    mergeKeys(items, ["resident_item_sizes", "non_resident_item_sizes"], "all_item_sizes")
+    stats = sorted(items)
     dd = {}
     totals = {}
     longest = 0
@@ -143,7 +158,10 @@ def stats_timings(mc):
         if s[0][0].find("size") != -1:
             lbl = "%s - %s" % (size_label(s[0][1]), size_label(s[0][2]))
         else:
-            lbl = "%s - %s" % (time_label(s[0][1]), time_label(s[0][2]))
+            use_seconds = False
+            if re.match("item_.*_age", s[0][0]):
+                use_seconds = True
+            lbl = "%s - %s" % (time_label(s[0][1], use_seconds), time_label(s[0][2], use_seconds))
         longest = max(longest, len(lbl) + 1)
         k = s[0][0]
         l = dd.get(k, [])
