@@ -85,6 +85,7 @@ Available params for "set":
     lru_mem_threshold_percent - Do not rebuild LRU if mem_used has not reached the percent of max_size
     evict_min_blob_size       - Only evict entries that are bigger than this size
     bf_max_list_size          - Maximum number of items to have in backfill list during disk load
+    bf_resident_threshold     - Resident percentage threshold below which disk backfill will trigger (Valid range 0.7 - 1.0)
     scrub_memory              - Scrub allocator's memory to release as much memory as possible back to OS
     allocator_stats           - Print allocator stats """)
 

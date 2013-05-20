@@ -453,6 +453,15 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting bf_max_list_size to %d via flush params.", vsize);
                 BackfillDiskLoad::setMaxListSize((size_t)vsize);
+            } else if (strcmp(keyz, "bf_resident_threshold") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                double vsize = strtod(valz, &ptr);
+                validate(vsize, 0.0, 1.0);
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting bf_resident_threshold to %f via flush params.", vsize);
+                if (!BackFillVisitor::setResidentItemThreshold(vsize)) {
+                    *msg = "Value out of range.";
+                }
             } else {
                 *msg = "Unknown config param";
                 rv = PROTOCOL_BINARY_RESPONSE_KEY_ENOENT;

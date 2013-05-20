@@ -157,15 +157,16 @@ void BackFillVisitor::apply(void) {
     setEvents();
 }
 
-void BackFillVisitor::setResidentItemThreshold(double residentThreshold) {
+bool BackFillVisitor::setResidentItemThreshold(double residentThreshold) {
     if (residentThreshold < MINIMUM_BACKFILL_RESIDENT_THRESHOLD) {
         std::stringstream ss;
         ss << "Resident item threshold " << residentThreshold
            << " for memory backfill only is too low. Ignore this new threshold...";
         getLogger()->log(EXTENSION_LOG_WARNING, NULL, ss.str().c_str());
-        return;
+        return false;
     }
     backfillResidentThreshold = residentThreshold;
+    return true;
 }
 
 void BackfillDiskLoad::setMaxListSize(size_t maxListSize) {
