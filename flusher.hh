@@ -92,6 +92,7 @@ public:
         
     void start();
     void run();
+    void retrievePendingItems(std::list<Item*> &out);
 
 private:
     int kvid;
@@ -111,7 +112,7 @@ public:
         store(st), _state(initializing), dispatcher(d), flusherId(i),
         flushRv(0), prevFlushRv(0), minSleepTime(0.1),
         flushList(NULL), rejectList(NULL), vbStateLoaded(false),
-        forceShutdownReceived(false), last_min_data_age(-1),
+        forceShutdownReceived(false), pauseCounter(0), last_min_data_age(-1),
         last_queue_age_cap(-1), shouldFlushAll(false) {
             gettimeofday(&waketime, NULL);
             helper = new FlusherHelper(flusherId, store);
@@ -135,7 +136,7 @@ public:
     }
 
     bool stop(bool isForceShutdown = false);
-    void wait();
+    void wait(enum flusher_state to = stopped);
     bool pause();
     bool resume();
 
@@ -157,6 +158,8 @@ public:
     }
 
     int getFlusherId() { return flusherId; }
+
+    void retrievePendingItems(std::list<Item*> &out) const;
 
 private:
     bool transition_state(enum flusher_state to);
@@ -183,6 +186,8 @@ private:
     rel_time_t               flushStart;
     Atomic<bool>             vbStateLoaded;
     Atomic<bool>             forceShutdownReceived;
+    Atomic<int>              pauseCounter;
+    Mutex                    pauseLock;
     timeval                  waketime;
     int                      last_min_data_age;
     int                      last_queue_age_cap;

@@ -128,7 +128,7 @@ public:
      */
     void dump(Callback<GetValue> &cb);
 
-    void dump(uint16_t vb, Callback<GetValue> &cb);
+    void dump(uint16_t vb, Callback<GetValue> &cb, bool force = false);
 
     size_t getNumShards() {
         return strategy->getNumOfDbShards();

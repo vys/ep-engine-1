@@ -297,8 +297,8 @@ void StrategicSqlite3::dump(Callback<GetValue> &cb) {
     }
 }
 
-void StrategicSqlite3::dump(uint16_t vb, Callback<GetValue> &cb) {
-    assert(strategy->hasEfficientVBLoad());
+void StrategicSqlite3::dump(uint16_t vb, Callback<GetValue> &cb, bool force) {
+    assert(force || strategy->hasEfficientVBLoad());
     std::vector<PreparedStatement*> loaders(strategy->getVBStatements(vb, select_all));
 
     std::vector<PreparedStatement*>::iterator it;

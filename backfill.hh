@@ -12,7 +12,6 @@
 
 #define DEFAULT_BACKFILL_RESIDENT_THRESHOLD 0.9
 #define MINIMUM_BACKFILL_RESIDENT_THRESHOLD 0.7
-#define BACKFILL_MEM_THRESHOLD 0.9
 
 /**
  * Dispatcher callback responsible for bulk backfilling tap queues
@@ -25,8 +24,8 @@ class BackfillDiskLoad : public DispatcherCallback, public Callback<GetValue> {
 public:
 
     BackfillDiskLoad(const std::string &n, EventuallyPersistentEngine* e,
-                     TapConnMap &tcm, KVStore *s, uint16_t vbid, const void *token, uint64_t sid)
-        : name(n), engine(e), connMap(tcm), store(s), vbucket(vbid), validityToken(token), sessionID(sid) {
+                     TapConnMap &tcm, KVStore *s, uint16_t vbid, const void *token, uint64_t sid, int k, bool f)
+        : name(n), engine(e), connMap(tcm), store(s), vbucket(vbid), validityToken(token), sessionID(sid), kvId(k), forceVBDump(f) {
 
         vbucket_version = engine->getEpStore()->getVBucketVersion(vbucket);
     }
@@ -46,6 +45,8 @@ private:
     uint16_t                    vbucket_version;
     const void                 *validityToken;
     uint64_t                    sessionID;
+    int                         kvId;
+    bool                        forceVBDump;
 };
 
 /**
@@ -61,12 +62,18 @@ public:
         queue(new std::list<queued_item>), queueLength(0), queueMemSize(0),
         found(), validityToken(token),
         maxBackfillSize(e->getConfiguration().getTapBacklogLimit()), valid(true),
-        efficientVBDump(false), //FIXME Fix effecient vbdump to work with multiple kvstores
+        vb0(e->getConfiguration().isVb0()),
         residentRatioBelowThreshold(false), sessionID(sid) {
+        int numKVStores = engine->epstore->getNumKVStores();
+        efficientVBDump = new bool[numKVStores];
+        for (int kvid = 0; kvid < numKVStores; kvid++) {
+            efficientVBDump[kvid] = engine->epstore->getStorageProperties(kvid)->hasEfficientVBDump();
+        }
         found.reserve(maxBackfillSize);
     }
 
     virtual ~BackFillVisitor() {
+        delete[] efficientVBDump;
         delete queue;
     }
 
@@ -109,7 +116,8 @@ private:
     const void *validityToken;
     ssize_t maxBackfillSize;
     bool valid;
-    bool efficientVBDump;
+    bool *efficientVBDump;
+    bool vb0;
     bool residentRatioBelowThreshold;
     uint64_t sessionID;
 

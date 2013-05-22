@@ -597,6 +597,11 @@ public:
         return roDispatcher[i];
     }
 
+    Dispatcher* getROBackfillDispatcher(int i) {
+        assert(roBackfillDispatcher);
+        return roBackfillDispatcher[i];
+    }
+
     /**
      * True if the RW dispatcher and RO dispatcher are distinct.
      */
@@ -733,7 +738,7 @@ public:
         return ret;
     }
 
-    const Flusher* getFlusher(int id = 0);
+    Flusher* getFlusher(int id = 0);
 
     bool getKeyStats(const std::string &key, uint16_t vbucket,
                      key_stats &kstats);
@@ -774,6 +779,14 @@ public:
     KVStore* getROUnderlying(int id) {
         // This method might also be called leakAbstraction()
         return roUnderlying[id];
+    }
+
+    KVStore* getROBackfillUnderlying(int id) {
+        return roBackfillUnderlying[id];
+    }
+
+    int getNumKVStores() {
+        return numKVStores;
     }
 
     InvalidItemDbPager* getInvalidItemDbPager() {
@@ -824,6 +837,31 @@ public:
     }
 
     void beginFlush(FlushList &out, int kvId);
+
+    void copyItemsFromFlushList(FlushList &from, std::list<Item*> &to) {
+        for (FlushList::iterator it = from.begin(); it != from.end(); it++) {
+            StoredValue *v = it->getStoredValue();
+
+            RCPtr<VBucket> vb = getVBucket(it->getVBucketId());
+            if (!vb) {
+                continue;
+            }
+
+            int bucket_num = 0;
+            LockHolder lhb = vb->ht.getLockedBucket(v->getKey(), &bucket_num);
+            assert(v == vb->ht.unlocked_find(v->getKey(), bucket_num, true));
+
+            uint64_t icas = v->isLocked(ep_current_time())
+                ? static_cast<uint64_t>(-1)
+                : v->getCas();
+
+            to.push_back(new Item(v->getKey(), v->getFlags(), v->getExptime(),
+                        v->getValue(), v->getCksum(), icas, v->getId(), it->getVBucketId()));
+        }
+    }
+
+    void getFlushItems(std::list<Item*>& flushItems, int kvId);
+
 private:
 
     void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
@@ -918,8 +956,10 @@ private:
     bool                       doPersistence;
     KVStore                    **rwUnderlying;
     KVStore                    **roUnderlying;
+    KVStore                    **roBackfillUnderlying;
     Dispatcher                 **dispatcher;
     Dispatcher                 **roDispatcher;
+    Dispatcher                 **roBackfillDispatcher;
     Dispatcher                 *nonIODispatcher;
     Flusher                    **flusher;
     FlushLists                 *flushLists;

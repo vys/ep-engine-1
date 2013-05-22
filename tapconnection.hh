@@ -695,6 +695,14 @@ private:
         return nextCheckpointMessage_UNLOCKED();
     }
 
+    void transferItems(std::queue<Item*> &newBackFilledItems) {
+        LockHolder lh(queueLock);
+        while (!backfilledItems.empty()) {
+            newBackFilledItems.push(backfilledItems.front());
+            backfilledItems.pop();
+        }
+    }
+
     bool hasQueuedItem_UNLOCKED() {
         return !queue->empty() || hasNextFromCheckpoints_UNLOCKED();
     }

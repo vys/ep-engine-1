@@ -36,24 +36,34 @@ bool Flusher::stop(bool isForceShutdown) {
     return transition_state(to);
 }
 
-void Flusher::wait(void) {
+void Flusher::wait(enum flusher_state to) {
     hrtime_t startt(gethrtime());
-    while (_state != stopped) {
+    while (_state != to) {
         usleep(1000);
     }
     hrtime_t endt(gethrtime());
     int udiff((endt - startt) / 1000);
     if (udiff > 10000) {
         getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                         "Had to wait %dus for shutdown\n", udiff);
+                         "Had to wait %dus for %s\n", udiff, to == stopped ? "shutdown" : "pause");
     }
 }
 
 bool Flusher::pause(void) {
+    LockHolder lh(pauseLock);
+    pauseCounter++;
+    if (_state == paused) {
+        return true;
+    }
     return transition_state(pausing);
 }
 
 bool Flusher::resume(void) {
+    LockHolder lh(pauseLock);
+    pauseCounter--;
+    if (pauseCounter > 0) {
+        return true;
+    }
     return transition_state(running);
 }
 
@@ -261,9 +271,7 @@ int Flusher::doFlush() {
        if (!flushList->empty()) {
             int n = store->flushSome(flushList, rejectList, flusherId);
             prevFlushRv = std::min(n, prevFlushRv);
-            if (_state == pausing) {
-                transition_state(paused);
-            }
+            // Not necessary to transition pausing to paused here, the stepper will take care of it
         }
         if (flushList->empty()) {
             if (rejectList && !rejectList->empty()) {
@@ -286,6 +294,16 @@ int Flusher::doFlush() {
     }
 
     return flushRv;
+}
+
+void Flusher::retrievePendingItems(std::list<Item*> &out) const {
+    if (flushList) {
+        store->copyItemsFromFlushList(*flushList, out);
+    }
+    if (rejectList) {
+        store->copyItemsFromFlushList(*rejectList, out);
+    }
+    helper->retrievePendingItems(out);
 }
 
 extern "C" {
@@ -317,6 +335,13 @@ void FlusherHelper::run() {
         sync.wait();
     }
     return;
+}
+
+void FlusherHelper::retrievePendingItems(std::list<Item*> &out) {
+    LockHolder lh(sync);
+    if (flushList) {
+        store->copyItemsFromFlushList(*flushList, out);
+    }
 }
 
 void FlusherHelper::start() {

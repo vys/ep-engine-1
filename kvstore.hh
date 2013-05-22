@@ -292,7 +292,7 @@ public:
      * Pass all stored data for the given vbucket through the given
      * callback.
      */
-    virtual void dump(uint16_t vbid, Callback<GetValue> &cb) = 0;
+    virtual void dump(uint16_t vbid, Callback<GetValue> &cb, bool force = false) = 0;
 
     /**
      * Get the number of data shards in this kvstore.

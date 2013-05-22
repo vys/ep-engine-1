@@ -8,12 +8,6 @@
 
 double BackFillVisitor::backfillResidentThreshold = DEFAULT_BACKFILL_RESIDENT_THRESHOLD;
 
-static bool isMemoryUsageTooHigh(EPStats &stats) {
-    double currentSize = static_cast<double>(stats.currentSize.get() + stats.memOverhead.get());
-    double maxSize = static_cast<double>(stats.maxDataSize.get());
-    return currentSize > (maxSize * BACKFILL_MEM_THRESHOLD);
-}
-
 void BackfillDiskLoad::callback(GetValue &gv) {
     // If a vbucket version of a bg fetched item is different from the current version,
     // skip this item.
@@ -23,7 +17,7 @@ void BackfillDiskLoad::callback(GetValue &gv) {
     }
     ReceivedItemTapOperation tapop(true);
     // if the tap connection is closed, then free an Item instance
-    if (!connMap.performTapOp(name, sessionID, tapop, gv.getValue())) {
+    if (!connMap.performTapOp(name, sessionID, tapop, gv.getValue(), true)) {
         delete gv.getValue();
     }
 
@@ -34,15 +28,32 @@ void BackfillDiskLoad::callback(GetValue &gv) {
 bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
     bool valid = false;
 
-    if (isMemoryUsageTooHigh(engine->getEpStats())) {
+    if (!EvictionManager::getInstance()->evictHeadroom()) {
          d.snooze(t, 1);
          return true;
     }
 
+    std::list<Item*> flushItems;
+    engine->getEpStore()->getFlushItems(flushItems, kvId);
+
+    // Walk the disk
     if (connMap.checkConnectivity(name) && !engine->getEpStore()->isFlushAllScheduled()) {
-        store->dump(vbucket, *this);
+        store->dump(vbucket, *this, forceVBDump);
         valid = true;
     }
+
+    // Ship all the flush items
+    for (std::list<Item*>::iterator it = flushItems.begin(); it != flushItems.end(); it++) {
+        ReceivedItemTapOperation tapop(true);
+        // if the tap connection is closed, then free an Item instance
+        if (!connMap.performTapOp(name, sessionID, tapop, *it, true)) {
+            delete *it;
+        }
+
+        NotifyPausedTapOperation notifyOp;
+        connMap.performTapOp(name, sessionID, notifyOp, engine);
+    }
+
     // Should decr the disk backfill counter regardless of the connectivity status
     CompleteDiskBackfillTapOperation op;
     valid = connMap.performTapOp(name, sessionID, op, static_cast<void*>(NULL));
@@ -61,7 +72,6 @@ std::string BackfillDiskLoad::description() {
 }
 
 bool BackFillVisitor::visitBucket(RCPtr<VBucket> vb) {
-    bool isValid;
     apply();
 
     if (vBucketFilter(vb->getId())) {
@@ -73,30 +83,37 @@ bool BackFillVisitor::visitBucket(RCPtr<VBucket> vb) {
         if (numItems == 0) {
             return true;
         }
+        bool res = true;
         residentRatioBelowThreshold =
             ((numItems - numNonResident) / numItems) < backfillResidentThreshold ? true : false;
-        if (efficientVBDump && residentRatioBelowThreshold) {
-            vbuckets.push_back(vb->getId());
-            ScheduleDiskBackfillTapOperation tapop;
-            isValid = engine->tapConnMap.performTapOp(name, sessionID, tapop, static_cast<void*>(NULL));
-            if (!isValid) {
-                return false;
+        if (residentRatioBelowThreshold) {
+            // Perform check on the relevant KVStores to see if each one
+            // has a separate dispatcher for disk backfill (WAL mode)
+            int beginId, endId;
+            KVStoreMapper::getVBucketToKVId(vb->getId(), beginId, endId);
+            bool useDiskBackfill = true;
+            for (int kvId = beginId; kvId < endId; kvId++) {
+                if ((!efficientVBDump[kvId] && !vb0) || !engine->getEpStore()->hasSeparateRODispatcher(kvId)) {
+                    useDiskBackfill = false;
+                    break;
+                }
+            }
+            if (useDiskBackfill) {
+                vbuckets.push_back(vb->getId());
+                ScheduleDiskBackfillTapOperation tapop;
+                engine->tapConnMap.performTapOp(name, sessionID, tapop, static_cast<void*>(NULL));
+                res = false; // Don't need a hashtable walk for this vbucket
             }
         }
         // When the backfill is scheduled for a given vbucket, set the TAP cursor to
         // the beginning of the open checkpoint.
         engine->tapConnMap.SetCursorToOpenCheckpoint(name, vb->getId());
-        return true;
+        return res;
     }
     return false;
 }
 
 void BackFillVisitor::visit(StoredValue *v) {
-    // If efficient VBdump is supported and an item is not resident,
-    // skip the item as it will be fetched by the disk backfill.
-    if (efficientVBDump && residentRatioBelowThreshold && !v->isResident()) {
-        return;
-    }
     std::string k = v->getKey();
     queued_item qi(new QueuedItem(k, currentBucket->getId(), queue_op_set, -1, v->getId()));
     int kvid = KVStoreMapper::getKVStoreId(k, currentBucket);
@@ -105,28 +122,27 @@ void BackFillVisitor::visit(StoredValue *v) {
 }
 
 void BackFillVisitor::apply(void) {
-    // If efficient VBdump is supported, schedule all the disk backfill tasks.
-    if (efficientVBDump) {
-        std::vector<uint16_t>::iterator it = vbuckets.begin();
-        for (; it != vbuckets.end(); it++) {
-            int beginId, endId;
-            KVStoreMapper::getVBucketToKVId(*it, beginId, endId);
-            for (int kvid = beginId; kvid < endId; kvid++) {
-                Dispatcher *d(engine->epstore->getRODispatcher(kvid));
-                KVStore *underlying(engine->epstore->getROUnderlying(kvid));
-                assert(d);
-                shared_ptr<DispatcherCallback> cb(new BackfillDiskLoad(name,
-                            engine,
-                            engine->tapConnMap,
-                            underlying,
-                            *it,
-                            validityToken,
-                            sessionID));
-                d->schedule(cb, NULL, Priority::TapBgFetcherPriority);
-            }
+    std::vector<uint16_t>::iterator it = vbuckets.begin();
+    for (; it != vbuckets.end(); it++) {
+        int beginId, endId;
+        KVStoreMapper::getVBucketToKVId(*it, beginId, endId);
+        for (int kvid = beginId; kvid < endId; kvid++) {
+            Dispatcher *d(engine->epstore->getROBackfillDispatcher(kvid));
+            KVStore *underlying(engine->epstore->getROBackfillUnderlying(kvid));
+            assert(d);
+            shared_ptr<DispatcherCallback> cb(new BackfillDiskLoad(name,
+                        engine,
+                        engine->tapConnMap,
+                        underlying,
+                        *it,
+                        validityToken,
+                        sessionID,
+                        kvid,
+                        !efficientVBDump[kvid]));
+            d->schedule(cb, NULL, Priority::TapBgFetcherPriority);
         }
-        vbuckets.clear();
     }
+    vbuckets.clear();
 
     setEvents();
 }
@@ -173,7 +189,7 @@ bool BackFillVisitor::pauseVisitor() {
         return false;
     }
 
-    pause = theSize > maxBackfillSize || isMemoryUsageTooHigh(engine->getEpStats());
+    pause = theSize > maxBackfillSize || !EvictionManager::getInstance()->evictHeadroom();
 
     if (pause) {
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,

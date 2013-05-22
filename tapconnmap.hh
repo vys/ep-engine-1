@@ -108,14 +108,14 @@ public:
      *         was performed
      */
     template <typename V>
-    bool performTapOp(const std::string &name, uint64_t sessionID, TapOperation<V> &tapop, V arg) {
+    bool performTapOp(const std::string &name, uint64_t sessionID, TapOperation<V> &tapop, V arg, bool force = false) {
         bool shouldNotify(true);
         bool clear(true);
         bool ret(true);
         LockHolder clh(connMapMutex);
 
         TapConnection *tc = findByName_UNLOCKED(name);
-        if (tc && checkSessionValid(name, sessionID)) {
+        if (tc && (force || checkSessionValid(name, sessionID))) {
             TapProducer *tp = dynamic_cast<TapProducer*>(tc);
             assert(tp != NULL);
             tapop.perform(tp, arg);
