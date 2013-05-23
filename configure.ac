@@ -12,9 +12,7 @@ AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_USE_SYSTEM_EXTENSIONS
-AM_PROG_AR
 AC_DISABLE_STATIC
-AM_PROG_AR
 
 PANDORA_CANONICAL_TARGET(less-warnings, warnings-always-on, require-cxx,
                          force-gcc42)
