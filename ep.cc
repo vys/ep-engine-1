@@ -1652,7 +1652,10 @@ void EventuallyPersistentStore::beginFlush(FlushList &out, int kvId) {
                 if (!vb) {
                     continue;
                 }
+
+                LockHolder lh(vbsetMutex);
                 rwUnderlying[kvId]->setPersistenceCheckpointId(*vb_it, vb->checkpointManager.getOpenCheckpointId());
+                lh.unlock();
             }
 
             stats.flusher_todos[kvId].incr(num_items);
