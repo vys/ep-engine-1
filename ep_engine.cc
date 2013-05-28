@@ -3921,6 +3921,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doDispatcherStats(const void *cook
             DispatcherState rods(epstore->getRODispatcher(i)->getDispatcherState());
             snprintf(prefix, sizeof(prefix), "ro_dispatcher%d", i);
             doDispatcherStat(prefix, rods, cookie, add_stat);
+            DispatcherState robds(epstore->getROBackfillDispatcher(i)->getDispatcherState());
+            snprintf(prefix, sizeof(prefix), "ro_backfill_dispatcher%d", i);
+            doDispatcherStat(prefix, robds, cookie, add_stat);
         }
     }
     DispatcherState nds(epstore->getNonIODispatcher()->getDispatcherState());
