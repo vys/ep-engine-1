@@ -18,12 +18,13 @@ CallbackResult BackfillDiskLoad::callback(GetValue &gv) {
     }
 
     int nItems = connMap.numBackfilledItems(name, sessionID);
-    // Should the diskload be throttled?
-    if (nItems >= (int)backfillMaxListSize || !EvictionManager::getInstance()->evictHeadroom()) {
-        return CB_RETRY;
-    } else if (nItems == -1) { // Got disconnected?
+    if (nItems == -1) { // The connection is gone?
         delete gv.getValue();
         return CB_ABORT;
+    } else if (nItems >= (int)backfillMaxListSize ||
+               !EvictionManager::getInstance()->evictHeadroom()) {
+        // Should the diskload be throttled?
+        return CB_RETRY;
     } else {
         ReceivedItemTapOperation tapop(true);
         // if the tap connection is closed, then free an Item instance
