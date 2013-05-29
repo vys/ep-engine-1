@@ -80,7 +80,7 @@ public:
     LookupCallback(EventuallyPersistentEngine *e, const void* c) :
         engine(e), cookie(c) {}
 
-    virtual bool callback(GetValue &value);
+    virtual CallbackResult callback(GetValue &value);
 private:
     EventuallyPersistentEngine *engine;
     const void *cookie;

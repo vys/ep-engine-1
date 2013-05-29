@@ -31,7 +31,7 @@ public:
         vbucket_version = engine->getEpStore()->getVBucketVersion(vbucket);
     }
 
-    bool callback(GetValue &gv);
+    CallbackResult callback(GetValue &gv);
 
     bool callback(Dispatcher &, TaskId);
 

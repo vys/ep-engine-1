@@ -2351,14 +2351,14 @@ void LoadStorageKVPairCallback::initVBucket(uint16_t vbid,
     vbuckets.setPersistenceCheckpointId(vbid, checkpointId - 1);
 }
 
-bool LoadStorageKVPairCallback::callback(GetValue &val) {
+CallbackResult LoadStorageKVPairCallback::callback(GetValue &val) {
     Item *i = val.getValue();
     if (i != NULL) {
         uint16_t vb_version = vbuckets.getBucketVersion(i->getVBucketId());
         if (vb_version != static_cast<uint16_t>(-1) && val.getVBucketVersion() != vb_version) {
             epstore->getInvalidItemDbPager()->addInvalidItem(i, val.getVBucketVersion());
             delete i;
-            return true;
+            return CB_SUCCESS;
         }
 
         RCPtr<VBucket> vb = vbuckets.getBucket(i->getVBucketId());
@@ -2425,7 +2425,7 @@ bool LoadStorageKVPairCallback::callback(GetValue &val) {
         delete i;
     }
     ++stats.warmedUp;
-    return true;
+    return CB_SUCCESS;
 }
 
 bool LoadStorageKVPairCallback::shouldBeResident() {

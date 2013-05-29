@@ -64,6 +64,19 @@ private:
 };
 
 /**
+ * Possible results from a callback.
+ * SUCCESS: The value was processed successfully
+ * RETRY: The value could not be processed right now. Try again
+ * ABORT: Applicable for long running operations (e.g. dump). Encountered 
+ *        unrecoverable error, abort the operation.
+ */
+typedef enum CallbackResult_t {
+    CB_SUCCESS = 0,
+    CB_RETRY,
+    CB_ABORT
+} CallbackResult;
+
+/**
  * Interface for callbacks from storage APIs.
  */
 template <typename RV>
@@ -75,7 +88,7 @@ public:
     /**
      * Method called on callback.
      */
-    virtual bool callback(RV &value) = 0;
+    virtual CallbackResult callback(RV &value) = 0;
 
     virtual void setStatus(int status) {
         myStatus = status;
@@ -111,12 +124,12 @@ public:
     /**
      * The callback implementation -- just store a value.
      */
-    bool callback(T &value) {
+    CallbackResult callback(T &value) {
         LockHolder lh(so);
         val = value;
         fired = true;
         so.notify();
-        return true;
+        return CB_SUCCESS;
     }
 
     /**

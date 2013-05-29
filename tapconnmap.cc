@@ -372,11 +372,11 @@ bool TapConnMap::checkConnectivity(const std::string &name) {
     return false;
 }
 
-int TapConnMap::numBackfilledItems(const std::string &name, uint64_t sessionID, bool force) {
+int TapConnMap::numBackfilledItems(const std::string &name, uint64_t sessionID) {
     LockHolder lh(connMapMutex);
 
     TapConnection *tc = findByName_UNLOCKED(name);
-    if (tc && (force || checkSessionValid(name, sessionID))) {
+    if (tc && checkSessionValid(name, sessionID)) {
         TapProducer *tp = dynamic_cast<TapProducer*>(tc);
         assert (tp != NULL);
         return tp->numBackfilledItems();

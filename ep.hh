@@ -314,7 +314,7 @@ public:
                      uint64_t checkpointId,
                      vbucket_state_t prevState = vbucket_state_dead,
                      vbucket_state_t newState = vbucket_state_dead);
-    bool callback(GetValue &val);
+    CallbackResult callback(GetValue &val);
 
 private:
 

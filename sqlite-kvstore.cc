@@ -262,8 +262,9 @@ bool StrategicSqlite3::storeMap(PreparedStatement *clearSt,
     return rv;
 }
 
-static void processDumpRow(EPStats &stats,
+static CallbackResult processDumpRow(EPStats &stats,
                            PreparedStatement *st, Callback<GetValue> &cb) {
+    CallbackResult result;
     ++stats.io_num_read;
     GetValue rv(new Item(st->column_blob(0),
                          static_cast<uint16_t>(st->column_bytes(0)),
@@ -280,9 +281,10 @@ static void processDumpRow(EPStats &stats,
                 -1,
                 static_cast<uint16_t>(st->column_int(6)));
     stats.io_read_bytes += rv.getValue()->getKey().length() + rv.getValue()->getNBytes();
-    while (!cb.callback(rv)) {
+    while ((result = cb.callback(rv)) == CB_RETRY) {
         usleep(1000);
     }
+    return result;
 }
 
 void StrategicSqlite3::dump(Callback<GetValue> &cb) {
@@ -292,7 +294,9 @@ void StrategicSqlite3::dump(Callback<GetValue> &cb) {
         PreparedStatement *st = (*it)->all();
         st->reset();
         while (st->fetch()) {
-            processDumpRow(stats, st, cb);
+            if (processDumpRow(stats, st, cb) == CB_ABORT) {
+                break;
+            }
         }
 
         st->reset();
@@ -307,7 +311,9 @@ void StrategicSqlite3::dump(uint16_t vb, Callback<GetValue> &cb, bool force) {
     for (it = loaders.begin(); it != loaders.end(); ++it) {
         PreparedStatement *st = *it;
         while (st->fetch()) {
-            processDumpRow(stats, st, cb);
+            if (processDumpRow(stats, st, cb) == CB_ABORT) {
+                break;
+            }
         }
     }
 

@@ -9,30 +9,33 @@
 double BackFillVisitor::backfillResidentThreshold = DEFAULT_BACKFILL_RESIDENT_THRESHOLD;
 size_t BackfillDiskLoad::backfillMaxListSize = BACKFILL_MAX_LIST_SIZE;
 
-bool BackfillDiskLoad::callback(GetValue &gv) {
+CallbackResult BackfillDiskLoad::callback(GetValue &gv) {
     // If a vbucket version of a bg fetched item is different from the current version,
     // skip this item.
     if (vbucket_version != gv.getVBucketVersion()) {
         delete gv.getValue();
-        return true;
+        return CB_SUCCESS;
     }
 
-    int nItems = connMap.numBackfilledItems(name, sessionID, true);
+    int nItems = connMap.numBackfilledItems(name, sessionID);
+    // Should the diskload be throttled?
     if (nItems >= (int)backfillMaxListSize || !EvictionManager::getInstance()->evictHeadroom()) {
-        return false;
-    } else if (nItems == -1) {
+        return CB_RETRY;
+    } else if (nItems == -1) { // Got disconnected?
         delete gv.getValue();
+        return CB_ABORT;
     } else {
         ReceivedItemTapOperation tapop(true);
         // if the tap connection is closed, then free an Item instance
         if (!connMap.performTapOp(name, sessionID, tapop, gv.getValue(), true)) {
             delete gv.getValue();
+            return CB_ABORT;
         }
     }
 
     NotifyPausedTapOperation notifyOp;
     connMap.performTapOp(name, sessionID, notifyOp, engine);
-    return true;
+    return CB_SUCCESS;
 }
 
 bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {

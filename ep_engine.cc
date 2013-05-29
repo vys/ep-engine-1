@@ -65,14 +65,14 @@ static inline EventuallyPersistentEngine* getHandle(ENGINE_HANDLE* handle)
     return ret;
 }
 
-bool LookupCallback::callback(GetValue &value) {
+CallbackResult LookupCallback::callback(GetValue &value) {
     if (value.getStatus() == ENGINE_SUCCESS) {
         engine->addLookupResult(cookie, value.getValue());
     } else {
         engine->addLookupResult(cookie, NULL);
     }
     engine->notifyIOComplete(cookie, value.getStatus());
-    return true;
+    return CB_SUCCESS;
 }
 
 template <typename T>

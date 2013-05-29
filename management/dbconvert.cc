@@ -80,9 +80,9 @@ static KVStore *getStore(EPStats &st,
 
 class MutationVerifier : public Callback<mutation_result> {
 public:
-    bool callback(mutation_result &mutation) {
+    CallbackResult callback(mutation_result &mutation) {
         assert(mutation.first == 1);
-        return true;
+        return CB_SUCCESS;
     }
 };
 
@@ -112,7 +112,7 @@ public:
         cout << "Elapsed time=" << (gethrtime() - startTime)/1000000000 << " seconds."<< std::endl;
     }
 
-    bool callback(GetValue &gv) {
+    CallbackResult callback(GetValue &gv) {
         Item *i = gv.getValue();
         adjust(&i);
         mutation_result p;
@@ -126,7 +126,7 @@ public:
         if ((transferred % reportEvery) == 0) {
             cout << "." << flush;
         }
-        return true;
+        return CB_SUCCESS;
     }
 
     size_t getTransferred() {
