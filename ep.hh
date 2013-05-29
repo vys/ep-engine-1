@@ -841,6 +841,8 @@ public:
     std::vector<uint16_t> getVBucketsForKVStore_UNLOCKED(int kvid);
     std::vector<uint16_t> getVBucketsForKVStore(int kvid);
 
+    std::map<int, KVMapCapacity> getKVStoresCapacity();
+
     bool assignKVStore(RCPtr<VBucket> &vb, int kvid = -1);
 
     void resetKVStore_UNLOCKED(int kvid);

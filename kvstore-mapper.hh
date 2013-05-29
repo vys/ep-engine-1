@@ -9,6 +9,12 @@
 #define MAX_SHARDS_LIMIT 2520
 class EventuallyPersistentEngine;
 
+class KVMapCapacity {
+public:
+    uint16_t actives;
+    uint16_t replicas;
+};
+
 /*
  * Class to distribute input data across kvstores.
  */
@@ -26,21 +32,37 @@ public:
     }
 
     // Find an available kvstore to hold a vbucket
-    static int findKVStore(std::map<int, std::vector<uint16_t> > &kvstoresMap, KVStore **kvstores) {
+    static int findKVStore(vbucket_state_t state, std::map<int, std::vector<uint16_t> > &kvstoresMap,
+            KVStore **kvstores, std::map<int, KVMapCapacity> &cap) {
+
+        assert(state == vbucket_state_active || state == vbucket_state_replica);
         assert(instance != NULL);
         int eligibleKVStore(-1);
-        size_t kvstoreSize(0);
+        size_t kvstoreSize(0), allocSize(0);
 
         if (instance->mapVBuckets) {
             std::map<int, std::vector<uint16_t> >::iterator it;
 
+            // Find out the kvstore which is holding min vbuckets and min same type of vbucket
             for (it = kvstoresMap.begin(); it != kvstoresMap.end(); it++) {
                 KVStore *k = kvstores[(*it).first];
+                KVMapCapacity kc = cap[(*it).first];
                 if (k->isAvailable()) {
+                    size_t allocvbs;
+                    if (state == vbucket_state_active) {
+                        allocvbs = kc.actives;
+                    } else if (state == vbucket_state_replica) {
+                        allocvbs = kc.replicas;
+                    } else {
+                        allocvbs = (*it).second.size() - kc.replicas - kc.actives;
+                    }
+
                     if (eligibleKVStore == -1) {
                         kvstoreSize = (*it).second.size();
+                        allocSize = allocvbs;
                         eligibleKVStore = (*it).first;
-                    } else if (kvstoreSize > (*it).second.size()) {
+                    } else if (kvstoreSize > (*it).second.size() ||
+                            (kvstoreSize == (*it).second.size() && allocSize > allocvbs)) {
                         kvstoreSize = (*it).second.size();
                         eligibleKVStore = (*it).first;
                     }

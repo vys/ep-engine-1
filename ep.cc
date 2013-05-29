@@ -2445,6 +2445,33 @@ void EventuallyPersistentStore::resetKVStore(int kvid) {
     resetKVStore_UNLOCKED(kvid);
 }
 
+std::map<int, KVMapCapacity> EventuallyPersistentStore::getKVStoresCapacity() {
+    std::map<int, KVMapCapacity> cap;
+    std::vector<uint16_t>::iterator it;
+    std::vector<uint16_t> vblist;
+    KVMapCapacity kc;
+    RCPtr<VBucket> vb;
+    int kvId;
+
+    for (kvId=0; kvId < numKVStores; kvId++) {
+        kc.actives = 0;
+        kc.replicas = 0;
+        vblist = getVBucketsForKVStore_UNLOCKED(kvId);
+        for (it = vblist.begin(); it != vblist.end(); it++) {
+            vb = vbuckets.getBucket(*it);
+            if (vb->getState() == vbucket_state_active) {
+                kc.actives++;
+            } else if (vb->getState() == vbucket_state_replica) {
+                kc.replicas++;
+            }
+        }
+
+        cap[kvId] = kc;
+    }
+
+    return cap;
+}
+
 /**
  * Assign a vbucket to an available KVStore which holds less number of vbuckets
  * If kvid != -1, assign vbucket explicitly to the specified kvstore (used for warmup)
@@ -2453,7 +2480,8 @@ bool EventuallyPersistentStore::assignKVStore(RCPtr<VBucket> &vb, int kvid) {
     LockHolder lh(kvstoreMutex);
 
     if (kvid == -1) {
-        kvid = KVStoreMapper::findKVStore(kvstoresMap, rwUnderlying);
+        std::map<int, KVMapCapacity> cap = getKVStoresCapacity();
+        kvid = KVStoreMapper::findKVStore(vb->getState(), kvstoresMap, rwUnderlying, cap);
     }
 
     if (kvid == -1) {
