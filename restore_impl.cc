@@ -299,7 +299,8 @@ private:
 
 
         int r = 2;
-        if (restore_vbid == vbid) {
+        // restore_vbid -2 means server level restore
+        if (restore_vbid == vbid || restore_vbid == RESTORE_MODE_SERVER) {
             r = store.restoreItem(itm, op);
         }
 
@@ -341,7 +342,7 @@ public:
         busy(0),
         restore_cpoint(0),
         restore_file_checks(true),
-        restore_vbid(-1),
+        restore_vbid(RESTORE_MODE_IDLE),
         state(&State::Uninitialized),
         restoreSO(),
         done(false)
@@ -437,8 +438,11 @@ public:
             addStat(cookie, "last_error", errorMsg, add_stat);
         }
 
-        if (instance == NULL) {
+        if (restore_vbid >= 0) {
             addStat(cookie, "restore_vbucket_id", restore_vbid, add_stat);
+        }
+
+        if (instance == NULL) {
             addStat(cookie, "restore_checkpoint", restore_cpoint, add_stat);
             addStat(cookie, "number_busy", busy, add_stat);
             addStat(cookie, "number_skipped", skipped, add_stat);
@@ -446,7 +450,6 @@ public:
             addStat(cookie, "number_expired", expired, add_stat);
             addStat(cookie, "number_wrong_vbucket", wrongVBucket, add_stat);
         } else {
-            addStat(cookie, "restore_vbucket_id", restore_vbid, add_stat);
             addStat(cookie, "restore_checkpoint", restore_cpoint ? restore_cpoint :
                                         instance->getRestoreCheckpoint(), add_stat);
             addStat(cookie, "file", instance->getDbFile(), add_stat);

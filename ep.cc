@@ -2356,11 +2356,21 @@ bool EventuallyPersistentStore::isRestoreEnabled(RCPtr<VBucket> &vb) {
 }
 
 bool EventuallyPersistentStore::isRestoreEnabled(uint16_t vbid) {
+    // Server level restore
+    if (stats.kvstoreMapVbuckets == false) {
+        return engine.restore.enabled.get();
+    }
+
     RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
     return vb && isRestoreEnabled(vb);
 }
 
-bool EventuallyPersistentStore::setRestoreMode(uint16_t vbid, bool state) {
+bool EventuallyPersistentStore::setRestoreMode(int vbid, bool state) {
+    // Enable server level restore
+    if (stats.kvstoreMapVbuckets == false && vbid == -2) {
+        return true;
+    }
+
     RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
     if (!vb) {
         return false;

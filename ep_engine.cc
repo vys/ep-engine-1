@@ -974,6 +974,7 @@ extern "C" {
 
         case CMD_RESTORE_FILE:
         case CMD_RESTORE_ABORT:
+        case CMD_RESTORE_COMPLETE:
             return h->handleRestoreCmd(cookie, request, response);
 
         case CMD_STOP_PERSISTENCE:
@@ -1290,15 +1291,6 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     CheckpointManager::allowInconsistentSlaveCheckpoint(configuration.isInconsistentSlaveChk());
     CheckpointManager::keepClosedCheckpointsUnderHighWat(configuration.isKeepClosedChks());
 
-
-    if ((restore.manager = create_restore_manager(*this)) == NULL) {
-        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
-                "Failed to create restore manager");
-        return ENGINE_FAILED;
-    }
-
-    restore.manager->enableRestoreFileChecks(configuration.isRestoreFileChecks());
-
     BackFillVisitor::setResidentItemThreshold(configuration.getBfResidentThreshold());
 
     HashTable::setDefaultNumBuckets(configuration.getHtSize());
@@ -1505,6 +1497,19 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     diExtension->initialize();
 
     HashMetaData::getInstance()->initialize(getlMaxTimeout);
+
+    if ((restore.manager = create_restore_manager(*this)) == NULL) {
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL,
+                "Failed to create restore manager");
+        return ENGINE_FAILED;
+    }
+
+    restore.manager->enableRestoreFileChecks(configuration.isRestoreFileChecks());
+    if (configuration.isRestoreMode() && stats.kvstoreMapVbuckets == false) {
+        setRestoreMode(RESTORE_MODE_SERVER, true);
+        getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Started server in restore mode");
+    }
+
 
     getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Engine init complete.\n");
 
@@ -4487,10 +4492,11 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::setRestoreMode(int vbid, bool enab
         if (!(restore.enabled.get() == true &&
                     !restore.manager->isRunning() &&
                     getEpStore()->setRestoreMode(vbid, false))) {
-            return ENGINE_FAILED;;
+            return ENGINE_FAILED;
         } else {
             restore.enabled.set(false);
-            restore.manager->setRestoreVBucket(-1);
+            restore.manager->setRestoreVBucket(RESTORE_MODE_IDLE);
+            epstore->completeOnlineRestore();
         }
     }
 
@@ -4552,6 +4558,16 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::handleRestoreCmd(const void *cooki
             if (response(NULL, 0, NULL, 0, NULL, 0,
                          PROTOCOL_BINARY_RAW_BYTES,
                          PROTOCOL_BINARY_RESPONSE_EBUSY, 0, cookie)) {
+                return ENGINE_SUCCESS;
+            }
+            return ENGINE_FAILED;
+        }
+
+        if (stats.kvstoreMapVbuckets) {
+            std::string msg = "Restore complete not supported";
+            if (response(NULL, 0, NULL, 0, msg.c_str(), msg.length(),
+                         PROTOCOL_BINARY_RAW_BYTES,
+                         PROTOCOL_BINARY_RESPONSE_EINTERNAL, 0, cookie)) {
                 return ENGINE_SUCCESS;
             }
             return ENGINE_FAILED;

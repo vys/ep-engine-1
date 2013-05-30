@@ -828,7 +828,7 @@ public:
 
     bool isRestoreEnabled(uint16_t vbid);
 
-    bool setRestoreMode(uint16_t vbid, bool state);
+    bool setRestoreMode(int vbid, bool state);
 
     bool isKVStoreAvailable(int kvid);
 

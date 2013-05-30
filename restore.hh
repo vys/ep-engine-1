@@ -23,6 +23,9 @@
 
 class EventuallyPersistentEngine;
 
+#define RESTORE_MODE_IDLE -1
+#define RESTORE_MODE_SERVER -2
+
 /**
  * The restore manager is responsible for running the restore of a set of
  * incremental backup files.
