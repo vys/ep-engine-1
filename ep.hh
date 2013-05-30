@@ -838,7 +838,7 @@ public:
 
     void beginFlush(FlushList &out, int kvId);
 
-    void copyItemsFromFlushList(FlushList &from, std::list<Item*> &to) {
+    void copyItemsFromFlushList(FlushList &from, std::list<queued_item> &to) {
         for (FlushList::iterator it = from.begin(); it != from.end(); it++) {
             StoredValue *v = it->getStoredValue();
 
@@ -851,16 +851,15 @@ public:
             LockHolder lhb = vb->ht.getLockedBucket(v->getKey(), &bucket_num);
             assert(v == vb->ht.unlocked_find(v->getKey(), bucket_num, true));
 
-            uint64_t icas = v->isLocked(ep_current_time())
-                ? static_cast<uint64_t>(-1)
-                : v->getCas();
-
-            to.push_back(new Item(v->getKey(), v->getFlags(), v->getExptime(),
-                        v->getValue(), v->getCksum(), icas, v->getId(), it->getVBucketId()));
+            if (v->isDeleted()) {
+                to.push_back(new QueuedItem(v->getKey(), it->getVBucketId(), queue_op_del, -1, v->getId()));
+            } else {
+                to.push_back(new QueuedItem(v->getKey(), it->getVBucketId(), queue_op_set, -1, v->getId()));
+            }
         }
     }
 
-    void getFlushItems(std::list<Item*>& flushItems, int kvId);
+    void getFlushItems(std::list<queued_item>& flushItems, int kvId);
 
 private:
 

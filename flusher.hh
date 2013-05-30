@@ -92,7 +92,7 @@ public:
         
     void start();
     void run();
-    void retrievePendingItems(std::list<Item*> &out);
+    void retrievePendingItems(std::list<queued_item> &out);
 
 private:
     int kvid;
@@ -159,7 +159,7 @@ public:
 
     int getFlusherId() { return flusherId; }
 
-    void retrievePendingItems(std::list<Item*> &out) const;
+    void retrievePendingItems(std::list<queued_item> &out) const;
 
 private:
     bool transition_state(enum flusher_state to);

@@ -74,7 +74,7 @@ class FlushLists {
 
         void get(FlushList& out, int kvId);
 
-        void getCopy(std::list<Item*> &out, int kvId);
+        void getCopy(std::list<queued_item> &out, int kvId);
 
         size_t size() {
             size_t s = 0;

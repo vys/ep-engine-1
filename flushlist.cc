@@ -13,7 +13,7 @@ void FlushLists::get(FlushList& out, int kvId) {
 
 // Does not interfere with get() because this is called only when the
 // flusher is paused. Hence no locks required.
-void FlushLists::getCopy(std::list<Item*> &out, int kvId) {
+void FlushLists::getCopy(std::list<queued_item> &out, int kvId) {
     int nShards = epStore->getRWUnderlying(kvId)->getNumShards();
     for (int i = 0; i < nShards; i++) {
         flushLists[kvId*maxShards+i].getAll(shardList[kvId]); // This will get all per-thread caches into a single list from the AtomicList specific to this shard.

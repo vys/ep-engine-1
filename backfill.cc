@@ -47,7 +47,7 @@ bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
          return true;
     }
 
-    std::list<Item*> flushItems;
+    std::list<queued_item> flushItems;
     engine->getEpStore()->getFlushItems(flushItems, kvId);
 
     // Walk the disk
@@ -56,17 +56,15 @@ bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
         valid = true;
     }
 
-    // Ship all the flush items
-    for (std::list<Item*>::iterator it = flushItems.begin(); it != flushItems.end(); it++) {
-        ReceivedItemTapOperation tapop(true);
-        // if the tap connection is closed, then free an Item instance
-        if (!connMap.performTapOp(name, sessionID, tapop, *it, true)) {
-            delete *it;
-        }
-
-        NotifyPausedTapOperation notifyOp;
-        connMap.performTapOp(name, sessionID, notifyOp, engine);
+    // Must not sort
+    size_t queueLength = 0;
+    size_t queueMemSize = 0;
+    std::list<queued_item>::iterator it;
+    for (it = flushItems.begin(); it != flushItems.end(); ++it) {
+        queueLength++;
+        queueMemSize += (*it)->size();
     }
+    connMap.setEvents(name, &flushItems, queueLength, queueMemSize);
 
     // Should decr the disk backfill counter regardless of the connectivity status
     CompleteDiskBackfillTapOperation op;

@@ -2572,7 +2572,7 @@ void EventuallyPersistentStore::queueFlusher(RCPtr<VBucket> vb, StoredValue *v, 
     flushLists->push(kvid, shard, *fe);
 }
 
-void EventuallyPersistentStore::getFlushItems(std::list<Item*>& flushItems, int kvId) {
+void EventuallyPersistentStore::getFlushItems(std::list<queued_item>& flushItems, int kvId) {
     Flusher *fl = getFlusher(kvId);
 
     // Pause flusher
