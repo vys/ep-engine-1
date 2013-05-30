@@ -828,7 +828,8 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority, int k
 
     class VBucketStateVisitor : public VBucketVisitor {
     public:
-        VBucketStateVisitor(VBucketMap &vb_map) : vbuckets(vb_map) { }
+        VBucketStateVisitor(VBucketFilter &vbf, VBucketMap &vb_map) : VBucketVisitor(vbf), vbuckets(vb_map) { }
+
         bool visitBucket(RCPtr<VBucket> vb) {
             std::pair<uint16_t, uint16_t> p(vb->getId(),
                                             vbuckets.getBucketVersion(vb->getId()));
@@ -855,8 +856,14 @@ void EventuallyPersistentStore::snapshotVBuckets(const Priority &priority, int k
         vbuckets.setLowPriorityVbSnapshotFlag(false);
     }
 
-    VBucketStateVisitor v(vbuckets);
-    visit(v, kvid);
+    VBucketFilter filter;
+    if (stats.kvstoreMapVbuckets) {
+        std::vector<uint16_t> vblist = getVBucketsForKVStore(kvid);
+        filter = VBucketFilter(vblist);
+    }
+
+    VBucketStateVisitor v(filter, vbuckets);
+    visit(v);
     if (!rwUnderlying[kvid]->snapshotVBuckets(v.states)) {
         getLogger()->log(EXTENSION_LOG_DEBUG, NULL,
                          "Rescheduling a task to snapshot vbuckets\n");

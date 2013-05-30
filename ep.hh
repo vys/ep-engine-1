@@ -687,25 +687,21 @@ public:
      */
     bool resetVBucket(uint16_t vbid, bool underlying = true);
 
-    void visit(VBucketVisitor &visitor, int kvstore_id = -1) {
-        size_t maxSize;
-        uint16_t vbid;
-        std::vector<uint16_t> vblist;
-        if (stats.kvstoreMapVbuckets && kvstore_id != -1) {
-            vblist = getVBucketsForKVStore(kvstore_id);
-            maxSize = vblist.size();
-        } else {
-            maxSize = vbuckets.getSize() + 1;
+    void visit(VBucketVisitor &visitor) {
+        VBucketFilter filter = visitor.getVBucketFilter();
+        std::vector<uint16_t> vblist = filter.getVector();
+
+        // If filter has empty vbuckets, assume all vbuckets
+        if (!vblist.size()) {
+            size_t i;
+            for (i=0; i <= vbuckets.getSize(); i++) {
+                vblist.push_back(i);
+            }
         }
 
-        for (size_t i = 0; i < maxSize; ++i) {
-            if (stats.kvstoreMapVbuckets && kvstore_id != -1) {
-                vbid = vblist.at(i);
-                assert(vbid <= std::numeric_limits<uint16_t>::max());
-            } else {
-                assert(i <= std::numeric_limits<uint16_t>::max());
-                vbid = static_cast<uint16_t>(i);
-            }
+        for (size_t i = 0; i < vblist.size(); ++i) {
+            uint16_t vbid = vblist.at(i);
+            assert(vbid <= std::numeric_limits<uint16_t>::max());
 
             RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
             if (vb) {
