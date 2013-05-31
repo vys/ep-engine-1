@@ -1841,20 +1841,14 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
         ++stats.numTapBGFetched;
         ++connection->queueDrain;
 
-        // If there's a better version in memory, grab it, else go
-        // with what we pulled from disk.
-        GetValue gv(epstore->get(item->getKey(), item->getVBucketId(),
-                                 cookie, false));
-        if (gv.getStatus() == ENGINE_SUCCESS) {
-            delete item;
-            *itm = item = gv.getValue();
-        } else {
-            *itm = item;
-        }
-        *vbucket = static_cast<Item*>(*itm)->getVBucketId();
+        *itm = item;
 
         if (!connection->supportsAck()) {
+            GetValue gv(epstore->get(item->getKey(), item->getVBucketId(),
+                                 cookie, false));
             if (gv.getStoredValue() != NULL) {
+                delete item;
+                *itm = item = gv.getValue();
                 gv.getStoredValue()->incrementNumReplicas();
                 syncRegistry.itemReplicated(*item);
             } else {
@@ -1864,13 +1858,13 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
             }
         }
 
+        *vbucket = static_cast<Item*>(*itm)->getVBucketId();
+
         if (!connection->vbucketFilter(*vbucket)) {
             // We were going to use the item that we received from
             // disk, but the filter says not to, so we need to get rid
             // of it now.
-            if (gv.getStatus() != ENGINE_SUCCESS) {
-                delete item;
-            }
+            delete item;
             retry = true;
             return TAP_NOOP;
         }
