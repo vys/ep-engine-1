@@ -851,10 +851,16 @@ public:
             LockHolder lhb = vb->ht.getLockedBucket(v->getKey(), &bucket_num);
             assert(v == vb->ht.unlocked_find(v->getKey(), bucket_num, true));
 
+            uint64_t icas = v->isLocked(ep_current_time())
+                ? static_cast<uint64_t>(-1)
+                : v->getCas();
+
             if (v->isDeleted()) {
-                to.push_back(new QueuedItem(v->getKey(), it->getVBucketId(), queue_op_del, -1, v->getId()));
+                to.push_back(new QueuedItem(v->getKey(), it->getVBucketId(), queue_op_del, -1, v->getId(),
+                            v->getFlags(), v->getExptime(), icas, v->getCksum()));
             } else {
-                to.push_back(new QueuedItem(v->getKey(), it->getVBucketId(), queue_op_set, -1, v->getId()));
+                to.push_back(new QueuedItem(v->getKey(), it->getVBucketId(), queue_op_set, -1, v->getId(),
+                            v->getFlags(), v->getExptime(), icas, v->getCksum()));
             }
         }
     }

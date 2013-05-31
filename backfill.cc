@@ -111,6 +111,18 @@ bool BackFillVisitor::visitBucket(RCPtr<VBucket> vb) {
                 }
             }
             if (useDiskBackfill) {
+                uint32_t flags;
+                if (engine->tapConnMap.getConnectionFlags(name, flags)) {
+                    if (flags & TAP_CONNECT_REQUEST_KEYS_ONLY) {
+                        // Perform the regular hashtable walk since that will defer
+                        // disk reads due to this flag anyway, hence running fast.
+                        useDiskBackfill = false;
+                    }
+                } else {
+                    res = false; // Connection lost
+                }
+            }
+            if (useDiskBackfill) {
                 vbuckets.push_back(vb->getId());
                 ScheduleDiskBackfillTapOperation tapop;
                 engine->tapConnMap.performTapOp(name, sessionID, tapop, static_cast<void*>(NULL));

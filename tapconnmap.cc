@@ -609,6 +609,21 @@ bool TapConnMap::SetCursorToOpenCheckpoint(const std::string &name, uint16_t vbu
     return rv;
 }
 
+bool TapConnMap::getConnectionFlags(const std::string &name, uint32_t &flags) {
+    bool rv(false);
+    LockHolder clh(connMapMutex);
+
+    TapConnection *tc = findByName_UNLOCKED(name);
+    if (tc) {
+        TapProducer *tp = dynamic_cast<TapProducer*>(tc);
+        assert(tp);
+        rv = true;
+        flags = tp->getFlags();
+    }
+
+    return rv;
+}
+
 bool TapConnMap::closeTapConnectionByName(const std::string &name) {
     bool rv = false;
     LockHolder clh(connMapMutex);
