@@ -211,15 +211,67 @@ extern "C" {
     }
 
     static protocol_binary_response_status stopFlusher(EventuallyPersistentEngine *e,
+                                                       protocol_binary_request_header *request,
                                                        const char **msg,
                                                        size_t *msg_size) {
-        return e->stopFlusher(msg, msg_size);
+        protocol_binary_response_status rv = PROTOCOL_BINARY_RESPONSE_SUCCESS;
+
+        protocol_binary_request_no_extras *req =
+            (protocol_binary_request_no_extras*)request;
+
+        char keyz[256];
+
+        // Read the key.
+        int keylen = ntohs(req->message.header.request.keylen);
+        if (keylen >= (int)sizeof(keyz)) {
+            *msg = "Key is too large.";
+            return PROTOCOL_BINARY_RESPONSE_EINVAL;
+        }
+        memcpy(keyz, ((char*)request) + sizeof(req->message.header), keylen);
+        keyz[keylen] = 0x00;
+
+        try {
+            int v = atoi(keyz);
+            validate(v, 0, e->getNumKVStores() - 1);
+            rv = e->stopFlusher(v, msg, msg_size);
+        } catch(std::runtime_error ignored_exception) {
+            *msg = "Value out of range.";
+            rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
+        }
+
+        return rv;
     }
 
     static protocol_binary_response_status startFlusher(EventuallyPersistentEngine *e,
+                                                        protocol_binary_request_header *request,
                                                         const char **msg,
                                                         size_t *msg_size) {
-        return e->startFlusher(msg, msg_size);
+        protocol_binary_response_status rv = PROTOCOL_BINARY_RESPONSE_SUCCESS;
+
+        protocol_binary_request_no_extras *req =
+            (protocol_binary_request_no_extras*)request;
+
+        char keyz[256];
+
+        // Read the key.
+        int keylen = ntohs(req->message.header.request.keylen);
+        if (keylen >= (int)sizeof(keyz)) {
+            *msg = "Key is too large.";
+            return PROTOCOL_BINARY_RESPONSE_EINVAL;
+        }
+        memcpy(keyz, ((char*)request) + sizeof(req->message.header), keylen);
+        keyz[keylen] = 0x00;
+
+        try {
+            int v = atoi(keyz);
+            validate(v, 0, e->getNumKVStores() - 1);
+            rv = e->startFlusher(v, msg, msg_size);
+        } catch(std::runtime_error ignored_exception) {
+            *msg = "Value out of range.";
+            rv = PROTOCOL_BINARY_RESPONSE_EINVAL;
+        }
+
+        return rv;
     }
 
     static protocol_binary_response_status setTapParam(EventuallyPersistentEngine *e,
@@ -962,10 +1014,10 @@ extern "C" {
             return h->handleRestoreCmd(cookie, request, response);
 
         case CMD_STOP_PERSISTENCE:
-            res = stopFlusher(h, &msg, &msg_size);
+            res = stopFlusher(h, request, &msg, &msg_size);
             break;
         case CMD_START_PERSISTENCE:
-            res = startFlusher(h, &msg, &msg_size);
+            res = startFlusher(h, request, &msg, &msg_size);
             break;
         case CMD_SET_FLUSH_PARAM:
         case CMD_SET_TAP_PARAM:

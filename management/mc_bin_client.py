@@ -234,11 +234,11 @@ class MemcachedClient(object):
         return self._doCmd(memcacheConstants.CMD_SASL_STEP, 'CRAM-MD5',
                            user + ' ' + dig)
 
-    def stop_persistence(self):
-        return self._doCmd(memcacheConstants.CMD_STOP_PERSISTENCE, '', '')
+    def stop_persistence(self, key):
+        return self._doCmd(memcacheConstants.CMD_STOP_PERSISTENCE, key, '')
 
-    def start_persistence(self):
-        return self._doCmd(memcacheConstants.CMD_START_PERSISTENCE, '', '')
+    def start_persistence(self, key):
+        return self._doCmd(memcacheConstants.CMD_START_PERSISTENCE, key, '')
 
     def set_flush_param(self, key, val):
         print "setting flush param:", key, val

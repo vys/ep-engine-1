@@ -14,12 +14,37 @@ def auth(mc, username, password):
     if username:
         mc.sasl_auth_plain(username, password)
 
-def stop(mc, username=None, password=""):
+def get_kvs(mc, kvstore):
+    success = False
+    try:
+        stats = mc.stats('kvstore')
+        success = True
+        num_kvs = int(stats['num_kvstores'])
+    except:
+        if success:
+            import mc_bin_client
+            mc = mc_bin_client.MemcachedClient(mc.host, mc.port)
+            raise
+        else:
+            raise
+    kvstore = kvstore.strip()
+    kvrange = [str(kv) for kv in range(num_kvs)]
+    if kvstore == '':
+        return kvrange
+    if kvstore not in kvrange:
+        print "Kvstore %s not in range. Engine has %d kvstores." % (kvstore, num_kvs)
+        return []
+    return [kvstore]
+
+def stop(mc, kvstore='', username=None, password=""):
     auth(mc, username, password)
-    mc.stop_persistence()
-    stopped = False
-    while not stopped:
-        time.sleep(0.5)
+    kvs = get_kvs(mc, kvstore)
+    for kv in kvs:
+        mc.stop_persistence(kv)
+
+    # Now poll each kvstore
+    while len(kvs) > 0:
+        success = False
         try:
             stats = mc.stats()
             success = True
@@ -30,13 +55,19 @@ def stop(mc, username=None, password=""):
                 raise
             else:
                 raise
-        success = False
-        if stats['ep_flusher_state'] == 'paused':
-            stopped = True
+        # Obtain stats just once for multiple kvstore checks
+        while len(kvs) > 0:
+            kv = kvs.pop()
+            if stats['ep_flusher_state_' + kv] != 'paused':
+                kvs.append(kv)
+                time.sleep(0.5)
+                break
 
-def start(mc, username=None, password=""):
+def start(mc, kvstore='', username=None, password=""):
     auth(mc, username, password)
-    mc.start_persistence()
+    kvs = get_kvs(mc, kvstore)
+    for kv in kvs:
+        mc.start_persistence(kv)
 
 def set_param(mc, key, val, username=None, password=""):
     auth(mc, username, password)
@@ -53,8 +84,9 @@ All commands allow an optional username and password as the last
 two parameters.
 
 Persistence:
-    stop           - stop persistence
-    start          - start persistence
+    stop <KVID>    - stop persistence
+    start <KVID>   - start persistence
+    Note: Not providing KVID performs op on all kvstores.
 
 Available params for "set":
     enable_flushall           - enable the flush_all command (false by default)

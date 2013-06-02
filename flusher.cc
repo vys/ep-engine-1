@@ -49,18 +49,18 @@ void Flusher::wait(enum flusher_state to) {
     }
 }
 
-bool Flusher::pause(void) {
+bool Flusher::pause(int flag) {
     LockHolder lh(pauseLock);
-    pauseCounter++;
+    pauseCounter |= flag;
     if (_state == paused) {
         return true;
     }
     return transition_state(pausing);
 }
 
-bool Flusher::resume(void) {
+bool Flusher::resume(int flag) {
     LockHolder lh(pauseLock);
-    pauseCounter--;
+    pauseCounter -= pauseCounter & flag;
     if (pauseCounter > 0) {
         return true;
     }

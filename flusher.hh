@@ -137,8 +137,8 @@ public:
 
     bool stop(bool isForceShutdown = false);
     void wait(enum flusher_state to = stopped);
-    bool pause();
-    bool resume();
+    bool pause(int flag);
+    bool resume(int flag);
 
     void initialize(TaskId);
 
@@ -186,7 +186,7 @@ private:
     rel_time_t               flushStart;
     Atomic<bool>             vbStateLoaded;
     Atomic<bool>             forceShutdownReceived;
-    Atomic<int>              pauseCounter;
+    int                      pauseCounter;
     Mutex                    pauseLock;
     timeval                  waketime;
     int                      last_min_data_age;
