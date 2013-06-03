@@ -505,6 +505,30 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting bf_max_list_size to %d via flush params.", vsize);
                 BackfillDiskLoad::setMaxListSize((size_t)vsize);
+            } else if (strcmp(keyz, "bf_disk_sleep_time") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         static_cast<uint64_t>(7200));
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting bf_disk_sleep_time to %d via flush params.", vsize);
+                BackfillDiskLoad::setKvSleepTime((size_t)vsize);
+            } else if (strcmp(keyz, "bf_disk_sleep_enable") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         static_cast<uint64_t>(e->getNumKVStores() - 1));
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Enabling disk backfill sleep on kvstore %d via flush params.", vsize);
+                BackfillDiskLoad::setKvSleepEnable((int)vsize, true);
+            } else if (strcmp(keyz, "bf_disk_sleep_disable") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         static_cast<uint64_t>(e->getNumKVStores() - 1));
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Disabling disk backfill sleep on kvstore %d via flush params.", vsize);
+                BackfillDiskLoad::setKvSleepEnable((int)vsize, false);
             } else if (strcmp(keyz, "bf_resident_threshold") == 0) {
                 char *ptr = NULL;
                 // TODO:  This parser isn't perfect.
@@ -3203,6 +3227,18 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     add_stat, cookie);
     add_casted_stat("ep_latency_arith_cmd", epstats.arithCmdHisto.total(),
                     add_stat, cookie);
+
+    // Backfill stats
+    add_casted_stat("bf_max_list_size", BackfillDiskLoad::getMaxListSize(),
+                    add_stat, cookie);
+    add_casted_stat("bf_disk_sleep_time", BackfillDiskLoad::getKvSleepTime(),
+                    add_stat, cookie);
+    for (int i = 0; i < numKVStores; i++) {
+        char buf[40];
+        sprintf(buf, "bf_disk_sleep_enabled_%d", i);
+        add_casted_stat(buf, BackfillDiskLoad::isKvSleepEnabled(i) ? 1 : 0,
+                        add_stat, cookie);
+    }
 
     // Eviction stats
     add_casted_stat("ep_exp_pager_stime", getExpiryPagerSleeptime(),

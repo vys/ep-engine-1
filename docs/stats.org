@@ -167,6 +167,14 @@ For introductory information on stats within membase, start with the
 | ep_max_checkpoints            | Number of checkpoints to be kept in memory |
 | ep_checkpoint_period          | Maximum interval for creating a checkpoint |
 | ep_checkpoint_max_items       | Maximum number of items for a checkpoint   |
+| bf_max_list_size              | Maximum number of items to hold during     |
+|                               | disk based backfill                        |
+| bf_disk_sleep_time            | Number of seconds to sleep to delay disk   |
+|                               | backfill for testing purposes (works only  |
+|                               | on kvstores on which this has been enabled |
+|                               | bf_disk_sleep_enabled_<kvId>)              |
+| bf_disk_sleep_enabled_<kvId>  | Whether disk backfill sleeping enabled on  |
+|                               | a kvstore                                  |
 | ep_exp_pager_stime            | Sleep time for running the expiry pager    | 
 | ep_lru_rebuild_stime          | Sleep time for rebuilding the LRU list     | 
 | ep_enable_eviction_histograms | Whether to produce and print eviction      |

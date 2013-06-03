@@ -8,6 +8,8 @@
 
 double BackFillVisitor::backfillResidentThreshold = DEFAULT_BACKFILL_RESIDENT_THRESHOLD;
 size_t BackfillDiskLoad::backfillMaxListSize = BACKFILL_MAX_LIST_SIZE;
+size_t BackfillDiskLoad::kvSleepTime = 0;
+std::set<int> BackfillDiskLoad::kvSleepEnable;
 
 CallbackResult BackfillDiskLoad::callback(GetValue &gv) {
     // If a vbucket version of a bg fetched item is different from the current version,
@@ -66,6 +68,12 @@ bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
     }
     connMap.setEvents(name, &flushItems, queueLength, queueMemSize);
 
+    if (BackfillDiskLoad::kvSleepTime > 0) {
+        if (BackfillDiskLoad::isKvSleepEnabled(kvId)) {
+            sleep(BackfillDiskLoad::kvSleepTime);
+        }
+    }
+
     // Should decr the disk backfill counter regardless of the connectivity status
     CompleteDiskBackfillTapOperation op;
     valid = connMap.performTapOp(name, sessionID, op, static_cast<void*>(NULL));
@@ -79,7 +87,9 @@ bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
 
 std::string BackfillDiskLoad::description() {
     std::stringstream rv;
-    rv << "Loading TAP backfill from disk for vb " << vbucket;
+    rv << "Loading TAP backfill from disk for vb " << vbucket
+       << " on kvstore " << kvId
+       << " under connection " << name;
     return rv.str();
 }
 
@@ -185,6 +195,30 @@ bool BackFillVisitor::setResidentItemThreshold(double residentThreshold) {
 
 void BackfillDiskLoad::setMaxListSize(size_t maxListSize) {
     backfillMaxListSize = maxListSize;
+}
+
+size_t BackfillDiskLoad::getMaxListSize() {
+    return backfillMaxListSize;
+}
+
+void BackfillDiskLoad::setKvSleepTime(size_t sleepTime) {
+    kvSleepTime = sleepTime;
+}
+
+size_t BackfillDiskLoad::getKvSleepTime() {
+    return kvSleepTime;
+}
+
+void BackfillDiskLoad::setKvSleepEnable(int kvId, bool enable) {
+    if (enable) {
+        kvSleepEnable.insert(kvId);
+    } else {
+        kvSleepEnable.erase(kvId);
+    }
+}
+
+bool BackfillDiskLoad::isKvSleepEnabled(int kvId) {
+    return (kvSleepEnable.find(kvId) != kvSleepEnable.end());
 }
 
 void BackFillVisitor::setEvents() {

@@ -97,6 +97,15 @@ memcached like this:
 | keep_closed_chks       | bool   | True if we want to keep closed checkpoints |
 |                        |        | in memory if the current memory usage is   |
 |                        |        | below high water mark                      |
+| bf_max_list_size       | int    | Maximum number of items to hold during     |
+|                        |        | disk based backfill                        |
+| bf_disk_sleep_time     | int    | Number of seconds to sleep to delay disk   |
+|                        |        | backfill for testing purposes (works only  |
+|                        |        | on kvstores on which this has been enabled |
+|                        |        | using bf_disk_sleep_enable)                |
+| bf_disk_sleep_enable   | int    | Enable disk backfill sleeping on a kvstore |
+| bf_disk_sleep_disable  | int    | Disable disk backfill sleeping on a        |
+|                        |        | kvstore                                    |
 | bf_resident_threshold  | float  | Resident item threshold for only memory    |
 |                        |        | backfill to be kicked off                  |
 | getl_default_timeout   | int    | The default timeout for a getl lock in (s) |
