@@ -444,9 +444,9 @@ public:
         completeBackfillCommon_UNLOCKED();
     }
 
-    void scheduleDiskBackfill() {
+    void scheduleDiskBackfill(int count = 1) {
         LockHolder lh(queueLock);
-        ++diskBackfillCounter;
+        diskBackfillCounter += count;
     }
 
     void completeDiskBackfill() {

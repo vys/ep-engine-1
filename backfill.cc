@@ -30,7 +30,7 @@ CallbackResult BackfillDiskLoad::callback(GetValue &gv) {
     } else {
         ReceivedItemTapOperation tapop(true);
         // if the tap connection is closed, then free an Item instance
-        if (!connMap.performTapOp(name, sessionID, tapop, gv.getValue(), true)) {
+        if (!connMap.performTapOp(name, sessionID, tapop, gv.getValue())) {
             delete gv.getValue();
             return CB_ABORT;
         }
@@ -134,7 +134,7 @@ bool BackFillVisitor::visitBucket(RCPtr<VBucket> vb) {
             }
             if (useDiskBackfill) {
                 vbuckets.push_back(vb->getId());
-                ScheduleDiskBackfillTapOperation tapop;
+                ScheduleDiskBackfillTapOperation tapop(endId - beginId);
                 engine->tapConnMap.performTapOp(name, sessionID, tapop, static_cast<void*>(NULL));
                 res = false; // Don't need a hashtable walk for this vbucket
             }
