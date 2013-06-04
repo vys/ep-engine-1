@@ -817,7 +817,7 @@ public:
         assert(epstore);
 
         int kvid = KVStoreMapper::getKVStoreId(key, vbucket);
-        epstore->getROUnderlying(kvid)->get(key, rowid, vbucket, vbver, gcb);
+        epstore->getROBackfillUnderlying(kvid)->get(key, rowid, vbucket, vbver, gcb);
         gcb.waitForValue();
         assert(gcb.fired);
 
@@ -897,7 +897,7 @@ void TapProducer::queueBGFetch(const std::string &key, uint64_t id,
                                                               vb, vbv,
                                                               id, c, sessionID));
     int kvid = KVStoreMapper::getKVStoreId(key, vb);
-    engine.getEpStore()->getRODispatcher(kvid)->schedule(dcb, NULL, Priority::TapBgFetcherPriority);
+    engine.getEpStore()->getROBackfillDispatcher(kvid)->schedule(dcb, NULL, Priority::TapBgFetcherPriority);
     ++bgQueued;
     ++bgJobIssued;
     assert(!empty_UNLOCKED());
