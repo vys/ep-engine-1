@@ -121,6 +121,7 @@ Available params for "set":
     bf_disk_sleep_enable      - Enable sleeping on KVStore specified (Valid range 0 - numKVStores-1)
     bf_disk_sleep_disable     - Disable sleeping on KVStore specified (Valid range 0 - numKVStores-1)
     bf_resident_threshold     - Resident percentage threshold below which disk backfill will trigger (Valid range 0.7 - 1.0)
+    bf_num_keys_threshold     - Threshold number of keys above which disk backfill will trigger (Valid range 0 - inf)
     scrub_memory              - Scrub allocator's memory to release as much memory as possible back to OS
     allocator_stats           - Print allocator stats """)
 

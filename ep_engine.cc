@@ -535,9 +535,15 @@ extern "C" {
                 double vsize = strtod(valz, &ptr);
                 validate(vsize, 0.0, 1.0);
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting bf_resident_threshold to %f via flush params.", vsize);
-                if (!BackFillVisitor::setResidentItemThreshold(vsize)) {
-                    *msg = "Value out of range.";
-                }
+                BackFillVisitor::setResidentItemThreshold(vsize);
+            } else if (strcmp(keyz, "bf_num_keys_threshold") == 0) {
+                char *ptr = NULL;
+                // TODO:  This parser isn't perfect.
+                uint64_t vsize = strtoull(valz, &ptr, 10);
+                validate(vsize, static_cast<uint64_t>(0),
+                         std::numeric_limits<uint64_t>::max());
+                getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting bf_num_keys_threshold to %d via flush params.", vsize);
+                BackFillVisitor::setNumKeysThreshold((size_t)vsize);
             } else {
                 *msg = "Unknown config param";
                 rv = PROTOCOL_BINARY_RESPONSE_KEY_ENOENT;
@@ -1363,6 +1369,7 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     }
 
     BackFillVisitor::setResidentItemThreshold(configuration.getBfResidentThreshold());
+    BackFillVisitor::setNumKeysThreshold(configuration.getBfNumKeysThreshold());
     BackfillDiskLoad::setMaxListSize(configuration.getBfMaxListSize());
 
     HashTable::setDefaultNumBuckets(configuration.getHtSize());
@@ -3230,6 +3237,10 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
 
     // Backfill stats
     add_casted_stat("bf_max_list_size", BackfillDiskLoad::getMaxListSize(),
+                    add_stat, cookie);
+    add_casted_stat("bf_num_keys_threshold", BackFillVisitor::getNumKeysThreshold(),
+                    add_stat, cookie);
+    add_casted_stat("bf_resident_threshold", BackFillVisitor::getResidentItemThreshold(),
                     add_stat, cookie);
     add_casted_stat("bf_disk_sleep_time", BackfillDiskLoad::getKvSleepTime(),
                     add_stat, cookie);

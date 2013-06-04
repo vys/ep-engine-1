@@ -167,6 +167,10 @@ For introductory information on stats within membase, start with the
 | ep_max_checkpoints            | Number of checkpoints to be kept in memory |
 | ep_checkpoint_period          | Maximum interval for creating a checkpoint |
 | ep_checkpoint_max_items       | Maximum number of items for a checkpoint   |
+| bf_resident_threshold         | Resident item threshold below which disk   |
+|                               | will be triggered                          |
+| bf_num_keys_threshold         | Threshold number of keys above which disk  |
+|                               | will be triggered                          |
 | bf_max_list_size              | Maximum number of items to hold during     |
 |                               | disk based backfill                        |
 | bf_disk_sleep_time            | Number of seconds to sleep to delay disk   |

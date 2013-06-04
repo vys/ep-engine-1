@@ -106,8 +106,10 @@ memcached like this:
 | bf_disk_sleep_enable   | int    | Enable disk backfill sleeping on a kvstore |
 | bf_disk_sleep_disable  | int    | Disable disk backfill sleeping on a        |
 |                        |        | kvstore                                    |
-| bf_resident_threshold  | float  | Resident item threshold for only memory    |
-|                        |        | backfill to be kicked off                  |
+| bf_resident_threshold  | float  | Resident item threshold below which disk   |
+|                        |        | will be triggered                          |
+| bf_num_keys_threshold  | int    | Threshold number of keys above which disk  |
+|                        |        | will be triggered                          |
 | getl_default_timeout   | int    | The default timeout for a getl lock in (s) |
 | getl_max_timeout       | int    | The maximum timeout for a getl lock in (s) |
 | sync_cmd_timeout       | int    | The timeout for SYNC requests in (ms)      |

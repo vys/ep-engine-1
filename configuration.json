@@ -4,6 +4,10 @@
             "default": "1000",
             "type": "size_t"
         },
+        "bf_num_keys_threshold": {
+            "default": "70000000",
+            "type": "size_t"
+        },
         "bf_resident_threshold": {
             "default": "0.9",
             "type": "float"

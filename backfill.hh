@@ -11,7 +11,7 @@
 #include "ep_engine.h"
 
 #define DEFAULT_BACKFILL_RESIDENT_THRESHOLD 0.9
-#define MINIMUM_BACKFILL_RESIDENT_THRESHOLD 0.7
+#define DEFAULT_BACKFILL_NUM_KEYS_THRESHOLD 70000000
 #define BACKFILL_MAX_LIST_SIZE 1000
 
 /**
@@ -78,8 +78,7 @@ public:
         queue(new std::list<queued_item>), queueLength(0), queueMemSize(0),
         found(), validityToken(token),
         maxBackfillSize(e->getConfiguration().getTapBacklogLimit()), valid(true),
-        vb0(e->getConfiguration().isVb0()),
-        residentRatioBelowThreshold(false), sessionID(sid) {
+        sessionID(sid) {
         int numKVStores = engine->epstore->getNumKVStores();
         efficientVBDump = new bool[numKVStores];
         for (int kvid = 0; kvid < numKVStores; kvid++) {
@@ -112,7 +111,13 @@ public:
 
     void complete(void);
 
-    static bool setResidentItemThreshold(double residentThreshold);
+    static void setResidentItemThreshold(double residentThreshold);
+
+    static double getResidentItemThreshold();
+
+    static void setNumKeysThreshold(size_t numKeyThreshold);
+
+    static size_t getNumKeysThreshold();
 
 private:
 
@@ -133,11 +138,10 @@ private:
     ssize_t maxBackfillSize;
     bool valid;
     bool *efficientVBDump;
-    bool vb0;
-    bool residentRatioBelowThreshold;
     uint64_t sessionID;
 
     static double backfillResidentThreshold;
+    static size_t backfillNumKeysThreshold;
 };
 
 /**
