@@ -1443,6 +1443,7 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     stats.flushDurationHighWats.resize(numKVStores);
     stats.commit_times.resize(numKVStores);
     stats.flusherRequeuedRejected.resize(numKVStores);
+    stats.backfillFlushItems.resize(numKVStores);
 
     databaseInitTime = ep_real_time() - start;
     epstore = new EventuallyPersistentStore(*this, kvstore, configuration.isVb0(),
@@ -3249,6 +3250,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
         sprintf(buf, "bf_disk_sleep_enabled_%d", i);
         add_casted_stat(buf, BackfillDiskLoad::isKvSleepEnabled(i) ? 1 : 0,
                         add_stat, cookie);
+        sprintf(buf, "bf_flush_items_%d", i);
+        add_casted_stat(buf, epstats.backfillFlushItems[i], add_stat, cookie);
     }
 
     // Eviction stats

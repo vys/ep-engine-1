@@ -404,6 +404,7 @@ public:
     Atomic<hrtime_t> tapBgMinWait;
     //! The longest tap bg wait time
     Atomic<hrtime_t> tapBgMaxWait;
+    std::vector<Atomic<size_t> > backfillFlushItems;
 
     //! Histogram of tap background wait loads.
     Histogram<hrtime_t> tapBgWaitHisto;

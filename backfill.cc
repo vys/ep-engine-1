@@ -52,6 +52,7 @@ bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
 
     std::list<queued_item> flushItems;
     engine->getEpStore()->getFlushItems(flushItems, kvId);
+    engine->getEpStats().backfillFlushItems[kvId].incr(flushItems.size());
 
     // Walk the disk
     if (connMap.checkConnectivity(name) && !engine->getEpStore()->isFlushAllScheduled()) {
@@ -67,6 +68,7 @@ bool BackfillDiskLoad::callback(Dispatcher &d, TaskId t) {
         queueLength++;
         queueMemSize += (*it)->size();
     }
+    engine->getEpStats().backfillFlushItems[kvId].decr(flushItems.size());
     connMap.setEvents(name, &flushItems, queueLength, queueMemSize);
 
     if (BackfillDiskLoad::kvSleepTime > 0) {
