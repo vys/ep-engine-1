@@ -123,7 +123,9 @@ Available params for "set":
     bf_resident_threshold     - Resident percentage threshold below which disk backfill will trigger (Valid range 0.7 - 1.0)
     bf_num_keys_threshold     - Threshold number of keys above which disk backfill will trigger (Valid range 0 - inf)
     scrub_memory              - Scrub allocator's memory to release as much memory as possible back to OS
-    allocator_stats           - Print allocator stats """)
+    allocator_stats           - Print allocator stats 
+    tap_throttle_persist_threshold - Persistence queue size threshold for tap throttle (Valid range 1M - 10)""")
+
 
     c.addCommand('stop', stop, 'stop')
     c.addCommand('start', start, 'start')

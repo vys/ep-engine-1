@@ -409,8 +409,10 @@ name used in the configuration.
 | ep_tap_queue_backoff     | Total back-off items                       |
 | ep_tap_queue_backfill    | Number of backfill remaining               |
 | ep_tap_queue_itemondisk  | Number of items remaining on disk          |
-| ep_tap_throttle_threshold     | Percentage of memory in use before we      |
-|                               | throttle tap streams                       |
+| ep_tap_throttle_threshold     | Percentage of memory in use before we |
+|                               | throttle tap streams                  |
+| ep_tap_throttle_persist_threshold  | Persistence queue size threshold |
+|                                    | when tap should throttle         |
 
 *** Per Tap Client Stats
 

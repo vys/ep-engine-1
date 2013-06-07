@@ -544,6 +544,14 @@ extern "C" {
                          std::numeric_limits<uint64_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting bf_num_keys_threshold to %d via flush params.", vsize);
                 BackFillVisitor::setNumKeysThreshold((size_t)vsize);
+            } else if (strcmp(keyz, "tap_throttle_persist_threshold") == 0) {
+                char *ptr = NULL;
+                uint64_t vsize = strtoul(valz, &ptr, 10);
+                validate(vsize,
+                static_cast<uint64_t>(MIN_TAP_THROTTLE_PERSIST_THRESHOLD),
+                static_cast<uint64_t>(MAX_TAP_THROTTLE_PERSIST_THRESHOLD));
+                EPStats &stats = e->getEpStats();
+                stats.tapThrottlePersistThreshold = vsize;
             } else {
                 *msg = "Unknown config param";
                 rv = PROTOCOL_BINARY_RESPONSE_KEY_ENOENT;
@@ -1350,6 +1358,7 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     stats.kvstoreMapVbuckets = configuration.isKvstoreMapVbuckets();
 
     stats.tapThrottleThreshold = static_cast<double>(configuration.getTapThrottleThreshold());
+    stats.tapThrottlePersistThreshold = DEFAULT_TAP_THROTTLE_PERSIST_THRESHOLD; 
 
     CheckpointManager::setCheckpointMaxItems(configuration.getChkMaxItems());
     CheckpointManager::setCheckpointPeriod(configuration.getChkPeriod());
@@ -3291,6 +3300,8 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
         Histogram<hrtime_t> *h = iter->second;
         add_casted_stat(stat_key.c_str(), h->total(), add_stat, cookie);
     }
+    add_casted_stat("ep_tap_throttle_persistence", epstats.tapThrottlePersistThreshold,
+                     add_stat, cookie);
     return ENGINE_SUCCESS;
 }
 

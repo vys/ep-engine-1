@@ -396,6 +396,9 @@ public:
     Atomic<size_t> tapThrottled;
     //! Percentage of memory in use before we throttle tap input
     Atomic<double> tapThrottleThreshold;
+    //! Persistence queue size threshold when tap should throttle
+    Atomic<size_t> tapThrottlePersistThreshold;
+
     /** The sum of the deltas (in usec) from a tap item was put in queue until
      *  the dispatcher started the work for this item
      */
