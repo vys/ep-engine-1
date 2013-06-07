@@ -1928,12 +1928,10 @@ inline tap_event_t EventuallyPersistentEngine::doWalkTapQueue(const void *cookie
         *itm = item;
 
         if (!connection->supportsAck()) {
-            GetValue gv(epstore->get(item->getKey(), item->getVBucketId(),
-                                 cookie, false));
-            if (gv.getStoredValue() != NULL) {
-                delete item;
-                *itm = item = gv.getValue();
-                gv.getStoredValue()->incrementNumReplicas();
+            uint8_t incr = 1;
+            if (epstore->invokeOnLockedStoredValue(item->getKey(), 
+                                item->getVBucketId(),
+                                &StoredValue::incrementNumReplicas, incr) == true) {
                 syncRegistry.itemReplicated(*item);
             } else {
                 getLogger()->log(EXTENSION_LOG_WARNING, NULL,

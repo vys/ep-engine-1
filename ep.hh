@@ -873,21 +873,6 @@ public:
 
     void getFlushItems(std::list<queued_item>& flushItems, int kvId);
 
-private:
-
-    void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
-
-    RCPtr<VBucket> getVBucket(uint16_t vbid, vbucket_state_t wanted_state);
-
-    /* Queue an item to be written to persistent layer. */
-    void queueDirty(const std::string &key, uint16_t vbid,
-                    enum queue_operation op, const value_t &value,
-                    uint32_t flags = 0, time_t exptime = 0, uint64_t cas = 0,
-                    int64_t rowid = -1, const std::string &cksum = "",
-                    time_t queued = -1);
-
-    void queueFlusher(RCPtr<VBucket> vb, StoredValue *v, time_t queued = -1); 
-
     /**
      * Retrieve a StoredValue and invoke a method on it.
      *
@@ -921,6 +906,21 @@ private:
         }
         return v != NULL;
     }
+
+private:
+
+    void scheduleVBDeletion(RCPtr<VBucket> vb, uint16_t vb_version, double delay);
+
+    RCPtr<VBucket> getVBucket(uint16_t vbid, vbucket_state_t wanted_state);
+
+    /* Queue an item to be written to persistent layer. */
+    void queueDirty(const std::string &key, uint16_t vbid,
+                    enum queue_operation op, const value_t &value,
+                    uint32_t flags = 0, time_t exptime = 0, uint64_t cas = 0,
+                    int64_t rowid = -1, const std::string &cksum = "",
+                    time_t queued = -1);
+
+    void queueFlusher(RCPtr<VBucket> vb, StoredValue *v, time_t queued = -1); 
 
     void requeueRejectedItems(FlushList *rejectList,
                               FlushList *flushList,
