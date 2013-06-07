@@ -949,6 +949,7 @@ void TapProducer::addStats(ADD_STAT add_stat, const void *c) {
     addStat("qlen_low_pri", vBucketLowPriority.size(), add_stat, c);
     addStat("vb_filters", vbucketFilter.size(), add_stat, c);
     addStat("vb_filter", filterText.c_str(), add_stat, c);
+    addStat("registred_tapclient", registeredTAPClient, add_stat, c);
     addStat("rec_fetched", recordsFetched, add_stat, c);
     if (recordsSkipped > 0) {
         addStat("rec_skipped", recordsSkipped, add_stat, c);
