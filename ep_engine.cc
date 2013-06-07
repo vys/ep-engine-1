@@ -2326,6 +2326,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::tapNotify(const void *cookie,
     switch (tap_event) {
     case TAP_NOOP:
     case TAP_OPAQUE:
+    case TAP_ACK:
         break;
     default:
         if (!connection->vbucketFilter(vbucket)) {
