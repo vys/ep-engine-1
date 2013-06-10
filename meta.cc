@@ -19,7 +19,7 @@ bool HashMetaData::setMetaData(std::string &key, rel_time_t exp,  std::string &m
     Node *n = getBucket(exp);
     LockHolder lh(n->l);
     assert(n->exp <= exp); 
-    if (n->exp < exp) {
+    if (n->exp <= exp) {
         n->stored.destroy();
     } 
     n->exp = exp;
