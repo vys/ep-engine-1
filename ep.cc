@@ -2739,7 +2739,7 @@ VBCBAdaptor::VBCBAdaptor(EventuallyPersistentStore *s,
 {
     const VBucketFilter &vbFilter = visitor->getVBucketFilter();
     size_t maxSize = store->vbuckets.getSize();
-    for (size_t i = 0; i <= maxSize; ++i) {
+    for (size_t i = 0; i < maxSize; ++i) {
         assert(i <= std::numeric_limits<uint16_t>::max());
         uint16_t vbid = static_cast<uint16_t>(i);
         RCPtr<VBucket> vb = store->vbuckets.getBucket(vbid);
