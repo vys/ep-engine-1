@@ -292,9 +292,9 @@ public:
         highPriorityVbSnapshot.set(vbh->isHighPriorityVbSnapshotScheduled());
         lowPriorityVbSnapshot.set(vbh->isLowPriorityVbSnapshotScheduled());
 
-        std::copy(buckets, buckets+vbh->getSize(), buckets);
         size_t vbh_size = vbh->getSize();
         for (size_t i = 0; i < vbh_size; ++i) {
+            buckets[i].reset(vbh->getBucket(i));
             bucketDeletion[i].set(vbh->isBucketDeletion(i));
             bucketVersions[i].set(vbh->getBucketVersion(i));
             persistenceCheckpointIds[i].set(vbh->getPersistenceCheckpointId(i));
