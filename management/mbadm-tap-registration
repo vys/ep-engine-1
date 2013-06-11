@@ -29,7 +29,7 @@ def parse_args(args):
     last_closed_checkpoint_id = -1
     # By default, we disable backfill for the registered TAP client.
     enable_backfill = False
-    vbucket_ids = (0)
+    vbucket_ids = [0]
 
     try:
         opts, args = getopt.getopt(args, 'h:r:d:l:cbv:', ['help'])

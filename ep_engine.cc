@@ -421,7 +421,8 @@ extern "C" {
                          std::numeric_limits<time_t>::max());
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting prune_lru_age to %d via flush params.", vsize);
                 e->setPruneAge(vsize);
-            } else if (strcmp(keyz, "inconsistent_slave_chk") == 0) {
+            } else if (strcmp(keyz, "inconsistent_slave_chk") == 0 &&
+                    kvstoreMapVbuckets == false) {
                 bool inconsistentSlaveCheckpoint = false;
                 if (strcmp(valz, "true") == 0) {
                     inconsistentSlaveCheckpoint = true;
@@ -1288,7 +1289,11 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
     CheckpointManager::setCheckpointMaxItems(configuration.getChkMaxItems());
     CheckpointManager::setCheckpointPeriod(configuration.getChkPeriod());
     CheckpointManager::setMaxCheckpoints(configuration.getMaxCheckpoints());
-    CheckpointManager::allowInconsistentSlaveCheckpoint(configuration.isInconsistentSlaveChk());
+
+    if (stats.kvstoreMapVbuckets == false) {
+        CheckpointManager::allowInconsistentSlaveCheckpoint(configuration.isInconsistentSlaveChk());
+    }
+
     CheckpointManager::keepClosedCheckpointsUnderHighWat(configuration.isKeepClosedChks());
 
     BackFillVisitor::setResidentItemThreshold(configuration.getBfResidentThreshold());
