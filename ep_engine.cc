@@ -249,6 +249,7 @@ extern "C" {
                                                          size_t *) {
         *msg = "Updated";
         protocol_binary_response_status rv = PROTOCOL_BINARY_RESPONSE_SUCCESS;
+        EPStats &stats = e->getEpStats();
 
         // Handle the actual mutation.
         try {
@@ -267,7 +268,6 @@ extern "C" {
                 e->setBGFetchDelay(static_cast<uint32_t>(v));
             } else if (strcmp(keyz, "tap_throttle_threshold") == 0) {
                 validate(v, 0, 100);
-                EPStats &stats = e->getEpStats();
                 stats.tapThrottleThreshold = static_cast<double>(v) / 100.0;
             } else if (strcmp(keyz, "chk_max_items") == 0) {
                 validate(v, MIN_CHECKPOINT_ITEMS, MAX_CHECKPOINT_ITEMS);
@@ -285,7 +285,6 @@ extern "C" {
                 uint64_t vsize = strtoull(valz, &ptr, 10);
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
-                EPStats &stats = e->getEpStats();
                 stats.maxDataSize = vsize;
 
                 stats.mem_low_wat = percentOf(StoredValue::getMaxDataSize(stats), 0.6);
@@ -297,7 +296,6 @@ extern "C" {
                 uint64_t vsize = strtoull(valz, &ptr, 10);
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
-                EPStats &stats = e->getEpStats();
                 stats.mem_low_wat = vsize;
             } else if (strcmp(keyz, "mem_high_wat") == 0) {
                 // Want more bits than int.
@@ -306,7 +304,6 @@ extern "C" {
                 uint64_t vsize = strtoull(valz, &ptr, 10);
                 validate(vsize, static_cast<uint64_t>(0),
                          std::numeric_limits<uint64_t>::max());
-                EPStats &stats = e->getEpStats();
                 stats.mem_high_wat = vsize;
             } else if (strcmp(keyz, "sync_cmd_timeout") == 0) {
                 char *ptr = NULL;
@@ -422,7 +419,7 @@ extern "C" {
                 getLogger()->log(EXTENSION_LOG_DEBUG, NULL, "Setting prune_lru_age to %d via flush params.", vsize);
                 e->setPruneAge(vsize);
             } else if (strcmp(keyz, "inconsistent_slave_chk") == 0 &&
-                    kvstoreMapVbuckets == false) {
+                    stats.kvstoreMapVbuckets == false) {
                 bool inconsistentSlaveCheckpoint = false;
                 if (strcmp(valz, "true") == 0) {
                     inconsistentSlaveCheckpoint = true;
@@ -856,19 +853,6 @@ extern "C" {
     {
         protocol_binary_request_set_vbucket *req =
             reinterpret_cast<protocol_binary_request_set_vbucket*>(request);
-
-        /**
-         * TODO: Remove this code. This makes no sense
-         *
-        size_t bodylen = ntohl(req->message.header.request.bodylen)
-            - ntohs(req->message.header.request.keylen);
-        if (bodylen != sizeof(vbucket_state_t)) {
-            const std::string msg("Incorrect packet format");
-            response(NULL, 0, NULL, 0, msg.c_str(), msg.length(),
-                     PROTOCOL_BINARY_RAW_BYTES,
-                     PROTOCOL_BINARY_RESPONSE_EINVAL, 0, cookie);
-        }
-        */
 
         vbucket_state_t state;
         memcpy(&state, &req->message.body.state, sizeof(state));

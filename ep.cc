@@ -1025,7 +1025,6 @@ bool EventuallyPersistentStore::deleteVBucket(uint16_t vbid) {
     // Lock to prevent a race condition between a failed update and add (and delete).
     LockHolder lh(vbsetMutex);
     bool rv(false);
-
     RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
     if (vb && vb->getState() == vbucket_state_dead) {
         uint16_t vb_version = vbuckets.getBucketVersion(vbid);
@@ -1035,11 +1034,27 @@ bool EventuallyPersistentStore::deleteVBucket(uint16_t vbid) {
         HashTableStatVisitor statvis = vb->ht.unlocked_clear();
         stats.currentSize.decr(statvis.memSize - statvis.valSize);
         assert(stats.currentSize.get() < GIGANTOR);
+
+        // Remove vbucket from kvstore allocation
+        int kvid = KVStoreMapper::getVBucketToKVId(vb);
+        if (kvid != -1) {
+            std::map<int, std::vector<uint16_t> >::iterator it;
+            it = kvstoresMap.find(kvid);
+            assert(it != kvstoresMap.end());
+            std::vector<uint16_t>::iterator vbit = (*it).second.begin();
+            for (; vbit != (*it).second.end(); vbit++) {
+                if (*vbit == vb->getId()) {
+                    (*it).second.erase(vbit);
+                    break;
+                }
+            }
+        }
         vbuckets.removeBucket(vbid);
         hlh.unlock();
         scheduleVBSnapshot(Priority::VBucketPersistHighPriority,
                            KVStoreMapper::getVBucketToKVId(vb));
         scheduleVBDeletion(vb, vb_version);
+
     }
     return rv;
 }
@@ -2392,7 +2407,6 @@ bool EventuallyPersistentStore::isKVStoreAvailable(int kvid) {
 
 bool EventuallyPersistentStore::setKVStoreAvailablity(int kvid, bool val) {
     LockHolder lh(kvstoreMutex);
-
     if (kvid < 0 || kvid >= numKVStores) {
         return false;
     }
@@ -2408,11 +2422,9 @@ bool EventuallyPersistentStore::setKVStoreAvailablity(int kvid, bool val) {
         for (; it != vblist.end(); it++) {
             RCPtr<VBucket> vb = vbuckets.getBucket(*it);
             if (vb) {
-                if(!deleteVBucket(*it)) {
-                    getLogger()->log(EXTENSION_LOG_INFO, NULL,
-                     "Unable to change kvstore-%d state to online (vbuckets are not marked as dead)\n", *it);
-                    return false;
-                }
+                getLogger()->log(EXTENSION_LOG_INFO, NULL,
+                 "Unable to change kvstore-%d state to online (vbuckets are not removed)\n", *it);
+                return false;
             }
         }
 
