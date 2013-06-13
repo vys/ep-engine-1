@@ -115,12 +115,13 @@ void StrategicSqlite3::set(const Item &itm, uint16_t vb_version,
 
 void StrategicSqlite3::get(const std::string &key, uint64_t rowid,
                            uint16_t vb, uint16_t vbver, Callback<GetValue> &cb) {
+    bool sts;
     PreparedStatement *sel_stmt = strategy->getStatements(vb, vbver, key)->sel();
     sel_stmt->bind64(1, rowid);
-
     ++stats.io_num_read;
 
-    if(sel_stmt->fetch()) {
+    sts = sel_stmt->fetch();
+    if(sts && sel_stmt->column_int(7) == static_cast<int>(vbver)) {
         GetValue rv(new Item(key.data(),
                              static_cast<uint16_t>(key.length()),
                              sel_stmt->column_int(1),

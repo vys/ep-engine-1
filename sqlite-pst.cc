@@ -179,7 +179,7 @@ PreparedStatement *StatementFactory::mkSelect(sqlite3 *db,
     char buf[1024];
     // v=0, flags=1, exptime=2, cas=3, rowid=4, vbucket=5, cksum=6
     snprintf(buf, sizeof(buf),
-             "select v, flags, exptime, cas, rowid, vbucket, cksum "
+             "select v, flags, exptime, cas, rowid, vbucket, cksum, vb_version "
              "from %s where rowid = ?", table.c_str());
     return new PreparedStatement(db, buf);
 }
