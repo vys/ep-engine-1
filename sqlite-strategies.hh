@@ -115,7 +115,8 @@ protected:
         for(i=0; str[i] != 0x00; i++) {
             h = ((h << 5) + h) ^ str[i];
         }
-        return std::abs(h) % (int)shardCount;
+        // Cast to unsigned to handle the value -2^31
+        return (unsigned int)std::abs(h) % (int)shardCount;
     }
 
     virtual void initDB() {
