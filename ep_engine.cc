@@ -2856,36 +2856,34 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.flushExpired, add_stat, cookie);
     add_casted_stat("ep_queue_size",
                     epstats.queue_size, add_stat, cookie);
-    if (numKVStores > 1) {
-        for (int i = 0; i < numKVStores; i++) {
-            char buf[40];
-            sprintf(buf, "ep_flusher_todo_%d", int(i));
-            add_casted_stat(buf, epstats.flusher_todos[i], add_stat, cookie);
-            sprintf(buf, "ep_flusher_state_%d", int(i));
-            add_casted_stat(buf, epstore->getFlusher(i)->stateName(), add_stat, cookie);
-            sprintf(buf, "ep_commit_time_%d", int(i));
-            add_casted_stat(buf, epstats.commit_times[i], add_stat, cookie);
-            sprintf(buf, "ep_commit_time_total_%d", int(i));
-            add_casted_stat(buf, epstats.cumulativeCommitTimes[i], add_stat, cookie);
-            sprintf(buf, "ep_flush_duration_%d", int(i));
-            add_casted_stat(buf, epstats.flushDurations[i], add_stat, cookie);
-            sprintf(buf, "ep_flush_duration_total_%d", int(i));
-            add_casted_stat(buf, epstats.cumulativeFlushTimes[i], add_stat, cookie);
-            sprintf(buf, "ep_flush_duration_highwat_%d", int(i));
-            add_casted_stat(buf, epstats.flushDurationHighWats[i], add_stat, cookie);
-            sprintf(buf, "ep_flusher_deduplication_%d", int(i));
-            add_casted_stat(buf, epstats.flusherDedup[i], add_stat, cookie);
-            sprintf(buf, "ep_commit_num_%d", int(i));
-            add_casted_stat(buf, epstats.flusherCommits[i], add_stat, cookie);
-            sprintf(buf, "ep_flush_preempts_%d", int(i));
-            add_casted_stat(buf, epstats.flusherPreempts[i], add_stat, cookie);
-            sprintf(buf, "ep_item_begin_failed_%d", int(i));
-            add_casted_stat(buf, epstats.beginFailed[i], add_stat, cookie);
-            sprintf(buf, "ep_item_commit_failed_%d", int(i));
-            add_casted_stat(buf, epstats.commitFailed[i], add_stat, cookie);
-            sprintf(buf, "ep_flusher_requeue_rejected_%d", int(i));
-            add_casted_stat(buf, epstats.flusherRequeuedRejected[i], add_stat, cookie);
-        }
+    for (int i = 0; i < numKVStores; i++) {
+        char buf[40];
+        sprintf(buf, "ep_flusher_todo_%d", int(i));
+        add_casted_stat(buf, epstats.flusher_todos[i], add_stat, cookie);
+        sprintf(buf, "ep_flusher_state_%d", int(i));
+        add_casted_stat(buf, epstore->getFlusher(i)->stateName(), add_stat, cookie);
+        sprintf(buf, "ep_commit_time_%d", int(i));
+        add_casted_stat(buf, epstats.commit_times[i], add_stat, cookie);
+        sprintf(buf, "ep_commit_time_total_%d", int(i));
+        add_casted_stat(buf, epstats.cumulativeCommitTimes[i], add_stat, cookie);
+        sprintf(buf, "ep_flush_duration_%d", int(i));
+        add_casted_stat(buf, epstats.flushDurations[i], add_stat, cookie);
+        sprintf(buf, "ep_flush_duration_total_%d", int(i));
+        add_casted_stat(buf, epstats.cumulativeFlushTimes[i], add_stat, cookie);
+        sprintf(buf, "ep_flush_duration_highwat_%d", int(i));
+        add_casted_stat(buf, epstats.flushDurationHighWats[i], add_stat, cookie);
+        sprintf(buf, "ep_flusher_deduplication_%d", int(i));
+        add_casted_stat(buf, epstats.flusherDedup[i], add_stat, cookie);
+        sprintf(buf, "ep_commit_num_%d", int(i));
+        add_casted_stat(buf, epstats.flusherCommits[i], add_stat, cookie);
+        sprintf(buf, "ep_flush_preempts_%d", int(i));
+        add_casted_stat(buf, epstats.flusherPreempts[i], add_stat, cookie);
+        sprintf(buf, "ep_item_begin_failed_%d", int(i));
+        add_casted_stat(buf, epstats.beginFailed[i], add_stat, cookie);
+        sprintf(buf, "ep_item_commit_failed_%d", int(i));
+        add_casted_stat(buf, epstats.commitFailed[i], add_stat, cookie);
+        sprintf(buf, "ep_flusher_requeue_rejected_%d", int(i));
+        add_casted_stat(buf, epstats.flusherRequeuedRejected[i], add_stat, cookie);
     }
     add_casted_stat("ep_flusher_todo",
                     epstats.flusher_todo_get(), add_stat, cookie);
