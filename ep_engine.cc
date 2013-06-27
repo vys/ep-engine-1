@@ -1495,7 +1495,7 @@ the database (refer docs): dbname, shardpattern, initfile, postInitfile, db_shar
 
     restore.manager->enableRestoreFileChecks(configuration.isRestoreFileChecks());
     if (configuration.isRestoreMode() && stats.kvstoreMapVbuckets == false) {
-        setRestoreMode(RESTORE_MODE_SERVER, true);
+        restore.enabled.set(true);
         getLogger()->log(EXTENSION_LOG_WARNING, NULL, "Started server in restore mode");
     }
 
@@ -4467,27 +4467,30 @@ static void addSyncKeySpecs(std::stringstream &resp,
     }
 }
 
-ENGINE_ERROR_CODE EventuallyPersistentEngine::setRestoreMode(int vbid, bool enabled) {
+// VBucket level restore
+ENGINE_ERROR_CODE EventuallyPersistentEngine::setRestoreMode(uint16_t vbid, bool enable) {
+    // In vb0 mode, vb level restore is not supported
+    if (stats.kvstoreMapVbuckets == false) {
+        return ENGINE_FAILED;
+    }
+
     LockHolder lh(restore.mutex);
-    if (enabled) {
+    if (enable) {
         if (!(restore.enabled.get() == false && getEpStore()->setRestoreMode(vbid, true))) {
             return ENGINE_FAILED;;
         } else {
             restore.enabled.set(true);
             restore.manager->reset();
             restore.manager->setRestoreVBucket(vbid);
-
         }
     } else {
-        if (!(restore.enabled.get() == true &&
-                    !restore.manager->isRunning() &&
-                    getEpStore()->setRestoreMode(vbid, false))) {
+        if (restore.enabled.get() == false ||
+                    restore.manager->isRunning() ||
+                    getEpStore()->setRestoreMode(vbid, false) == false) {
             return ENGINE_FAILED;
-        } else {
-            restore.enabled.set(false);
-            restore.manager->setRestoreVBucket(RESTORE_MODE_IDLE);
-            epstore->completeOnlineRestore();
         }
+        restore.enabled.set(false);
+        getEpStore()->completeOnlineRestore();
     }
 
     return ENGINE_SUCCESS;
@@ -4554,7 +4557,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::handleRestoreCmd(const void *cooki
         }
 
         if (stats.kvstoreMapVbuckets) {
-            std::string msg = "Restore complete not supported";
+            std::string msg = "Restore complete not supported in multi-vbucket mode";
             if (response(NULL, 0, NULL, 0, msg.c_str(), msg.length(),
                          PROTOCOL_BINARY_RAW_BYTES,
                          PROTOCOL_BINARY_RESPONSE_EINTERNAL, 0, cookie)) {

@@ -51,10 +51,8 @@ public:
                     size_t allocvbs;
                     if (state == vbucket_state_active) {
                         allocvbs = kc.actives;
-                    } else if (state == vbucket_state_replica) {
-                        allocvbs = kc.replicas;
                     } else {
-                        allocvbs = (*it).second.size() - kc.replicas - kc.actives;
+                        allocvbs = kc.replicas;
                     }
 
                     if (eligibleKVStore == -1) {

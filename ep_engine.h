@@ -481,7 +481,16 @@ public:
     }
 
     bool deleteVBucket(uint16_t vbid) {
-        return epstore->deleteVBucket(vbid);
+        LockHolder lh(restore.mutex);
+        bool rv;
+        bool is_restore_mode = epstore->isRestoreEnabled(vbid);
+
+        rv = epstore->deleteVBucket(vbid);
+        if (is_restore_mode) {
+            restore.enabled.set(false);
+        }
+
+        return rv;
     }
 
     bool resetVBucket(uint16_t vbid) {
@@ -612,7 +621,7 @@ public:
     void notifyTapNotificationThread(void);
     void setTapValidity(const std::string &name, const void* token);
 
-    ENGINE_ERROR_CODE setRestoreMode(int vbid, bool enabled);
+    ENGINE_ERROR_CODE setRestoreMode(uint16_t vbid, bool enable);
 
     ENGINE_ERROR_CODE handleRestoreCmd(const void* cookie,
                                        protocol_binary_request_header *request,

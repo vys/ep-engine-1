@@ -901,7 +901,8 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::setVBucketState(uint16_t vbid,
         uint16_t vb_new_version = vb_version == (std::numeric_limits<uint16_t>::max() - 1) ?
                                   0 : vb_version + 1;
 
-        if (!stats.kvstoreMapVbuckets || assignKVStore(newvb)) {
+        if ((to == vbucket_state_active || to == vbucket_state_replica) &&
+                (!stats.kvstoreMapVbuckets || assignKVStore(newvb))) {
             vbuckets.addBucket(newvb);
             vbuckets.setBucketVersion(vbid, vb_new_version);
             lh.unlock();
@@ -1038,6 +1039,7 @@ bool EventuallyPersistentStore::deleteVBucket(uint16_t vbid) {
         // Remove vbucket from kvstore allocation
         int kvid = KVStoreMapper::getVBucketToKVId(vb);
         if (kvid != -1) {
+            LockHolder klh(kvstoreMutex);
             std::map<int, std::vector<uint16_t> >::iterator it;
             it = kvstoresMap.find(kvid);
             assert(it != kvstoresMap.end());
@@ -1048,6 +1050,8 @@ bool EventuallyPersistentStore::deleteVBucket(uint16_t vbid) {
                     break;
                 }
             }
+
+            klh.unlock();
         }
         vbuckets.removeBucket(vbid);
         hlh.unlock();
@@ -2381,14 +2385,14 @@ bool EventuallyPersistentStore::isRestoreEnabled(uint16_t vbid) {
     return vb && isRestoreEnabled(vb);
 }
 
-bool EventuallyPersistentStore::setRestoreMode(int vbid, bool state) {
-    // Enable server level restore
-    if (stats.kvstoreMapVbuckets == false && vbid == -2) {
-        return true;
-    }
-
+bool EventuallyPersistentStore::setRestoreMode(uint16_t vbid, bool state) {
     RCPtr<VBucket> vb = vbuckets.getBucket(vbid);
     if (!vb) {
+        return false;
+    }
+
+    // If vbucket is already in requested mode, fail
+    if (vb->isRestoreMode() == state) {
         return false;
     }
 
@@ -2510,6 +2514,7 @@ bool EventuallyPersistentStore::assignKVStore(RCPtr<VBucket> &vb, int kvid) {
     LockHolder lh(kvstoreMutex);
 
     if (kvid == -1) {
+        assert(vb->getState() == vbucket_state_active || vb->getState() == vbucket_state_replica);
         std::map<int, KVMapCapacity> cap = getKVStoresCapacity();
         kvid = KVStoreMapper::findKVStore(vb->getState(), kvstoresMap, rwUnderlying, cap);
     }

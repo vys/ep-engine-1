@@ -299,8 +299,8 @@ private:
 
 
         int r = 2;
-        // restore_vbid -2 means server level restore
-        if (restore_vbid == vbid || restore_vbid == RESTORE_MODE_SERVER) {
+        // If vbucket == specified vbucket for restore or server level restore mode
+        if (restore_vbid == vbid || restore_vbid == -1) {
             r = store.restoreItem(itm, op);
         }
 
@@ -342,7 +342,7 @@ public:
         busy(0),
         restore_cpoint(0),
         restore_file_checks(true),
-        restore_vbid(RESTORE_MODE_IDLE),
+        restore_vbid(-1),
         state(&State::Uninitialized),
         restoreSO(),
         done(false)
