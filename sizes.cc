@@ -1,4 +1,5 @@
 /*
+ *     Copyright 2013 Zynga inc.
  *     Copyright 2010 NorthScale, Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
