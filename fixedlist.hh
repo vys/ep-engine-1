@@ -187,23 +187,23 @@ public:
     /**
      * Returns the rejected item or NULL if none
      */
-    T* insert(T *item) {
+    T* insert(T *itm) {
         assert(!built);
         if (maxSize == 0) {
-            return item;
+            return itm;
         }
         T* ret = NULL;
         if (currentSize < maxSize) {
-            data[currentSize++] = item;
+            data[currentSize++] = itm;
             siftUp(currentSize - 1);
             ret = data[currentSize];
             data[currentSize] = NULL;
-        } else if (comparator(*data[0], *item) > 0) {
+        } else if (comparator(*data[0], *itm) > 0) {
             ret = data[0];
-            data[0] = item;
+            data[0] = itm;
             siftDown(0, currentSize);
         } else {
-            ret = item;
+            ret = itm;
         }
         return ret;
     }
